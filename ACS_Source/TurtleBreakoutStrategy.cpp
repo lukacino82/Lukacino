@@ -138,11 +138,14 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         return; // already in a trade, nothing else to do this bar
 
     // Position sizing: risk a fixed % of equity, sized off the ATR stop distance.
+    // sc.CurrencyValuePerTick is the $ value of one tick; divide by TickSize to get $ per full point.
+    double PointValue = sc.TickSize > 0 ? sc.CurrencyValuePerTick / sc.TickSize : 0;
+
     int Contracts = 1;
-    if (StopDistance > 0 && sc.PointValue > 0)
+    if (StopDistance > 0 && PointValue > 0)
     {
         double RiskDollars = Input_AccountEquity.GetDouble() * (Input_RiskPercent.GetFloat() / 100.0);
-        Contracts = (int)(RiskDollars / (StopDistance * sc.PointValue));
+        Contracts = (int)(RiskDollars / (StopDistance * PointValue));
         if (Contracts < 1)
             Contracts = 1;
     }
