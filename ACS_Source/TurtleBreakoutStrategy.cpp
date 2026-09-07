@@ -26,6 +26,9 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     SCInputRef Input_ATRStopMultiplier = sc.Input[3];
     SCInputRef Input_AccountEquity    = sc.Input[4];
     SCInputRef Input_RiskPercent      = sc.Input[5];
+    SCInputRef Input_MaxContracts     = sc.Input[6];
+    SCInputRef Input_AllowLong        = sc.Input[7];
+    SCInputRef Input_AllowShort       = sc.Input[8];
 
     SCSubgraphRef Subgraph_MA            = sc.Subgraph[0];
     SCSubgraphRef Subgraph_UpperBreakout = sc.Subgraph[1];
@@ -72,6 +75,15 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
 
         Input_RiskPercent.Name = "Risk Per Trade (% of Equity)";
         Input_RiskPercent.SetFloat(2.0f);
+
+        Input_MaxContracts.Name = "Max Contracts Per Trade";
+        Input_MaxContracts.SetInt(50);
+
+        Input_AllowLong.Name = "Allow Long Trades";
+        Input_AllowLong.SetYesNo(1);
+
+        Input_AllowShort.Name = "Allow Short Trades";
+        Input_AllowShort.SetYesNo(1);
 
         sc.SendOrdersToTradeService = 1;
         sc.SupportReversals = 1;
@@ -134,8 +146,10 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         if (Contracts < 1)
             Contracts = 1;
     }
+    if (Contracts > Input_MaxContracts.GetInt())
+        Contracts = Input_MaxContracts.GetInt();
 
-    if (Close > MAValue && Close > PriorHigh)
+    if (Input_AllowLong.GetYesNo() && Close > MAValue && Close > PriorHigh)
     {
         s_SCNewOrder NewOrder;
         NewOrder.OrderQuantity = Contracts;
@@ -143,7 +157,7 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
         sc.BuyEntry(NewOrder);
     }
-    else if (Close < MAValue && Close < PriorLow)
+    else if (Input_AllowShort.GetYesNo() && Close < MAValue && Close < PriorLow)
     {
         s_SCNewOrder NewOrder;
         NewOrder.OrderQuantity = Contracts;
