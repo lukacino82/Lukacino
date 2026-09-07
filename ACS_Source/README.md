@@ -34,16 +34,15 @@ Zjednodušená Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60
 | ATR Stop Multiplier | 2.0 | násobič ATR pro stop loss |
 | Account Equity ($) | 100000 | kapitál účtu pro výpočet velikosti pozice — **nastavte na reálnou hodnotu** |
 | Risk Per Trade (%) | 2.0 | % equity riskované na obchod |
-| Max Contracts Per Trade | 50 | strop na velikost pozice |
-| Allow Long/Short Trades | Yes | povolení jednotlivých směrů |
-| Strategy Enabled (Auto Trading) | **No** | musí se ručně přepnout na Yes, aby strategie posílala reálné/simulované objednávky |
+
+Strategie se aktivuje standardním Sierra Chart přepínačem **Trade → Enable Trading for Chart** (studie sama automaticky posílá objednávky, jakmile je trading pro graf zapnutý).
 
 ## Před živým obchodováním
 
 1. Nejprve otestujte na **Sierra Chart Trade Simulation** účtu (ne na živém účtu)
 2. Zkontrolujte, že symbol má správně nastavenou hodnotu bodu (Point Value) v Symbol Settings — používá se pro výpočet velikosti pozice
 3. V **Trade → Trade Service Settings** ověřte propojení na váš broker/simulaci
-4. Teprve po ověření na simulaci a zpětném testu (Strategy Analyzer / backtest) přepněte "Strategy Enabled" na Yes na reálném/live účtu
+4. Teprve po ověření na simulaci a zpětném testu (Strategy Analyzer / backtest) zapněte trading na reálném/live účtu
 
 ## Poznámka
 
