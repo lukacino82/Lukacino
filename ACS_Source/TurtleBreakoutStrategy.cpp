@@ -29,6 +29,7 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     SCInputRef Input_MaxContracts     = sc.Input[6];
     SCInputRef Input_AllowLong        = sc.Input[7];
     SCInputRef Input_AllowShort       = sc.Input[8];
+    SCInputRef Input_DebugLogging     = sc.Input[9];
 
     SCSubgraphRef Subgraph_MA            = sc.Subgraph[0];
     SCSubgraphRef Subgraph_UpperBreakout = sc.Subgraph[1];
@@ -85,6 +86,9 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         Input_AllowShort.Name = "Allow Short Trades";
         Input_AllowShort.SetYesNo(1);
 
+        Input_DebugLogging.Name = "Debug Logging (Message Log)";
+        Input_DebugLogging.SetYesNo(1);
+
         sc.SendOrdersToTradeService = 1;
         sc.SupportReversals = 1;
         sc.CancelAllOrdersOnEntriesAndReversals = 1;
@@ -118,19 +122,43 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     sc.GetTradePosition(Position);
     int PositionQty = Position.PositionQuantity;
 
+    bool DebugLogging = Input_DebugLogging.GetYesNo() != 0;
+    if (DebugLogging)
+    {
+        SCString DebugMsg;
+        DebugMsg.Format(
+            "TurtleBreakout Bar=%d Close=%.2f MA=%.2f PriorHigh=%.2f PriorLow=%.2f ATR=%.4f Pos=%d",
+            Index, Close, MAValue, PriorHigh, PriorLow, Subgraph_ATR[Index], PositionQty);
+        sc.AddMessageToLog(DebugMsg, 0);
+    }
+
     // Structural exit: close the position when price breaks the opposite side of the channel.
     if (PositionQty > 0 && Close < PriorLow)
     {
         s_SCNewOrder ExitOrder;
+        ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
         ExitOrder.OrderQuantity = PositionQty;
-        sc.SellExit(ExitOrder);
+        int Result = sc.SellExit(ExitOrder);
+        if (DebugLogging)
+        {
+            SCString Msg;
+            Msg.Format("TurtleBreakout SellExit Qty=%d Result=%d", PositionQty, Result);
+            sc.AddMessageToLog(Msg, 1);
+        }
         return;
     }
     if (PositionQty < 0 && Close > PriorHigh)
     {
         s_SCNewOrder ExitOrder;
+        ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
         ExitOrder.OrderQuantity = -PositionQty;
-        sc.BuyExit(ExitOrder);
+        int Result = sc.BuyExit(ExitOrder);
+        if (DebugLogging)
+        {
+            SCString Msg;
+            Msg.Format("TurtleBreakout BuyExit Qty=%d Result=%d", -PositionQty, Result);
+            sc.AddMessageToLog(Msg, 1);
+        }
         return;
     }
 
@@ -152,20 +180,45 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     if (Contracts > Input_MaxContracts.GetInt())
         Contracts = Input_MaxContracts.GetInt();
 
-    if (Input_AllowLong.GetYesNo() && Close > MAValue && Close > PriorHigh)
+    bool LongSignal  = Input_AllowLong.GetYesNo()  != 0 && Close > MAValue && Close > PriorHigh;
+    bool ShortSignal = Input_AllowShort.GetYesNo() != 0 && Close < MAValue && Close < PriorLow;
+
+    if (DebugLogging && (LongSignal || ShortSignal))
     {
-        s_SCNewOrder NewOrder;
-        NewOrder.OrderQuantity = Contracts;
-        NewOrder.Stop1Offset = StopDistance;
-        NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
-        sc.BuyEntry(NewOrder);
+        SCString Msg;
+        Msg.Format("TurtleBreakout Signal Long=%d Short=%d Contracts=%d StopDistance=%.4f",
+            (int)LongSignal, (int)ShortSignal, Contracts, StopDistance);
+        sc.AddMessageToLog(Msg, 1);
     }
-    else if (Input_AllowShort.GetYesNo() && Close < MAValue && Close < PriorLow)
+
+    if (LongSignal)
     {
         s_SCNewOrder NewOrder;
+        NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
         NewOrder.OrderQuantity = Contracts;
         NewOrder.Stop1Offset = StopDistance;
         NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
-        sc.SellEntry(NewOrder);
+        int Result = sc.BuyEntry(NewOrder);
+        if (DebugLogging)
+        {
+            SCString Msg;
+            Msg.Format("TurtleBreakout BuyEntry Qty=%d Result=%d", Contracts, Result);
+            sc.AddMessageToLog(Msg, 1);
+        }
+    }
+    else if (ShortSignal)
+    {
+        s_SCNewOrder NewOrder;
+        NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
+        NewOrder.OrderQuantity = Contracts;
+        NewOrder.Stop1Offset = StopDistance;
+        NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
+        int Result = sc.SellEntry(NewOrder);
+        if (DebugLogging)
+        {
+            SCString Msg;
+            Msg.Format("TurtleBreakout SellEntry Qty=%d Result=%d", Contracts, Result);
+            sc.AddMessageToLog(Msg, 1);
+        }
     }
 }
