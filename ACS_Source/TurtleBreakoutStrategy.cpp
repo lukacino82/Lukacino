@@ -19,6 +19,13 @@ SCDLLName("Turtle Breakout Strategy 2.0")
                   Chandelier Multiplier x ATR, mirrored for shorts). This
                   protects unrealized profit that the structural exit alone
                   would leave exposed to a full 40-bar channel reversal.
+                  The fixed 2xATR stop is still submitted as a real attached
+                  stop order, so Sierra Chart keeps drawing its native
+                  working-order line on the chart exactly as before. The
+                  trailing/chandelier level is not a resting order (this
+                  study fires a market exit itself once price crosses it),
+                  so it is additionally plotted as its own subgraph line
+                  ("Trailing Stop Level") to make it visible while in a trade.
 
   Position sizing:
     Contracts = (Equity x Risk%) / (StopDistancePoints x PointValue)
@@ -44,6 +51,7 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     SCSubgraphRef Subgraph_UpperBreakout = sc.Subgraph[1];
     SCSubgraphRef Subgraph_LowerBreakout = sc.Subgraph[2];
     SCSubgraphRef Subgraph_ATR           = sc.Subgraph[3];
+    SCSubgraphRef Subgraph_TrailStopLevel = sc.Subgraph[4];
 
     if (sc.SetDefaults)
     {
@@ -67,6 +75,11 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
 
         sc.Subgraph[3].Name = "ATR";
         sc.Subgraph[3].DrawStyle = DRAWSTYLE_IGNORE;
+
+        sc.Subgraph[4].Name = "Trailing Stop Level";
+        sc.Subgraph[4].DrawStyle = DRAWSTYLE_LINE;
+        sc.Subgraph[4].PrimaryColor = RGB(255, 140, 0);
+        sc.Subgraph[4].LineWidth = 2;
 
         Input_MALength.Name = "Trend MA Length";
         Input_MALength.SetInt(200);
@@ -165,6 +178,67 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     float& EntryATR              = sc.GetPersistentFloat(3);
     int&   BreakevenArmed        = sc.GetPersistentInt(1);
 
+    bool TrailingEnabled = Input_EnableTrailingStop.GetYesNo() != 0;
+
+    // Update trailing extremes/arming and compute the effective stop level for
+    // this bar up front, so it is available both for the trailing-exit check
+    // below and for the on-chart "Trailing Stop Level" plot, and stays current
+    // even on bars where a structural exit fires instead.
+    float EffectiveStopLevel = Close; // flat: hug price so the line stays out of the way
+    if (PositionQty > 0)
+    {
+        if (sc.High[Index] > HighestHighSinceEntry)
+            HighestHighSinceEntry = sc.High[Index];
+
+        if (!BreakevenArmed && EntryATR > 0 &&
+            sc.High[Index] - Position.AveragePrice >= Input_BreakevenTriggerATR.GetFloat() * EntryATR)
+        {
+            BreakevenArmed = 1;
+        }
+
+        if (TrailingEnabled && BreakevenArmed)
+        {
+            EffectiveStopLevel = HighestHighSinceEntry - Input_ChandelierATRMultiplier.GetFloat() * EntryATR;
+            if (EffectiveStopLevel < Position.AveragePrice)
+                EffectiveStopLevel = Position.AveragePrice; // once armed, never trail below breakeven
+        }
+        else if (EntryATR > 0)
+        {
+            EffectiveStopLevel = Position.AveragePrice - Input_ATRStopMultiplier.GetFloat() * EntryATR;
+        }
+    }
+    else if (PositionQty < 0)
+    {
+        if (LowestLowSinceEntry == 0 || sc.Low[Index] < LowestLowSinceEntry)
+            LowestLowSinceEntry = sc.Low[Index];
+
+        if (!BreakevenArmed && EntryATR > 0 &&
+            Position.AveragePrice - sc.Low[Index] >= Input_BreakevenTriggerATR.GetFloat() * EntryATR)
+        {
+            BreakevenArmed = 1;
+        }
+
+        if (TrailingEnabled && BreakevenArmed)
+        {
+            EffectiveStopLevel = LowestLowSinceEntry + Input_ChandelierATRMultiplier.GetFloat() * EntryATR;
+            if (EffectiveStopLevel > Position.AveragePrice)
+                EffectiveStopLevel = Position.AveragePrice; // once armed, never trail above breakeven
+        }
+        else if (EntryATR > 0)
+        {
+            EffectiveStopLevel = Position.AveragePrice + Input_ATRStopMultiplier.GetFloat() * EntryATR;
+        }
+    }
+    else
+    {
+        // Flat: reset trailing state so the next entry starts clean.
+        HighestHighSinceEntry = 0;
+        LowestLowSinceEntry = 0;
+        EntryATR = 0;
+        BreakevenArmed = 0;
+    }
+    Subgraph_TrailStopLevel[Index] = EffectiveStopLevel;
+
     // Structural exit: close the position when price breaks the opposite side of the channel.
     if (PositionQty > 0 && Close < PriorLow)
     {
@@ -195,81 +269,35 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         return;
     }
 
-    bool TrailingEnabled = Input_EnableTrailingStop.GetYesNo() != 0;
-
-    if (PositionQty > 0)
+    // Trailing exit: once armed, flatten if price closes back through the
+    // chandelier level computed above (and already plotted for this bar).
+    if (PositionQty > 0 && TrailingEnabled && BreakevenArmed && Close < EffectiveStopLevel)
     {
-        if (sc.High[Index] > HighestHighSinceEntry)
-            HighestHighSinceEntry = sc.High[Index];
-
-        if (!BreakevenArmed && EntryATR > 0 &&
-            sc.High[Index] - Position.AveragePrice >= Input_BreakevenTriggerATR.GetFloat() * EntryATR)
+        s_SCNewOrder ExitOrder;
+        ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
+        ExitOrder.OrderQuantity = PositionQty;
+        int Result = sc.SellExit(ExitOrder);
+        if (DebugLogging)
         {
-            BreakevenArmed = 1;
+            SCString Msg;
+            Msg.Format("TurtleBreakout SellExit(Trailing) Qty=%d TrailStop=%.2f Result=%d", PositionQty, EffectiveStopLevel, Result);
+            sc.AddMessageToLog(Msg, 1);
         }
-
-        if (TrailingEnabled && BreakevenArmed)
-        {
-            float TrailStop = HighestHighSinceEntry - Input_ChandelierATRMultiplier.GetFloat() * EntryATR;
-            if (TrailStop < Position.AveragePrice)
-                TrailStop = Position.AveragePrice; // once armed, never trail below breakeven
-
-            if (Close < TrailStop)
-            {
-                s_SCNewOrder ExitOrder;
-                ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
-                ExitOrder.OrderQuantity = PositionQty;
-                int Result = sc.SellExit(ExitOrder);
-                if (DebugLogging)
-                {
-                    SCString Msg;
-                    Msg.Format("TurtleBreakout SellExit(Trailing) Qty=%d TrailStop=%.2f Result=%d", PositionQty, TrailStop, Result);
-                    sc.AddMessageToLog(Msg, 1);
-                }
-                return;
-            }
-        }
+        return;
     }
-    else if (PositionQty < 0)
+    if (PositionQty < 0 && TrailingEnabled && BreakevenArmed && Close > EffectiveStopLevel)
     {
-        if (LowestLowSinceEntry == 0 || sc.Low[Index] < LowestLowSinceEntry)
-            LowestLowSinceEntry = sc.Low[Index];
-
-        if (!BreakevenArmed && EntryATR > 0 &&
-            Position.AveragePrice - sc.Low[Index] >= Input_BreakevenTriggerATR.GetFloat() * EntryATR)
+        s_SCNewOrder ExitOrder;
+        ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
+        ExitOrder.OrderQuantity = -PositionQty;
+        int Result = sc.BuyExit(ExitOrder);
+        if (DebugLogging)
         {
-            BreakevenArmed = 1;
+            SCString Msg;
+            Msg.Format("TurtleBreakout BuyExit(Trailing) Qty=%d TrailStop=%.2f Result=%d", -PositionQty, EffectiveStopLevel, Result);
+            sc.AddMessageToLog(Msg, 1);
         }
-
-        if (TrailingEnabled && BreakevenArmed)
-        {
-            float TrailStop = LowestLowSinceEntry + Input_ChandelierATRMultiplier.GetFloat() * EntryATR;
-            if (TrailStop > Position.AveragePrice)
-                TrailStop = Position.AveragePrice; // once armed, never trail above breakeven
-
-            if (Close > TrailStop)
-            {
-                s_SCNewOrder ExitOrder;
-                ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
-                ExitOrder.OrderQuantity = -PositionQty;
-                int Result = sc.BuyExit(ExitOrder);
-                if (DebugLogging)
-                {
-                    SCString Msg;
-                    Msg.Format("TurtleBreakout BuyExit(Trailing) Qty=%d TrailStop=%.2f Result=%d", -PositionQty, TrailStop, Result);
-                    sc.AddMessageToLog(Msg, 1);
-                }
-                return;
-            }
-        }
-    }
-    else
-    {
-        // Flat: reset trailing state so the next entry starts clean.
-        HighestHighSinceEntry = 0;
-        LowestLowSinceEntry = 0;
-        EntryATR = 0;
-        BreakevenArmed = 0;
+        return;
     }
 
     if (PositionQty != 0)

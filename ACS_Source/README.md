@@ -13,6 +13,10 @@ Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60minutový graf*
 - Take profit: strukturální — LONG se zavře při close pod aktuálním 40-bar minimem, SHORT se zavře při close nad aktuálním 40-bar maximem
 - **Nové v 2.0 — Breakeven + chandelier ATR trailing:** jakmile cena postoupí ve prospěch pozice o `Breakeven Trigger (x ATR)`, stop se "zaaretuje" na breakeven (průměrná vstupní cena) a dál se posouvá jako chandelier ATR stop (nejvyšší high od vstupu mínus `Chandelier Trailing Multiplier (x ATR)`, zrcadlově pro short). Chrání to nerealizovaný zisk, který by čistě strukturální exit nechal vystavený plnému zvratu 40-bar kanálu.
 
+**Zobrazení stopů v grafu:**
+- Fixní 2×ATR stop se pořád posílá jako skutečná attached stop objednávka, takže Sierra Chart automaticky kreslí svou nativní čáru pracující objednávky (`S|Stop|...`) — stejně jako v původní verzi, bez potřeby cokoli nastavovat.
+- Trailing/chandelier úroveň není skutečná objednávka v trhu (strategie sama vyšle market exit, jakmile ji cena prolomí) — proto je navíc vykreslená jako vlastní subgraph **"Trailing Stop Level"** (oranžová čára), který ukazuje aktuální efektivní stop po dobu, kdy je pozice otevřená.
+
 **Position sizing:**
 - Riskuje se fixně 2 % equity na obchod
 - Počet kontraktů = (equity × risk %) / (stop distance v bodech × hodnota bodu)
