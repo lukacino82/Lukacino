@@ -150,6 +150,17 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     if (sc.GetBarHasClosedStatus(Index) != BHCS_BAR_HAS_CLOSED)
         return;
 
+    // Only SUBMIT orders (entries and both exit types) on the current/last bar.
+    // Indicators/subgraphs below still get computed for every bar so the chart
+    // stays correctly plotted historically. Without this, a full recalculation
+    // (triggered by an input change, DLL rebuild, or re-adding the study) walks
+    // every historical bar and tries to fire an order for each old signal;
+    // Sierra Chart silently rejects those (Result=-8998, SCT_SKIPPED_FULL_RECALC)
+    // — including structural/trailing EXITS, which can leave a real position
+    // stuck open with no protection if price has since moved back past the
+    // level that should have closed it.
+    bool IsLastBar = (Index == sc.ArraySize - 1);
+
     float Close = sc.Close[Index];
     float MAValue = Subgraph_MA[Index];
     float PriorHigh = Subgraph_UpperBreakout[Index - 1]; // prior 40-bar high, excludes current bar
@@ -228,6 +239,9 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         BreakevenArmed = 0;
     }
     Subgraph_TrailStopLevel[Index] = EffectiveStopLevel;
+
+    if (!IsLastBar)
+        return; // indicators/subgraphs above are updated; no order actions on historical bars
 
     // Structural exit: close the position when price breaks the opposite side of the channel.
     if (PositionQty > 0 && Close < PriorLow)

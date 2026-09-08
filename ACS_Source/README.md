@@ -41,12 +41,12 @@ Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60minutový graf*
 | Risk Per Trade (%) | 2.0 | % equity riskované na obchod |
 | Max Contracts Per Trade | 50 | strop na velikost pozice |
 | Allow Long/Short Trades | Yes | povolení jednotlivých směrů |
-| Debug Logging (Message Log) | Yes | podrobný log signálů a objednávek pro diagnostiku |
+| Send Orders To Trade Service (No = internal Trade Simulation Mode) | No | musí odpovídat globálnímu **Trade → Trade Simulation Mode On** — ON (zaškrtnuto, např. při Replay) → nastavte na No; OFF (živý/Sim1 účet) → nastavte na Yes |
 | Enable Breakeven + Chandelier Trailing | Yes | zapíná/vypíná nový trailing mechanismus z 2.0 |
 | Breakeven Trigger (x ATR) | 1.0 | jak daleko (v násobcích ATR) musí cena postoupit ve prospěch pozice, než se stop zaaretuje na breakeven |
 | Chandelier Trailing Multiplier (x ATR) | 3.0 | odstup trailing stopu od nejvyššího high/nejnižšího low od vstupu, po zaaretování breakeven |
 
-Strategie se aktivuje standardním Sierra Chart přepínačem **Trade → Enable Trading for Chart** (studie sama automaticky posílá objednávky, jakmile je trading pro graf zapnutý).
+Strategie se aktivuje standardním Sierra Chart přepínačem **Trade → Enable Trading for Chart** (studie sama automaticky posílá objednávky, jakmile je trading pro graf zapnutý) — a inputem **Send Orders To Trade Service** nastaveným podle **Trade → Trade Simulation Mode On** (viz tabulka výše).
 
 ## Před živým obchodováním
 
