@@ -1,6 +1,6 @@
-# Turtle Breakout Strategy (Sierra Chart ACSIL)
+# Turtle Breakout Strategy 2.0 (Sierra Chart ACSIL)
 
-Zjednodušená Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60minutový graf**.
+Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60minutový graf**.
 
 ## Logika
 
@@ -11,6 +11,7 @@ Zjednodušená Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60
 **Výstup:**
 - Stop loss: 2× ATR(20) — fixní cena nastavená při vstupu (attached stop order)
 - Take profit: strukturální — LONG se zavře při close pod aktuálním 40-bar minimem, SHORT se zavře při close nad aktuálním 40-bar maximem
+- **Nové v 2.0 — Breakeven + chandelier ATR trailing:** jakmile cena postoupí ve prospěch pozice o `Breakeven Trigger (x ATR)`, stop se "zaaretuje" na breakeven (průměrná vstupní cena) a dál se posouvá jako chandelier ATR stop (nejvyšší high od vstupu mínus `Chandelier Trailing Multiplier (x ATR)`, zrcadlově pro short). Chrání to nerealizovaný zisk, který by čistě strukturální exit nechal vystavený plnému zvratu 40-bar kanálu.
 
 **Position sizing:**
 - Riskuje se fixně 2 % equity na obchod
@@ -20,9 +21,9 @@ Zjednodušená Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60
 
 1. Zkopírujte `TurtleBreakoutStrategy.cpp` do `C:\SierraChart\ACS_Source\`
 2. V Sierra Chart: **Analysis → Build Custom Studies DLL** (nebo `File → New/Edit ACS_Source File` a pak Build)
-3. Vyberte tento soubor a nechte ho zkompilovat (Build). Po úspěšném buildu se studie objeví v seznamu jako **"Turtle Breakout Strategy"**
+3. Vyberte tento soubor a nechte ho zkompilovat (Build). Po úspěšném buildu se studie objeví v seznamu jako **"Turtle Breakout Strategy 2.0"**
 4. Otevřete graf **NQ (Nasdaq 100 Futures)** s **60minutovým** intervalem
-5. **Analysis → Studies → Add Custom Study** → vyberte "Turtle Breakout Strategy"
+5. **Analysis → Studies → Add Custom Study** → vyberte "Turtle Breakout Strategy 2.0"
 
 ## Nastavení vstupů
 
@@ -36,6 +37,10 @@ Zjednodušená Turtle-style breakout strategie pro **Nasdaq 100 Futures (NQ), 60
 | Risk Per Trade (%) | 2.0 | % equity riskované na obchod |
 | Max Contracts Per Trade | 50 | strop na velikost pozice |
 | Allow Long/Short Trades | Yes | povolení jednotlivých směrů |
+| Debug Logging (Message Log) | Yes | podrobný log signálů a objednávek pro diagnostiku |
+| Enable Breakeven + Chandelier Trailing | Yes | zapíná/vypíná nový trailing mechanismus z 2.0 |
+| Breakeven Trigger (x ATR) | 1.0 | jak daleko (v násobcích ATR) musí cena postoupit ve prospěch pozice, než se stop zaaretuje na breakeven |
+| Chandelier Trailing Multiplier (x ATR) | 3.0 | odstup trailing stopu od nejvyššího high/nejnižšího low od vstupu, po zaaretování breakeven |
 
 Strategie se aktivuje standardním Sierra Chart přepínačem **Trade → Enable Trading for Chart** (studie sama automaticky posílá objednávky, jakmile je trading pro graf zapnutý).
 
@@ -48,4 +53,4 @@ Strategie se aktivuje standardním Sierra Chart přepínačem **Trade → Enable
 
 ## Poznámka
 
-Toto je záměrně jednoduchá verze (žádné časové filtry, trailing stop, denní limity). Podle metodiky "napřed jednoduše, pak přidávat komplexitu po malých krocích" — až bude equity křivka slibná, lze přidat např. trailing stop nebo filtr volatility.
+Verze 2.0 přidává breakeven + chandelier ATR trailing (viz výše) k původní čisté Turtle logice. Stále chybí časové filtry a denní limity — podle metodiky "napřed jednoduše, pak přidávat komplexitu po malých krocích" je lze přidat později, až bude equity křivka z aktuální verze slibná.

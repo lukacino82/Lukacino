@@ -1,18 +1,24 @@
 #include "sierrachart.h"
 
-SCDLLName("Turtle Breakout Strategy")
+SCDLLName("Turtle Breakout Strategy 2.0")
 
 /*==========================================================================
-  Turtle Breakout Strategy — Nasdaq 100 Futures, 60-minute chart
+  Turtle Breakout Strategy 2.0 — Nasdaq 100 Futures, 60-minute chart
 
   Entry:
     LONG  - Close > 200 MA AND Close > prior 40-bar high
     SHORT - Close < 200 MA AND Close < prior 40-bar low
 
   Exit:
-    Stop loss   - 2 x ATR(20), fixed price set at entry
+    Stop loss   - 2 x ATR(20), fixed price set at entry (attached stop order)
     Take profit - structural: close LONG on a close below the 40-bar low,
                   close SHORT on a close above the 40-bar high
+    Trailing    - new in 2.0: once price has moved Breakeven Trigger x ATR
+                  in favor, the stop is armed at breakeven and then trails
+                  as a chandelier ATR stop (highest high since entry minus
+                  Chandelier Multiplier x ATR, mirrored for shorts). This
+                  protects unrealized profit that the structural exit alone
+                  would leave exposed to a full 40-bar channel reversal.
 
   Position sizing:
     Contracts = (Equity x Risk%) / (StopDistancePoints x PointValue)
@@ -30,6 +36,9 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     SCInputRef Input_AllowLong        = sc.Input[7];
     SCInputRef Input_AllowShort       = sc.Input[8];
     SCInputRef Input_DebugLogging     = sc.Input[9];
+    SCInputRef Input_EnableTrailingStop      = sc.Input[10];
+    SCInputRef Input_BreakevenTriggerATR     = sc.Input[11];
+    SCInputRef Input_ChandelierATRMultiplier = sc.Input[12];
 
     SCSubgraphRef Subgraph_MA            = sc.Subgraph[0];
     SCSubgraphRef Subgraph_UpperBreakout = sc.Subgraph[1];
@@ -38,8 +47,8 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
 
     if (sc.SetDefaults)
     {
-        sc.GraphName = "Turtle Breakout Strategy";
-        sc.StudyDescription = "Turtle-style breakout: 200 MA trend filter + 40-bar Donchian entry, ATR stop, structural exit, risk-based sizing. NQ futures, 60-minute bars.";
+        sc.GraphName = "Turtle Breakout Strategy 2.0";
+        sc.StudyDescription = "Turtle-style breakout: 200 MA trend filter + 40-bar Donchian entry, ATR stop, structural exit, breakeven + chandelier ATR trailing, risk-based sizing. NQ futures, 60-minute bars.";
 
         sc.AutoLoop = 1;
         sc.GraphRegion = 0;
@@ -89,6 +98,15 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         Input_DebugLogging.Name = "Debug Logging (Message Log)";
         Input_DebugLogging.SetYesNo(1);
 
+        Input_EnableTrailingStop.Name = "Enable Breakeven + Chandelier Trailing";
+        Input_EnableTrailingStop.SetYesNo(1);
+
+        Input_BreakevenTriggerATR.Name = "Breakeven Trigger (x ATR)";
+        Input_BreakevenTriggerATR.SetFloat(1.0f);
+
+        Input_ChandelierATRMultiplier.Name = "Chandelier Trailing Multiplier (x ATR)";
+        Input_ChandelierATRMultiplier.SetFloat(3.0f);
+
         sc.SendOrdersToTradeService = 1;
         sc.SupportReversals = 1;
         sc.CancelAllOrdersOnEntriesAndReversals = 1;
@@ -124,7 +142,8 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     float MAValue = Subgraph_MA[Index];
     float PriorHigh = Subgraph_UpperBreakout[Index - 1]; // prior 40-bar high, excludes current bar
     float PriorLow  = Subgraph_LowerBreakout[Index - 1]; // prior 40-bar low, excludes current bar
-    float StopDistance = Input_ATRStopMultiplier.GetFloat() * Subgraph_ATR[Index];
+    float CurrentATR = Subgraph_ATR[Index];
+    float StopDistance = Input_ATRStopMultiplier.GetFloat() * CurrentATR;
 
     s_SCPositionData Position;
     sc.GetTradePosition(Position);
@@ -136,9 +155,15 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         SCString DebugMsg;
         DebugMsg.Format(
             "TurtleBreakout Bar=%d Close=%.2f MA=%.2f PriorHigh=%.2f PriorLow=%.2f ATR=%.4f Pos=%d",
-            Index, Close, MAValue, PriorHigh, PriorLow, Subgraph_ATR[Index], PositionQty);
+            Index, Close, MAValue, PriorHigh, PriorLow, CurrentATR, PositionQty);
         sc.AddMessageToLog(DebugMsg, 0);
     }
+
+    // Persistent trailing-stop state, carried across bars for the open position.
+    float& HighestHighSinceEntry = sc.GetPersistentFloat(1);
+    float& LowestLowSinceEntry   = sc.GetPersistentFloat(2);
+    float& EntryATR              = sc.GetPersistentFloat(3);
+    int&   BreakevenArmed        = sc.GetPersistentInt(1);
 
     // Structural exit: close the position when price breaks the opposite side of the channel.
     if (PositionQty > 0 && Close < PriorLow)
@@ -150,7 +175,7 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         if (DebugLogging)
         {
             SCString Msg;
-            Msg.Format("TurtleBreakout SellExit Qty=%d Result=%d", PositionQty, Result);
+            Msg.Format("TurtleBreakout SellExit(Structural) Qty=%d Result=%d", PositionQty, Result);
             sc.AddMessageToLog(Msg, 1);
         }
         return;
@@ -164,10 +189,87 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         if (DebugLogging)
         {
             SCString Msg;
-            Msg.Format("TurtleBreakout BuyExit Qty=%d Result=%d", -PositionQty, Result);
+            Msg.Format("TurtleBreakout BuyExit(Structural) Qty=%d Result=%d", -PositionQty, Result);
             sc.AddMessageToLog(Msg, 1);
         }
         return;
+    }
+
+    bool TrailingEnabled = Input_EnableTrailingStop.GetYesNo() != 0;
+
+    if (PositionQty > 0)
+    {
+        if (sc.High[Index] > HighestHighSinceEntry)
+            HighestHighSinceEntry = sc.High[Index];
+
+        if (!BreakevenArmed && EntryATR > 0 &&
+            sc.High[Index] - Position.AveragePrice >= Input_BreakevenTriggerATR.GetFloat() * EntryATR)
+        {
+            BreakevenArmed = 1;
+        }
+
+        if (TrailingEnabled && BreakevenArmed)
+        {
+            float TrailStop = HighestHighSinceEntry - Input_ChandelierATRMultiplier.GetFloat() * EntryATR;
+            if (TrailStop < Position.AveragePrice)
+                TrailStop = Position.AveragePrice; // once armed, never trail below breakeven
+
+            if (Close < TrailStop)
+            {
+                s_SCNewOrder ExitOrder;
+                ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
+                ExitOrder.OrderQuantity = PositionQty;
+                int Result = sc.SellExit(ExitOrder);
+                if (DebugLogging)
+                {
+                    SCString Msg;
+                    Msg.Format("TurtleBreakout SellExit(Trailing) Qty=%d TrailStop=%.2f Result=%d", PositionQty, TrailStop, Result);
+                    sc.AddMessageToLog(Msg, 1);
+                }
+                return;
+            }
+        }
+    }
+    else if (PositionQty < 0)
+    {
+        if (LowestLowSinceEntry == 0 || sc.Low[Index] < LowestLowSinceEntry)
+            LowestLowSinceEntry = sc.Low[Index];
+
+        if (!BreakevenArmed && EntryATR > 0 &&
+            Position.AveragePrice - sc.Low[Index] >= Input_BreakevenTriggerATR.GetFloat() * EntryATR)
+        {
+            BreakevenArmed = 1;
+        }
+
+        if (TrailingEnabled && BreakevenArmed)
+        {
+            float TrailStop = LowestLowSinceEntry + Input_ChandelierATRMultiplier.GetFloat() * EntryATR;
+            if (TrailStop > Position.AveragePrice)
+                TrailStop = Position.AveragePrice; // once armed, never trail above breakeven
+
+            if (Close > TrailStop)
+            {
+                s_SCNewOrder ExitOrder;
+                ExitOrder.OrderType = SCT_ORDERTYPE_MARKET;
+                ExitOrder.OrderQuantity = -PositionQty;
+                int Result = sc.BuyExit(ExitOrder);
+                if (DebugLogging)
+                {
+                    SCString Msg;
+                    Msg.Format("TurtleBreakout BuyExit(Trailing) Qty=%d TrailStop=%.2f Result=%d", -PositionQty, TrailStop, Result);
+                    sc.AddMessageToLog(Msg, 1);
+                }
+                return;
+            }
+        }
+    }
+    else
+    {
+        // Flat: reset trailing state so the next entry starts clean.
+        HighestHighSinceEntry = 0;
+        LowestLowSinceEntry = 0;
+        EntryATR = 0;
+        BreakevenArmed = 0;
     }
 
     if (PositionQty != 0)
@@ -207,6 +309,12 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         NewOrder.Stop1Offset = StopDistance;
         NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
         int Result = sc.BuyEntry(NewOrder);
+        if (Result > 0)
+        {
+            HighestHighSinceEntry = sc.High[Index];
+            EntryATR = CurrentATR;
+            BreakevenArmed = 0;
+        }
         if (DebugLogging)
         {
             SCString Msg;
@@ -222,6 +330,12 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
         NewOrder.Stop1Offset = StopDistance;
         NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
         int Result = sc.SellEntry(NewOrder);
+        if (Result > 0)
+        {
+            LowestLowSinceEntry = sc.Low[Index];
+            EntryATR = CurrentATR;
+            BreakevenArmed = 0;
+        }
         if (DebugLogging)
         {
             SCString Msg;
