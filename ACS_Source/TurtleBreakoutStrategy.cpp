@@ -109,6 +109,14 @@ SCSFExport scsf_TurtleBreakoutStrategy(SCStudyInterfaceRef sc)
     if (Index <= BreakoutLength || Index < MALength || Index < ATRLength)
         return;
 
+    // Only act on the current/last bar. Without this, a full recalculation
+    // (triggered by changing any input) re-evaluates every historical bar and
+    // tries to submit an order for each old signal; Sierra Chart correctly
+    // rejects those (Result=-8998, SCT_SKIPPED_FULL_RECALC), but it floods the
+    // log and is not a real trading decision.
+    if (Index != sc.ArraySize - 1)
+        return;
+
     if (sc.GetBarHasClosedStatus(Index) != BHCS_BAR_HAS_CLOSED)
         return;
 
