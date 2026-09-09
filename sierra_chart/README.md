@@ -191,3 +191,45 @@ this session (same caveat as the "not compiled against the real SDK
 header" list above), so if the build complains about `sc.Close` (the
 current bar's close price, used for `last_price`) or `localtime_s`
 specifically, those are the first two things to check.
+
+### Cross-chart Study IDs (each tier can live on its own chart)
+
+A real setup often spreads the VWAP tiers across several charts instead of
+stacking every study on one chart (e.g. weekly VWAP on chart 1, monthly VWAP
+on chart 4, intraday VWAP + cumulative delta on chart 5). `sc.GetStudyArrayUsingID`
+only ever reads from the **current** chart — if you point a Study ID input
+at a study that actually lives on a different chart, ACSIL silently
+resolves it against whatever has that same ID number on *this* chart
+instead (Study IDs are numbered separately per chart, so two studies on two
+different charts can easily both be "ID:1"). This is exactly what caused
+monthly and weekly VWAP to come out identical in a real test: both inputs
+pointed at ID:1, but only one of the two actual VWAP studies lived on the
+chart where the Trading Hypothesis Display instance was running.
+
+Fixed by adding a **Chart Number** input next to every Study ID input
+(Volume Value Area Lines, VWAP Monthly/Weekly/Intraday, Cumulative Delta).
+Each defaults to `0`, meaning "this chart" (same behavior as before). Set
+it to the real chart number a tier's study lives on to read it across
+charts — the code then uses `sc.GetStudyArrayFromChartUsingID` instead.
+Find a chart's number via Sierra Chart's **Window** menu (lists every open
+chart with its number) or the chart window's title bar.
+
+Example matching a layout of weekly VWAP=chart 1, volume profile=chart 2,
+monthly VWAP=chart 4, intraday VWAP + cumulative delta=chart 5: run **one**
+Trading Hypothesis Display instance (e.g. on chart 5, alongside the
+intraday VWAP/delta studies it can read as "this chart") and set:
+- `VWAP Chart Number: Monthly Tier` = `4`
+- `VWAP Chart Number: Weekly Tier` = `1`
+- `VWAP Chart Number: Intraday Tier` = `0` (or `5`, same effect)
+- `Cumulative Delta Chart Number` = `0` (or `5`)
+- `Volume Value Area Lines Chart Number` = whichever chart that study is
+  actually on (`0` if it's on chart 5 too)
+
+**Run only one bridge-writing instance per instrument.** If you keep
+multiple Trading Hypothesis Display instances active (one per chart) that
+all point at the *same* `Instrument`/`Bridge Folder`, they all write the
+same `live_state.csv`/`daily_profile_export.csv` files, and whichever
+instance's refresh timer fires last wins — silently overwriting a
+correctly-configured write with a partially-configured one. Configure one
+instance fully (using the Chart Number inputs above to reach every tier)
+and disable or repurpose the others.
