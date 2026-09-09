@@ -277,16 +277,33 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     const std::string compositesPath = bridgeDir + "\\composites.csv";
     const std::string hypothesisPath = bridgeDir + "\\hypothesis.txt";
 
+    SCFloatArray VAHArray, VALArray, POCArray;
+    sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
+    sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_VALSubgraph.GetInt(), VALArray);
+    sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_POCSubgraph.GetInt(), POCArray);
+
+    // Log the resolved config once so you can verify it immediately instead
+    // of waiting for end-of-day rollover to find out something's wrong.
+    // A VAH array size of 0 here means Input_VP_StudyID isn't pointing at a
+    // real, already-calculated study — check the "Volume Value Area Lines
+    // Study ID" input first if you see that.
+    int& HasLoggedStartupConfig = sc.GetPersistentInt(2);
+    if (!HasLoggedStartupConfig)
+    {
+        std::stringstream cfg;
+        cfg << "Trading Hypothesis Display config: dailyProfilePath=" << dailyProfilePath
+            << " compositesPath=" << compositesPath << " hypothesisPath=" << hypothesisPath
+            << " VolumeValueAreaLinesStudyID=" << Input_VP_StudyID.GetStudyID()
+            << " VAHArraySize=" << VAHArray.GetArraySize();
+        sc.AddMessageToLog(cfg.str().c_str(), 0);
+        HasLoggedStartupConfig = 1;
+    }
+
     // --- 1. Export the just-closed trading day's volume profile ---------
     // Persistent storage across recalculations: index 1 = last exported
     // trading day as YYYYMMDD, reused via sc.GetPersistentInt (a standard
     // ACSIL idiom for state that must survive across calls).
     int& LastExportedDateYYYYMMDD = sc.GetPersistentInt(1);
-
-    SCFloatArray VAHArray, VALArray, POCArray;
-    sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
-    sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_VALSubgraph.GetInt(), VALArray);
-    sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_POCSubgraph.GetInt(), POCArray);
 
     if (sc.ArraySize > 1 && VAHArray.GetArraySize() > 1)
     {

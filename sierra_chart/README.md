@@ -33,6 +33,13 @@ first. If it still can't write there (e.g. permissions), you'll now see a
 message in Sierra Chart's **Message Log** (Window → Message Log) saying
 exactly which path it failed to open, instead of silently doing nothing.
 
+The study also logs its resolved config once right after you add it (no
+need to wait for end-of-day rollover to check it): the three bridge file
+paths, the Volume Value Area Lines Study ID it resolved to, and that
+study's VAH array size. If `VAHArraySize` shows `0`, the Study ID input
+isn't pointing at a real, already-calculated study yet — that's the first
+thing to fix.
+
 ## What is verified vs. what to check first if it doesn't compile
 
 Verified against real ACSIL documentation and example source (not just
