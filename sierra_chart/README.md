@@ -40,6 +40,23 @@ study's VAH array size. If `VAHArraySize` shows `0`, the Study ID input
 isn't pointing at a real, already-calculated study yet — that's the first
 thing to fix.
 
+**Fixed after a real test run:** the first real test (on a chart with
+plenty of history behind it) confirmed `VAHArraySize` was non-zero — the
+Volume Value Area Lines connection works — but no `daily_profile_export.csv`
+was ever created, and the bridge folder didn't even exist on disk. Two
+things were wrong, both now fixed:
+- The directory-creation failure was invisible: `_mkdir()`'s return value
+  was ignored, so if it failed the code carried on as if the folder
+  existed. It now checks the result and logs the exact `errno`/reason to
+  the Message Log if creation fails.
+- Worse, the "already exported this day" tracker was updated even when the
+  write failed — so a single failed attempt permanently skipped that day
+  forever, with no retry and no file ever produced. It's now only updated
+  after a successful write.
+If you rebuild this version and the folder still isn't created, the
+Message Log will now say exactly why (e.g. a permissions error) instead of
+staying silent.
+
 ## What is verified vs. what to check first if it doesn't compile
 
 Verified against real ACSIL documentation and example source (not just

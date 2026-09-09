@@ -32,6 +32,8 @@
 #include <ctime>
 #include <cstdio>
 #include <direct.h> // _mkdir
+#include <cerrno>
+#include <cstring>
 
 SCDLLName("Trading Hypothesis Study")
 
@@ -136,11 +138,18 @@ int TierFillTransparency(const std::string& tier, int t23, int t4, int t5) {
 // SCDateTime has no GetDateString() member (confirmed by the real compiler,
 // not just the docs) — build "YYYY-MM-DD" ourselves from the YYYYMMDD int
 // that GetDate() does provide.
-// _mkdir only creates one missing level at a time and returns -1 (harmlessly)
-// if the directory already exists — call it on each path level you need
-// to guarantee, not just the deepest one.
-void EnsureDirectoryExists(const std::string& path) {
-    _mkdir(path.c_str());
+// _mkdir only creates one missing level at a time, so call it on each path
+// level you need to guarantee, not just the deepest one. Returns an empty
+// string on success (including "already exists"), or a description of the
+// failure (with errno) otherwise, so a caller can surface it instead of
+// silently doing nothing when the directory truly couldn't be created.
+std::string EnsureDirectoryExists(const std::string& path) {
+    if (_mkdir(path.c_str()) == 0)
+        return "";
+    if (errno == EEXIST)
+        return "";
+    return "could not create directory " + path + ": " + std::strerror(errno)
+         + " (errno " + std::to_string(errno) + ")";
 }
 
 std::string FormatISODateFromYYYYMMDD(int yyyymmdd) {
@@ -318,8 +327,11 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             // The bridge folder is just a path typed into an Input — nothing
             // creates it on disk otherwise, so make sure both levels exist
             // before trying to write into them.
-            EnsureDirectoryExists(Input_BridgeFolder.GetString());
-            EnsureDirectoryExists(bridgeDir);
+            std::string dirErr = EnsureDirectoryExists(Input_BridgeFolder.GetString());
+            if (dirErr.empty())
+                dirErr = EnsureDirectoryExists(bridgeDir);
+            if (!dirErr.empty())
+                sc.AddMessageToLog(("Trading Hypothesis Display: " + dirErr).c_str(), 1);
 
             std::ofstream out(dailyProfilePath, std::ios::app);
             if (out.is_open())
@@ -327,6 +339,11 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                 out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
                     << VALArray[lastClosedBar] << "," << VAHArray[lastClosedBar] << ","
                     << POCArray[lastClosedBar] << "\n";
+                // Only remember this day as exported once the write actually
+                // succeeded — otherwise a transient failure (e.g. the
+                // directory not existing yet) would silently and permanently
+                // skip this day, with no file ever produced and no retry.
+                LastExportedDateYYYYMMDD = lastClosedYYYYMMDD;
             }
             else
             {
@@ -334,7 +351,6 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                                  + dailyProfilePath + " for writing.";
                 sc.AddMessageToLog(msg.c_str(), 1);
             }
-            LastExportedDateYYYYMMDD = lastClosedYYYYMMDD;
         }
     }
 
