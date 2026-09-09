@@ -1,0 +1,130 @@
+# Trading Hypothesis / Automation System — Architecture
+
+Status: **Step 1 in progress** (Composite Profile Engine, pure Python, no live data yet).
+This document is the source of truth for the design agreed in chat; update it as
+decisions change instead of relying on chat history.
+
+## Goal
+
+Replace/extend the current manual workflow (trader takes screenshots of Sierra
+Chart → AI reads them → writes a hypothesis to Notion) with a system that:
+
+1. Reads VWAP tiers (monthly/MM, weekly/HF, intraday), cumulative delta, and
+   volume/market profile composites directly from **Sierra Chart** data (no
+   screenshots, no OCR).
+2. Draws the same information back into the Sierra Chart window (composite
+   zones, VWAP lines, a hypothesis text box) with an exact timestamp.
+3. Generates the same style of hypothesis the `trading-vwap-hypotezy` skill
+   writes to Notion today — either as **decision support only**, or feeding a
+   **fully automated order-management layer** — switchable at runtime, not two
+   separate programs.
+4. Ships risk/money management, pyramiding, trailing, and a global kill switch
+   for the automated path, while the discretionary path only ever shows
+   information and never sends orders on its own.
+
+## Components
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ SIERRA CHART (ACSIL C++ study)                                │
+│  - reads native VWAP/Delta/Volume-at-Price studies            │
+│  - draws composite zones, VWAP lines, hypothesis box on chart │
+│  - owns order placement (DTC) when mode = FULLY_AUTO          │
+└───────────────┬───────────────────────────────┬──────────────┘
+                │ export (file/pipe/DTC)         │ orders (DTC)
+                ▼                                │
+┌──────────────────────────────────────────────┐ │
+│ PYTHON ENGINE (this repo: trading_system/)    │ │
+│  composite/   → overlap + merge + invalidation│ │
+│  hypothesis/  → A/B day classification, H1..Hn│ │
+│  risk/        → sizing, RRR, daily loss limits│─┘
+│  notion_sync/ → writes Daily Hypotheses rows  │
+└──────────────────┬─────────────────────────────┘
+                    ▼
+              Notion "Daily Hypotheses" DB
+```
+
+Each Python package under `trading_system/` is built and tested independently
+before it's wired into the ACSIL side, so bugs in the domain logic (especially
+the composite overlap math, which is the least standard part of this system)
+are caught on synthetic/historical data, not on a live chart.
+
+## Operating modes (one system, one switch)
+
+- `HYPOTHESIS_ONLY` — engine computes everything and writes the hypothesis
+  (chart box + Notion), sends no orders. Default / safe mode.
+- `SEMI_AUTO` — same as above, plus the engine prepares a concrete order
+  (entry/stop/target in ticks) that the trader confirms by hand.
+- `FULLY_AUTO` — engine places and manages orders itself under the risk
+  limits below, including a "generate hypothesis before London, then let the
+  trader read the chart and decide discretionarily" sub-mode where automated
+  order placement is simply switched off for that session.
+
+Switching modes never changes the analysis engine — only whether its output
+is a display, a suggestion, or an order.
+
+## Composite profile logic (Step 1 — implemented in `trading_system/composite/`)
+
+This is the domain rule set from the user's description, made precise enough
+to code and test:
+
+- Each trading day has one **daily volume/market profile**: a price→volume
+  histogram plus its value area (VAL/VAH, ~70% of volume) and POC.
+- Two consecutive days are merged into (or extend) a **composite** when they
+  overlap by **≥60% of transactions**. Overlap is computed from the volume
+  histograms when available (volume inside the intersection of the two
+  value-area ranges, divided by the *smaller* of the two days' value-area
+  volume); if only VAL/VAH/POC are available, it falls back to a pure
+  price-range overlap fraction.
+- A composite's rectangle is the **union** of its member days' value-area
+  ranges (an "extending rectangle" — it grows as more overlapping days are
+  added), tagged with `day_count`.
+- Tier / styling by `day_count`, exactly the table from the skill:
+  | day_count | tier | color | fill transparency |
+  |---|---|---|---|
+  | 2–3 | `TIER_2_3` | light pink | 75 |
+  | 4 | `TIER_4` | darker pink | 45 |
+  | 5+ | `TIER_5_PLUS` | darkest pink | 20 |
+- **Invalidation**: when a *newer* composite (or day) overlaps an older,
+  already-closed composite's range by **≥10%** (price-range overlap of the
+  two rectangles), the older composite is marked `invalidated` as of that
+  date. It is not deleted — the sub-range of the old rectangle that the new
+  one does *not* cover is kept as a plain reference level (price still reacts
+  to old boundaries), while the overlapped part is considered superseded.
+
+**Open point, needs your confirmation against real screenshots**: the 60%
+merge test and the 10% invalidation test above are my best-effort reading of
+your description. I have not seen the actual composite screenshots yet, so
+before wiring this into ACSIL we should validate the merge/invalidation
+behavior against a handful of real multi-day examples from your Notion
+screenshots or Sierra Chart history — the formulas are easy to adjust once
+we see a case where the output doesn't match what you'd draw by hand.
+
+## Not built yet (next steps, in order)
+
+1. ~~Composite Profile Engine~~ (this step)
+2. ACSIL C++ skeleton: VWAP/Delta/Volume-at-Price reader + hypothesis text
+   box + composite zone drawing (`Rectangle` objects), all inputs from the
+   parameter list agreed in chat (mode, thresholds, colors, sessions, risk,
+   position management, entry confirmation)
+3. Composite zones rendered in the chart window with invalidation styling
+4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the
+   `FULLY_AUTO`/`SEMI_AUTO` switch, DTC bridge for orders
+5. Notion sync module (reuses the `trading-vwap-hypotezy` skill's schema and
+   property names so both paths write to the same database consistently)
+6. Backtest harness over historical Sierra Chart exports, before anything
+   trades on a live or even sim account
+7. News filter, position recovery after Sierra Chart restart, multi-timeframe
+   chart sync — tracked so they aren't forgotten, not blocking Step 1–2
+
+## Repo layout
+
+```
+trading_system/
+  composite/
+    models.py   — DailyProfile, Composite, tier classification
+    overlap.py  — overlap fraction calculations
+    engine.py   — CompositeEngine: ingest daily profiles, merge, invalidate
+  tests/
+    test_composite_engine.py
+```
