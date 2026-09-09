@@ -57,6 +57,19 @@ If you rebuild this version and the folder still isn't created, the
 Message Log will now say exactly why (e.g. a permissions error) instead of
 staying silent.
 
+**Fixed again after a second real test:** even with the fix above, the
+folder still never appeared and the Message Log stayed completely silent —
+no "could not create directory" message at all. The reason: directory
+creation only ran inside the day-close export block, which itself only
+runs once ACSIL detects a real trading-day rollover on the chart's bars.
+If that rollover hasn't happened yet (e.g. right after adding the study,
+or on a chart/replay setup where it takes a while to trigger), the
+mkdir code is never reached — no folder, but also no error, since the
+line that would log one never executed either. The bridge folder is now
+created as soon as the study first calculates, independent of any
+day-close detection, so you can check for it on disk immediately after
+adding the study instead of waiting for a session rollover.
+
 ## What is verified vs. what to check first if it doesn't compile
 
 Verified against real ACSIL documentation and example source (not just

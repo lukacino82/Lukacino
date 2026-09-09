@@ -308,6 +308,28 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         HasLoggedStartupConfig = 1;
     }
 
+    // Create the bridge folder as soon as the study runs, not only when a
+    // trading day first closes: the day-close export block below only
+    // executes after a real session rollover is detected on this chart's
+    // bars, which can be a long wait (or may never trigger, e.g. on a chart
+    // whose bar data doesn't span a rollover yet). Creating the directory
+    // here means it's verifiable on disk immediately, and any permission
+    // problem is surfaced right away instead of silently waiting for the
+    // first export attempt. Only marked done once creation actually
+    // succeeds, so a transient failure (e.g. a locked drive) retries on the
+    // next recalculation instead of being permanently skipped.
+    int& HasCreatedBridgeDir = sc.GetPersistentInt(3);
+    if (!HasCreatedBridgeDir)
+    {
+        std::string dirErr = EnsureDirectoryExists(Input_BridgeFolder.GetString());
+        if (dirErr.empty())
+            dirErr = EnsureDirectoryExists(bridgeDir);
+        if (dirErr.empty())
+            HasCreatedBridgeDir = 1;
+        else
+            sc.AddMessageToLog(("Trading Hypothesis Display: " + dirErr).c_str(), 1);
+    }
+
     // --- 1. Export the just-closed trading day's volume profile ---------
     // Persistent storage across recalculations: index 1 = last exported
     // trading day as YYYYMMDD, reused via sc.GetPersistentInt (a standard
@@ -324,15 +346,6 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         if (currentTradingDay.GetDate() != lastClosedYYYYMMDD
             && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
         {
-            // The bridge folder is just a path typed into an Input — nothing
-            // creates it on disk otherwise, so make sure both levels exist
-            // before trying to write into them.
-            std::string dirErr = EnsureDirectoryExists(Input_BridgeFolder.GetString());
-            if (dirErr.empty())
-                dirErr = EnsureDirectoryExists(bridgeDir);
-            if (!dirErr.empty())
-                sc.AddMessageToLog(("Trading Hypothesis Display: " + dirErr).c_str(), 1);
-
             std::ofstream out(dailyProfilePath, std::ios::app);
             if (out.is_open())
             {
