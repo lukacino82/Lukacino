@@ -31,6 +31,7 @@
 #include <vector>
 #include <ctime>
 #include <cstdio>
+#include <direct.h> // _mkdir
 
 SCDLLName("Trading Hypothesis Study")
 
@@ -135,6 +136,13 @@ int TierFillTransparency(const std::string& tier, int t23, int t4, int t5) {
 // SCDateTime has no GetDateString() member (confirmed by the real compiler,
 // not just the docs) — build "YYYY-MM-DD" ourselves from the YYYYMMDD int
 // that GetDate() does provide.
+// _mkdir only creates one missing level at a time and returns -1 (harmlessly)
+// if the directory already exists — call it on each path level you need
+// to guarantee, not just the deepest one.
+void EnsureDirectoryExists(const std::string& path) {
+    _mkdir(path.c_str());
+}
+
 std::string FormatISODateFromYYYYMMDD(int yyyymmdd) {
     int year = yyyymmdd / 10000;
     int month = (yyyymmdd / 100) % 100;
@@ -290,12 +298,24 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         if (currentTradingDay.GetDate() != lastClosedYYYYMMDD
             && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
         {
+            // The bridge folder is just a path typed into an Input — nothing
+            // creates it on disk otherwise, so make sure both levels exist
+            // before trying to write into them.
+            EnsureDirectoryExists(Input_BridgeFolder.GetString());
+            EnsureDirectoryExists(bridgeDir);
+
             std::ofstream out(dailyProfilePath, std::ios::app);
             if (out.is_open())
             {
                 out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
                     << VALArray[lastClosedBar] << "," << VAHArray[lastClosedBar] << ","
                     << POCArray[lastClosedBar] << "\n";
+            }
+            else
+            {
+                std::string msg = "Trading Hypothesis Display: could not open "
+                                 + dailyProfilePath + " for writing.";
+                sc.AddMessageToLog(msg.c_str(), 1);
             }
             LastExportedDateYYYYMMDD = lastClosedYYYYMMDD;
         }

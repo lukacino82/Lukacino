@@ -26,6 +26,13 @@
    i.e. SG2/SG3/SG1), so leave them unless your Subgraphs tab shows a
    different order.
 
+`Bridge Folder` is just a path typed into that Input — the study now
+creates it (and the `<Instrument>` subfolder under it) on disk itself the
+first time it needs to write, so you don't need to create it by hand
+first. If it still can't write there (e.g. permissions), you'll now see a
+message in Sierra Chart's **Message Log** (Window → Message Log) saying
+exactly which path it failed to open, instead of silently doing nothing.
+
 ## What is verified vs. what to check first if it doesn't compile
 
 Verified against real ACSIL documentation and example source (not just
@@ -75,10 +82,14 @@ errors show up:**
   fixed corner as expected, this is the first place to look — Sierra
   Chart's own `ACS_Source/studies.cpp` has `scsf_UseToolExample*` functions
   worth comparing against.
-- `sc.GetStudyArrayUsingID` assumes the Volume Profile study is on the
-  *same* chart. If you keep VAH/VAL/POC on a different chart in the same
+- `sc.GetStudyArrayUsingID` assumes the Volume Value Area Lines study is on
+  the *same* chart. If you keep it on a different chart in the same
   chartbook, swap it for `sc.GetStudyArrayFromChartUsingID(ChartNumber,
   StudyID, SubgraphIndex, Array)` instead (add a Chart Number input).
+- `_mkdir` (from `<direct.h>`) for auto-creating the bridge folder is a
+  standard Windows C-runtime call, not ACSIL-specific, and confirmed to
+  exist on Windows — low risk, but it's new since the last build so it's
+  worth watching the next compile for it specifically.
 
 Please compile this once and send me the exact error list if any of the
 above don't match your Sierra Chart version — I'll fix the specific lines
