@@ -9,13 +9,41 @@ with the ACSIL side's parsing.
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from ..composite.models import Composite, DailyProfile, classify_tier
 
+
+@dataclass(frozen=True)
+class LiveMarketState:
+    """A single real-time snapshot ACSIL writes on its refresh interval.
+
+    Unlike ``DailyProfile`` (one row per closed session), this is
+    overwritten in place every refresh — it's the current VWAP tiers and
+    cumulative delta for a still-open trading day, not a history.
+    """
+
+    instrument: str
+    timestamp: datetime
+    last_price: float
+    vwap_monthly: float
+    vwap_weekly: float
+    vwap_intraday: float
+    cum_delta: float
+
 DAILY_PROFILE_FIELDS = ["date", "instrument", "val", "vah", "poc"]
+LIVE_STATE_FIELDS = [
+    "timestamp",
+    "instrument",
+    "last_price",
+    "vwap_monthly",
+    "vwap_weekly",
+    "vwap_intraday",
+    "cum_delta",
+]
 COMPOSITE_FIELDS = [
     "instrument",
     "start_date",
@@ -65,6 +93,41 @@ def read_daily_profiles(path: Path) -> List[DailyProfile]:
             )
             for row in reader
         ]
+
+
+def write_live_state(path: Path, state: LiveMarketState) -> None:
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(LIVE_STATE_FIELDS)
+        writer.writerow(
+            [
+                state.timestamp.isoformat(),
+                state.instrument,
+                state.last_price,
+                state.vwap_monthly,
+                state.vwap_weekly,
+                state.vwap_intraday,
+                state.cum_delta,
+            ]
+        )
+
+
+def read_live_state(path: Path) -> Optional[LiveMarketState]:
+    """Returns ``None`` if ACSIL hasn't written a snapshot yet (empty/missing rows)."""
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        row = next(reader, None)
+    if row is None:
+        return None
+    return LiveMarketState(
+        instrument=row["instrument"],
+        timestamp=datetime.fromisoformat(row["timestamp"]),
+        last_price=float(row["last_price"]),
+        vwap_monthly=float(row["vwap_monthly"]),
+        vwap_weekly=float(row["vwap_weekly"]),
+        vwap_intraday=float(row["vwap_intraday"]),
+        cum_delta=float(row["cum_delta"]),
+    )
 
 
 def write_composites(path: Path, composites: Iterable[Composite]) -> None:

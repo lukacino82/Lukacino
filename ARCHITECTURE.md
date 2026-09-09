@@ -127,6 +127,20 @@ CSV/text files** on disk, in `trading_system/bridge/`'s format:
 - `hypothesis.txt` (Python writes, ACSIL reads) — plain text, first line
   `instrument|generated_at_iso`, the rest is the hypothesis body verbatim;
   ACSIL just displays the file's contents in a text drawing.
+- `live_state.csv` (ACSIL writes, Python reads) — Step 3: the current VWAP
+  tiers and cumulative delta for the still-open trading day. Unlike
+  `daily_profile_export.csv`, this file is **overwritten in place** on
+  every refresh (`RefreshIntervalSeconds` input, default 5s), not
+  appended to — it's a live snapshot, not a history. One header row plus
+  exactly one data row:
+  `timestamp,instrument,last_price,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta`
+  where `timestamp` is a naive local ISO datetime
+  (`datetime.fromisoformat`-compatible). ACSIL sources these values from
+  three separate native "VWAP" study instances (one per Time Period Type:
+  Month, Week, Day — Sierra Chart's VWAP study only computes one tier per
+  instance) and one cumulative-delta study, all added to the chart and
+  pointed to via Study ID inputs, the same pattern as the Volume Value
+  Area Lines study in Step 2.
 
 Each instrument gets its own subfolder under a shared bridge directory —
 `<bridge_dir>/<INSTRUMENT>/daily_profile_export.csv` etc. — so the ACSIL
@@ -142,11 +156,17 @@ debugging.
 ## Not built yet (next steps, in order)
 
 1. ~~Composite Profile Engine~~ (Step 1, done)
-2. **ACSIL C++ skeleton** (this step): VWAP/Delta/Volume-Profile reader,
-   daily profile CSV export, composite zone + hypothesis text box drawing
-   from the Python-written bridge files. Order management / mode switching
-   inputs are declared but not wired to any order logic yet (Step 4).
-3. Composite zones rendered in the chart window with invalidation styling
+2. ~~ACSIL C++ skeleton~~ (Step 2, done): Volume-Profile reader, daily
+   profile CSV export, composite zone + hypothesis text box drawing from
+   the Python-written bridge files.
+3. ~~VWAP tiers + cumulative delta~~ (Step 3, done): ACSIL reads three VWAP
+   study instances (Monthly/Weekly/Intraday) and a cumulative-delta study,
+   writing a live snapshot to `live_state.csv` on the refresh interval.
+   Not yet built: the Python side that *consumes* `live_state.csv` (VWAP
+   bounce/rejection detection, the `hypothesis/` package's A/B day
+   classification) — this step only gets the data into Python's reach.
+   Order management / mode switching inputs are declared but not wired to
+   any order logic yet (Step 4).
 4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the
    `FULLY_AUTO`/`SEMI_AUTO` switch, DTC bridge for orders
 5. Notion sync module (reuses the `trading-vwap-hypotezy` skill's schema and
@@ -154,7 +174,7 @@ debugging.
 6. Backtest harness over historical Sierra Chart exports, before anything
    trades on a live or even sim account
 7. News filter, position recovery after Sierra Chart restart, multi-timeframe
-   chart sync — tracked so they aren't forgotten, not blocking Step 1–2
+   chart sync — tracked so they aren't forgotten, not blocking Step 1–3
 
 ## Repo layout
 

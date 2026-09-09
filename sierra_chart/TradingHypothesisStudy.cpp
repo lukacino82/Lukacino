@@ -1,17 +1,21 @@
-// Trading Hypothesis Study — ACSIL skeleton (Step 2)
+// Trading Hypothesis Study — ACSIL skeleton (Steps 2-3)
 //
 // Responsibilities of this study, per ARCHITECTURE.md:
-//   1. Export this chart's daily volume-profile (VAL/VAH/POC), read from an
-//      existing Volume Profile study already on this chart, to
+//   1. Export this chart's daily volume-profile (VAL/VAH/POC), read from a
+//      Volume Value Area Lines study already on this chart, to
 //      <BridgeFolder>/<Instrument>/daily_profile_export.csv once per closed
 //      trading day.
-//   2. Read back <BridgeFolder>/<Instrument>/composites.csv and
+//   2. Export the current VWAP tiers (monthly/weekly/intraday) and
+//      cumulative delta, read from separate VWAP/delta studies on this
+//      chart, to <BridgeFolder>/<Instrument>/live_state.csv every refresh
+//      interval (overwritten in place — it's a live snapshot, not a log).
+//   3. Read back <BridgeFolder>/<Instrument>/composites.csv and
 //      hypothesis.txt (written by the Python engine) and draw the composite
 //      zones and the hypothesis text box on this chart.
-// It does NOT compute composite merge/invalidation logic itself — that
-// logic already exists, is unit-tested, and lives in
-// trading_system/composite/engine.py. Duplicating it here in C++ would risk
-// the two implementations drifting apart.
+// It does NOT compute composite merge/invalidation logic, VWAP bounce
+// detection, or hypothesis text itself — that logic lives (or will live)
+// in trading_system/, unit-tested in Python. Duplicating it here in C++
+// would risk the two implementations drifting apart.
 //
 // VERIFICATION STATUS: every sc.Input method, the s_UseTool field names,
 // sc.UseTool(), sc.GetStudyArrayUsingID / sc.GetStudyArrayFromChartUsingID,
@@ -161,6 +165,18 @@ std::string FormatISODateFromYYYYMMDD(int yyyymmdd) {
     return std::string(buf);
 }
 
+// Naive local "YYYY-MM-DDTHH:MM:SS", matching what Python's
+// datetime.fromisoformat() expects on the live_state.csv bridge file.
+std::string FormatISODateTime(time_t t) {
+    struct tm tmVal;
+    localtime_s(&tmVal, &t);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d",
+        tmVal.tm_year + 1900, tmVal.tm_mon + 1, tmVal.tm_mday,
+        tmVal.tm_hour, tmVal.tm_min, tmVal.tm_sec);
+    return std::string(buf);
+}
+
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
 const int LINE_NUMBER_HYPOTHESIS_TEXT = 999001;
 
@@ -179,6 +195,19 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     SCInputRef Input_VP_VAHSubgraph = sc.Input[++InputIdx];
     SCInputRef Input_VP_VALSubgraph = sc.Input[++InputIdx];
     SCInputRef Input_VP_POCSubgraph = sc.Input[++InputIdx];
+
+    // Sierra Chart's native VWAP study only computes one time-period type
+    // per instance, so the monthly/weekly/intraday tiers need three
+    // separate VWAP study instances on this chart, each pointed to here.
+    SCInputRef Input_VWAP_MonthlyStudyID = sc.Input[++InputIdx];
+    SCInputRef Input_VWAP_MonthlySubgraph = sc.Input[++InputIdx];
+    SCInputRef Input_VWAP_WeeklyStudyID = sc.Input[++InputIdx];
+    SCInputRef Input_VWAP_WeeklySubgraph = sc.Input[++InputIdx];
+    SCInputRef Input_VWAP_IntradayStudyID = sc.Input[++InputIdx];
+    SCInputRef Input_VWAP_IntradaySubgraph = sc.Input[++InputIdx];
+
+    SCInputRef Input_Delta_StudyID = sc.Input[++InputIdx];
+    SCInputRef Input_Delta_Subgraph = sc.Input[++InputIdx];
 
     SCInputRef Input_ShowCompositeZones = sc.Input[++InputIdx];
     SCInputRef Input_ShowHypothesisText = sc.Input[++InputIdx];
@@ -236,6 +265,36 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_VP_POCSubgraph.Name = "Vol POC Subgraph Index (SG1 = 0)";
         Input_VP_POCSubgraph.SetInt(0);
 
+        // Point each at a separate "VWAP" study instance on this chart, one
+        // per Time Period Type (Sierra Chart's VWAP study only computes a
+        // single tier per instance). Subgraph 0 is the VWAP line itself on
+        // a default VWAP study; check your chart's Subgraphs tab and adjust
+        // if you've customized it (e.g. added standard-deviation bands
+        // ahead of it).
+        Input_VWAP_MonthlyStudyID.Name = "VWAP Study ID: Monthly Tier (this chart)";
+        Input_VWAP_MonthlyStudyID.SetStudyID(0);
+        Input_VWAP_MonthlySubgraph.Name = "VWAP Monthly Subgraph Index";
+        Input_VWAP_MonthlySubgraph.SetInt(0);
+
+        Input_VWAP_WeeklyStudyID.Name = "VWAP Study ID: Weekly Tier (this chart)";
+        Input_VWAP_WeeklyStudyID.SetStudyID(0);
+        Input_VWAP_WeeklySubgraph.Name = "VWAP Weekly Subgraph Index";
+        Input_VWAP_WeeklySubgraph.SetInt(0);
+
+        Input_VWAP_IntradayStudyID.Name = "VWAP Study ID: Intraday Tier (this chart)";
+        Input_VWAP_IntradayStudyID.SetStudyID(0);
+        Input_VWAP_IntradaySubgraph.Name = "VWAP Intraday Subgraph Index";
+        Input_VWAP_IntradaySubgraph.SetInt(0);
+
+        // Point this at whichever cumulative-delta study you use (e.g. a
+        // "Numbers Bars - Bid vs Ask Volume Difference" or a Cumulative
+        // Delta Bars study). Subgraph index depends on which one — check
+        // its Subgraphs tab.
+        Input_Delta_StudyID.Name = "Cumulative Delta Study ID (this chart)";
+        Input_Delta_StudyID.SetStudyID(0);
+        Input_Delta_Subgraph.Name = "Cumulative Delta Subgraph Index";
+        Input_Delta_Subgraph.SetInt(0);
+
         Input_ShowCompositeZones.Name = "Show Composite Zones";
         Input_ShowCompositeZones.SetYesNo(1);
 
@@ -285,11 +344,18 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     const std::string dailyProfilePath = bridgeDir + "\\daily_profile_export.csv";
     const std::string compositesPath = bridgeDir + "\\composites.csv";
     const std::string hypothesisPath = bridgeDir + "\\hypothesis.txt";
+    const std::string liveStatePath = bridgeDir + "\\live_state.csv";
 
     SCFloatArray VAHArray, VALArray, POCArray;
     sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
     sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_VALSubgraph.GetInt(), VALArray);
     sc.GetStudyArrayUsingID(Input_VP_StudyID.GetStudyID(), Input_VP_POCSubgraph.GetInt(), POCArray);
+
+    SCFloatArray VWAPMonthlyArray, VWAPWeeklyArray, VWAPIntradayArray, DeltaArray;
+    sc.GetStudyArrayUsingID(Input_VWAP_MonthlyStudyID.GetStudyID(), Input_VWAP_MonthlySubgraph.GetInt(), VWAPMonthlyArray);
+    sc.GetStudyArrayUsingID(Input_VWAP_WeeklyStudyID.GetStudyID(), Input_VWAP_WeeklySubgraph.GetInt(), VWAPWeeklyArray);
+    sc.GetStudyArrayUsingID(Input_VWAP_IntradayStudyID.GetStudyID(), Input_VWAP_IntradaySubgraph.GetInt(), VWAPIntradayArray);
+    sc.GetStudyArrayUsingID(Input_Delta_StudyID.GetStudyID(), Input_Delta_Subgraph.GetInt(), DeltaArray);
 
     // Log the resolved config once so you can verify it immediately instead
     // of waiting for end-of-day rollover to find out something's wrong.
@@ -302,8 +368,17 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         std::stringstream cfg;
         cfg << "Trading Hypothesis Display config: dailyProfilePath=" << dailyProfilePath
             << " compositesPath=" << compositesPath << " hypothesisPath=" << hypothesisPath
+            << " liveStatePath=" << liveStatePath
             << " VolumeValueAreaLinesStudyID=" << Input_VP_StudyID.GetStudyID()
-            << " VAHArraySize=" << VAHArray.GetArraySize();
+            << " VAHArraySize=" << VAHArray.GetArraySize()
+            << " VWAPMonthlyStudyID=" << Input_VWAP_MonthlyStudyID.GetStudyID()
+            << " VWAPMonthlyArraySize=" << VWAPMonthlyArray.GetArraySize()
+            << " VWAPWeeklyStudyID=" << Input_VWAP_WeeklyStudyID.GetStudyID()
+            << " VWAPWeeklyArraySize=" << VWAPWeeklyArray.GetArraySize()
+            << " VWAPIntradayStudyID=" << Input_VWAP_IntradayStudyID.GetStudyID()
+            << " VWAPIntradayArraySize=" << VWAPIntradayArray.GetArraySize()
+            << " DeltaStudyID=" << Input_Delta_StudyID.GetStudyID()
+            << " DeltaArraySize=" << DeltaArray.GetArraySize();
         sc.AddMessageToLog(cfg.str().c_str(), 0);
         HasLoggedStartupConfig = 1;
     }
@@ -367,12 +442,40 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         }
     }
 
-    // --- 2. Throttle bridge-file reads to Input_RefreshIntervalSeconds --
+    // --- 2. Throttle bridge-file reads/writes to Input_RefreshIntervalSeconds --
     double& LastRefreshUnixTime = sc.GetPersistentDouble(1);
-    const double now = static_cast<double>(time(nullptr));
+    const time_t nowTimeT = time(nullptr);
+    const double now = static_cast<double>(nowTimeT);
     if (now - LastRefreshUnixTime < Input_RefreshIntervalSeconds.GetInt())
         return;
     LastRefreshUnixTime = now;
+
+    // --- 2b. Write the current VWAP tiers / cumulative delta snapshot ----
+    // Unlike daily_profile_export.csv (one row per closed session), this
+    // file is overwritten every refresh with the latest values for the
+    // still-open session, so the Python engine always reads the most
+    // recent snapshot rather than a growing history.
+    if (sc.ArraySize > 0 && VWAPMonthlyArray.GetArraySize() > 0
+        && VWAPWeeklyArray.GetArraySize() > 0 && VWAPIntradayArray.GetArraySize() > 0
+        && DeltaArray.GetArraySize() > 0)
+    {
+        const int lastBar = sc.ArraySize - 1;
+        std::ofstream liveOut(liveStatePath, std::ios::trunc);
+        if (liveOut.is_open())
+        {
+            liveOut << "timestamp,instrument,last_price,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n";
+            liveOut << FormatISODateTime(nowTimeT) << "," << instrument << ","
+                    << sc.Close[lastBar] << "," << VWAPMonthlyArray[lastBar] << ","
+                    << VWAPWeeklyArray[lastBar] << "," << VWAPIntradayArray[lastBar] << ","
+                    << DeltaArray[lastBar] << "\n";
+        }
+        else
+        {
+            std::string msg = "Trading Hypothesis Display: could not open "
+                             + liveStatePath + " for writing.";
+            sc.AddMessageToLog(msg.c_str(), 1);
+        }
+    }
 
     // --- 3. Draw composite zones ------------------------------------------
     if (Input_ShowCompositeZones.GetYesNo())

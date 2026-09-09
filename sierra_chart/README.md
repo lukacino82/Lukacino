@@ -17,14 +17,30 @@
      read, not to be visible.
    Its Subgraphs tab should show `Vol POC (SG1)`, `Vol Value Area High
    (SG2)`, `Vol Value Area Low (SG3)` — confirmed on a real chart.
-4. Add the study ("Trading Hypothesis Display") to the same chart.
-5. Set its inputs: `Instrument` (must match the subfolder name the Python
+4. Add three **"VWAP"** study instances to the same chart — Sierra Chart's
+   native VWAP study only computes one time-period tier per instance, so
+   you need one each for:
+   - `Time Period Type` = Month (the "MM"/monthly tier)
+   - `Time Period Type` = Week (the "HF"/weekly tier)
+   - `Time Period Type` = Day (the intraday tier)
+   Each has a `VWAP` subgraph (SG1, index 0 by default) — leave the
+   defaults unless you've customized the study (e.g. reordered subgraphs
+   by adding standard-deviation bands ahead of it).
+5. Add whichever **cumulative-delta study** you already use on this chart
+   (e.g. a "Numbers Bars - Bid vs Ask Volume Difference" or a Cumulative
+   Delta Bars study). Check its Subgraphs tab for the right index — this
+   one varies by which delta study you use, unlike VWAP/Volume Value Area
+   Lines where the layout is standard.
+6. Add the study ("Trading Hypothesis Display") to the same chart.
+7. Set its inputs: `Instrument` (must match the subfolder name the Python
    engine writes to), `Bridge Folder`, and point `Volume Value Area Lines
    Study ID (this chart)` at the study from step 3 (click that input row to
    pick it from the chart's study list). The VAH/VAL/POC subgraph index
    inputs already default to the confirmed values (VAH=1, VAL=2, POC=0 —
    i.e. SG2/SG3/SG1), so leave them unless your Subgraphs tab shows a
-   different order.
+   different order. Likewise point the three `VWAP Study ID: ... Tier`
+   inputs at the studies from step 4 and `Cumulative Delta Study ID` at the
+   study from step 5.
 
 `Bridge Folder` is just a path typed into that Input — the study now
 creates it (and the `<Instrument>` subfolder under it) on disk itself the
@@ -34,11 +50,25 @@ message in Sierra Chart's **Message Log** (Window → Message Log) saying
 exactly which path it failed to open, instead of silently doing nothing.
 
 The study also logs its resolved config once right after you add it (no
-need to wait for end-of-day rollover to check it): the three bridge file
-paths, the Volume Value Area Lines Study ID it resolved to, and that
-study's VAH array size. If `VAHArraySize` shows `0`, the Study ID input
-isn't pointing at a real, already-calculated study yet — that's the first
-thing to fix.
+need to wait for end-of-day rollover to check it): the bridge file paths,
+every Study ID it resolved to, and each one's array size. If any
+`...ArraySize` shows `0`, that Study ID input isn't pointing at a real,
+already-calculated study yet — that's the first thing to fix for that
+particular reading (Volume Value Area Lines, one of the three VWAP tiers,
+or the delta study).
+
+## What live_state.csv is and when it appears
+
+`live_state.csv` is the Step 3 addition: the current VWAP tiers and
+cumulative delta for the still-open trading day. Unlike
+`daily_profile_export.csv` (one row per closed session), it's overwritten
+in place on every refresh (`Bridge File Refresh Interval` input, 5s by
+default) — check it any time, no need to wait for a session rollover. It
+only starts appearing once all three VWAP Study IDs and the Delta Study ID
+resolve to real, already-calculated studies (same "array size 0" check as
+above); until then it's simply not written yet, with no error, since
+nothing is actually broken — you just haven't pointed all four inputs at
+real studies yet.
 
 **Fixed after a real test run:** the first real test (on a chart with
 plenty of history behind it) confirmed `VAHArraySize` was non-zero — the
@@ -134,11 +164,21 @@ rather than guess further.
 
 ## Not implemented yet (later steps)
 
-- Reading the monthly/weekly/intraday VWAP tiers and cumulative delta
-  (Step 2 focused on the composite zones + hypothesis box first, since
-  those are the newest/most custom part; VWAP/delta reading is the same
-  `GetStudyArrayUsingID` pattern applied to your existing VWAP/Delta
-  studies — tell me their Study IDs and subgraph layout and I'll wire them
-  in the same way).
+- The Python side that reads `live_state.csv` and does something with it
+  (VWAP bounce/rejection detection, the `hypothesis/` package's A/B day
+  classification) — Step 3 only gets the reading pipeline into Sierra
+  Chart and the numbers into the bridge file; hypothesis logic itself is
+  still to come.
 - Any order placement / risk management (`Input_Mode` is declared but not
   wired to anything — Step 4).
+
+## Step 3: VWAP tiers + cumulative delta — same "point at a Study ID" pattern
+
+Same idea as the Volume Value Area Lines study: no VWAP/delta computation
+happens in this file — it just reads whatever your own VWAP/delta studies
+already calculate via `sc.GetStudyArrayUsingID`, using the confirmed
+pattern from Step 2. Not independently re-verified against your SDK header
+this session (same caveat as the "not compiled against the real SDK
+header" list above), so if the build complains about `sc.Close` (the
+current bar's close price, used for `last_price`) or `localtime_s`
+specifically, those are the first two things to check.

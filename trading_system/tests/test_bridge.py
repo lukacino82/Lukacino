@@ -1,12 +1,15 @@
 from datetime import date, datetime
 
 from trading_system.bridge.csv_bridge import (
+    LiveMarketState,
     read_composites,
     read_daily_profiles,
     read_hypothesis,
+    read_live_state,
     write_composites,
     write_daily_profiles,
     write_hypothesis,
+    write_live_state,
 )
 from trading_system.composite.engine import CompositeEngine
 from trading_system.composite.models import DailyProfile, Tier
@@ -59,6 +62,36 @@ def test_invalidated_composite_round_trip_keeps_remaining_ranges(tmp_path):
     assert not restored_old.is_active
     assert restored_old.invalidated_on == old.invalidated_on
     assert restored_old.remaining_ranges == old.remaining_ranges
+
+
+def test_live_state_round_trip(tmp_path):
+    path = tmp_path / "live_state.csv"
+    state = LiveMarketState(
+        instrument="ES",
+        timestamp=datetime(2024, 1, 2, 14, 30, 5),
+        last_price=4801.25,
+        vwap_monthly=4795.5,
+        vwap_weekly=4802.75,
+        vwap_intraday=4799.0,
+        cum_delta=-1250.0,
+    )
+    write_live_state(path, state)
+    assert read_live_state(path) == state
+
+
+def test_live_state_overwritten_not_appended(tmp_path):
+    path = tmp_path / "live_state.csv"
+    first = LiveMarketState("ES", datetime(2024, 1, 2, 14, 30), 4801.25, 4795.5, 4802.75, 4799.0, -1250.0)
+    second = LiveMarketState("ES", datetime(2024, 1, 2, 14, 30, 5), 4802.0, 4795.5, 4802.75, 4799.5, -1200.0)
+    write_live_state(path, first)
+    write_live_state(path, second)
+    assert read_live_state(path) == second
+
+
+def test_read_live_state_returns_none_when_only_header_written(tmp_path):
+    path = tmp_path / "live_state.csv"
+    path.write_text("timestamp,instrument,last_price,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n")
+    assert read_live_state(path) is None
 
 
 def test_hypothesis_round_trip(tmp_path):
