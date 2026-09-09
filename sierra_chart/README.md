@@ -85,6 +85,21 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Fixed after a fourth real test:** even with all Study IDs resolved and the
+file writing successfully, `vwap_monthly` and `vwap_weekly` in `live_state.csv`
+came out as `0` while `vwap_intraday` and `cum_delta` were correct. Cause: the
+monthly/weekly VWAP studies live on different charts (e.g. a daily chart and a
+weekly chart) with far fewer bars than the master chart's intraday bar count,
+but the code was indexing every cross-chart array with the master chart's own
+last bar index. That index is far past the end of the shorter monthly/weekly
+arrays; `SCFloatArray` silently returns `0.0` for an out-of-range index
+instead of erroring, so the bug produced no error message at all — just
+plausible-looking zeros. Fixed by always reading each cross-chart array's own
+last index (`LastArrayValue()`) instead of the master chart's bar index. This
+also affected `VAH`/`VAL`/`POC` in `daily_profile_export.csv` whenever the
+Volume Value Area Lines study lives on a different chart, and is fixed the
+same way.
+
 **Improved after a third real test:** once all Study IDs resolve correctly,
 `daily_profile_export.csv` and `live_state.csv` writes can still fail with
 `could not open ... for writing.` — this used to be logged with no further

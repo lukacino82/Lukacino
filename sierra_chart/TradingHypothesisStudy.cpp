@@ -190,6 +190,17 @@ void GetStudyArrayAnyChart(SCStudyInterfaceRef sc, int chartNumber, int studyID,
         sc.GetStudyArrayUsingID(studyID, subgraphIndex, array);
 }
 
+// A cross-chart array is indexed by *its own* chart's bar count, which does
+// not match this chart's sc.ArraySize -- e.g. a monthly VWAP chart with far
+// fewer bars than this chart's 500-volume bars. Indexing it with this
+// chart's bar index reads past the end; SCFloatArray silently returns 0.0f
+// for an out-of-range index rather than crashing, which is exactly the
+// "vwap_monthly/vwap_weekly always 0" symptom this was causing. Always read
+// the array's own last index to get its latest value.
+float LastArrayValue(SCFloatArray& array) {
+    return array.GetArraySize() > 0 ? array[array.GetArraySize() - 1] : 0.0f;
+}
+
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
 const int LINE_NUMBER_HYPOTHESIS_TEXT = 999001;
 
@@ -481,8 +492,8 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             if (out.is_open())
             {
                 out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
-                    << VALArray[lastClosedBar] << "," << VAHArray[lastClosedBar] << ","
-                    << POCArray[lastClosedBar] << "\n";
+                    << LastArrayValue(VALArray) << "," << LastArrayValue(VAHArray) << ","
+                    << LastArrayValue(POCArray) << "\n";
                 // Only remember this day as exported once the write actually
                 // succeeded — otherwise a transient failure (e.g. the
                 // directory not existing yet) would silently and permanently
@@ -538,9 +549,9 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         {
             liveOut << "timestamp,instrument,last_price,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n";
             liveOut << FormatISODateTime(nowTimeT) << "," << instrument << ","
-                    << sc.Close[lastBar] << "," << VWAPMonthlyArray[lastBar] << ","
-                    << VWAPWeeklyArray[lastBar] << "," << VWAPIntradayArray[lastBar] << ","
-                    << DeltaArray[lastBar] << "\n";
+                    << sc.Close[lastBar] << "," << LastArrayValue(VWAPMonthlyArray) << ","
+                    << LastArrayValue(VWAPWeeklyArray) << "," << LastArrayValue(VWAPIntradayArray) << ","
+                    << LastArrayValue(DeltaArray) << "\n";
         }
         else
         {
