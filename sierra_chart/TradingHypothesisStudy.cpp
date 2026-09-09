@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 #include <ctime>
+#include <cstdio>
 
 SCDLLName("Trading Hypothesis Study")
 
@@ -129,6 +130,18 @@ int TierFillTransparency(const std::string& tier, int t23, int t4, int t5) {
     if (tier == "4D") return t4;
     if (tier == "5D+") return t5;
     return t23; // "2-3D"
+}
+
+// SCDateTime has no GetDateString() member (confirmed by the real compiler,
+// not just the docs) — build "YYYY-MM-DD" ourselves from the YYYYMMDD int
+// that GetDate() does provide.
+std::string FormatISODateFromYYYYMMDD(int yyyymmdd) {
+    int year = yyyymmdd / 10000;
+    int month = (yyyymmdd / 100) % 100;
+    int day = yyyymmdd % 100;
+    char buf[11];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, month, day);
+    return std::string(buf);
 }
 
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
@@ -244,7 +257,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     }
 
     const std::string instrument = Input_Instrument.GetString();
-    const std::string bridgeDir = Input_BridgeFolder.GetString() + "\\" + instrument;
+    const std::string bridgeDir = std::string(Input_BridgeFolder.GetString()) + "\\" + instrument;
     const std::string dailyProfilePath = bridgeDir + "\\daily_profile_export.csv";
     const std::string compositesPath = bridgeDir + "\\composites.csv";
     const std::string hypothesisPath = bridgeDir + "\\hypothesis.txt";
@@ -273,9 +286,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             std::ofstream out(dailyProfilePath, std::ios::app);
             if (out.is_open())
             {
-                SCString dateStr;
-                lastClosedTradingDay.GetDateString(dateStr, 0); // format: check against your sierrachart.h; adjust if this overload differs
-                out << dateStr.GetChars() << "," << instrument << ","
+                out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
                     << VALArray[lastClosedBar] << "," << VAHArray[lastClosedBar] << ","
                     << POCArray[lastClosedBar] << "\n";
             }

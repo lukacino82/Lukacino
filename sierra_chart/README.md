@@ -30,24 +30,32 @@ Also added `sc.CalculationPrecedence = LOW_PREC_LEVEL;`, which the ACSIL
 docs call out as required when a study reads another study's array, so the
 Volume Profile study is guaranteed to have already calculated for the bar.
 
-**Not compiled against the real SDK header, so check these first:**
+**Fixed after the first real remote build (build2.sierrachart.com), per its
+actual compiler errors:**
+
+- `Input_BridgeFolder.GetString()` returns `const char*`, which can't be
+  concatenated with a string literal directly (`const char* + "\\"` isn't
+  valid C++). Fixed by wrapping it in `std::string(...)` first.
+- `SCDateTime` has no `GetDateString()` member — that call is gone.
+  `lastClosedYYYYMMDD` (already obtained from the documented `GetDate()`
+  int) is now formatted to `"YYYY-MM-DD"` by a small local
+  `FormatISODateFromYYYYMMDD()` helper instead.
+
+Both of these compiled clean conceptually against what the error output
+showed; if you rebuild and hit anything else, paste the errors again and
+I'll fix those specific lines the same way.
+
+**Not compiled against the real SDK header, so check these first if new
+errors show up:**
 
 - `sc.GetPersistentInt()` / `sc.GetPersistentDouble()` and
   `sc.GetTradingDayDate()` are standard, widely-used ACSIL idioms I'm
   confident exist, but I did not independently re-verify their exact
   signatures against your SDK header this session (unlike the items above,
-  which I did pull from real docs/example code). Low risk, but worth a
-  second look if the build complains about them specifically.
-
-- `SCDateTime::GetDateString()` — I used it with a `0` format argument by
-  analogy with similar ACSIL calls; if this overload doesn't match what
-  your `sierrachart.h` declares, replace the daily-profile date export with
-  a direct `sprintf`-style format from `lastClosedTradingDay.GetDate()`
-  instead (it's documented as returning a `YYYYMMDD` integer, which is
-  trivial to split into `Y/100/100`, `Y/100%100`, `Y%100`... or just export
-  the raw `YYYYMMDD` int and have the Python side's CSV reader accept
-  either format — tell me which one compiles and I'll match the Python
-  side to it).
+  which I did pull from real docs/example code, and unlike the two bugs
+  above, which the real compiler already confirmed and are now fixed). Low
+  risk, but worth a second look if the build complains about them
+  specifically.
 - `TextTool.UseRelativeVerticalValues` for a text drawing — confirmed to
   exist on `s_UseTool` and used for rectangle/marker positioning in
   verified examples, but I have not confirmed it behaves the same way for
