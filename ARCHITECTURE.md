@@ -100,13 +100,46 @@ behavior against a handful of real multi-day examples from your Notion
 screenshots or Sierra Chart history — the formulas are easy to adjust once
 we see a case where the output doesn't match what you'd draw by hand.
 
+## ACSIL <-> Python bridge (Step 2 decision)
+
+Sierra Chart's ACSIL environment has no JSON library available by default,
+and hand-rolling a JSON parser in C++ just to talk to a local Python process
+is unnecessary complexity for what is, for now, a same-machine, low-frequency
+(end-of-day / per-recalc) handoff. Instead the two sides exchange **plain
+CSV/text files** on disk, in `trading_system/bridge/`'s format:
+
+- `daily_profile_export.csv` (ACSIL writes, Python reads) — one row per
+  session close: `date,instrument,val,vah,poc`. ACSIL sources these values
+  from its own Volume Profile study via `sc.GetStudyArrayUsingID` /
+  `sc.GetStudyArrayFromChartUsingID`; it does not compute them itself.
+- `composites.csv` (Python writes, ACSIL reads) — one row per composite,
+  refreshed after each new daily profile is ingested:
+  `instrument,start_date,end_date,val,vah,day_count,tier,active,invalidated_on,remaining_ranges`
+  where `remaining_ranges` is `lo:hi` pairs separated by `;` (both
+  `invalidated_on` and `remaining_ranges` are empty while the composite is
+  still active).
+- `hypothesis.txt` (Python writes, ACSIL reads) — plain text, first line
+  `instrument|generated_at_iso`, the rest is the hypothesis body verbatim;
+  ACSIL just displays the file's contents in a text drawing.
+
+Each instrument gets its own subfolder under a shared bridge directory —
+`<bridge_dir>/<INSTRUMENT>/daily_profile_export.csv` etc. — so the ACSIL
+study (one instance per chart/instrument) never has to filter rows by
+instrument; it only ever reads its own subfolder.
+
+If this later proves too slow or too polling-heavy for intraday use, the
+DTC protocol is the documented upgrade path (Step 4 already assumed a DTC
+bridge for order placement) — but plain files are the simplest thing that
+can possibly work for Step 2, and are trivial to inspect by hand while
+debugging.
+
 ## Not built yet (next steps, in order)
 
-1. ~~Composite Profile Engine~~ (this step)
-2. ACSIL C++ skeleton: VWAP/Delta/Volume-at-Price reader + hypothesis text
-   box + composite zone drawing (`Rectangle` objects), all inputs from the
-   parameter list agreed in chat (mode, thresholds, colors, sessions, risk,
-   position management, entry confirmation)
+1. ~~Composite Profile Engine~~ (Step 1, done)
+2. **ACSIL C++ skeleton** (this step): VWAP/Delta/Volume-Profile reader,
+   daily profile CSV export, composite zone + hypothesis text box drawing
+   from the Python-written bridge files. Order management / mode switching
+   inputs are declared but not wired to any order logic yet (Step 4).
 3. Composite zones rendered in the chart window with invalidation styling
 4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the
    `FULLY_AUTO`/`SEMI_AUTO` switch, DTC bridge for orders
