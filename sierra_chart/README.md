@@ -51,11 +51,20 @@ exactly which path it failed to open, instead of silently doing nothing.
 
 The study also logs its resolved config once right after you add it (no
 need to wait for end-of-day rollover to check it): the bridge file paths,
-every Study ID it resolved to, and each one's array size. If any
-`...ArraySize` shows `0`, that Study ID input isn't pointing at a real,
-already-calculated study yet — that's the first thing to fix for that
-particular reading (Volume Value Area Lines, one of the three VWAP tiers,
-or the delta study).
+every Study ID it resolved to, and each one's array size.
+
+**Corrected after a real test run:** the array-size numbers are informational
+only, not proof of a working connection — a real log showed
+`sc.GetStudyArrayUsingID` returning a *non-empty*, non-trivial-sized array
+even when a Study ID input was left at its unconfigured default of `0`
+(the array's size didn't match anything meaningful in that case, and even
+varied between chart instances). So `...ArraySize` being non-zero does
+**not** mean that particular Study ID is pointing at a real study — the
+only reliable check is whether you've actually set the Study ID input
+itself (click the row and pick a study; leaving it unset keeps it at `0`).
+Exporting/writing is now gated on the Study ID inputs being non-zero
+directly, not on array size, so nothing gets written with garbage
+zero/default values before you've configured all the required studies.
 
 ## What live_state.csv is and when it appears
 

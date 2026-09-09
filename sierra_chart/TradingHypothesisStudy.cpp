@@ -411,7 +411,10 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // ACSIL idiom for state that must survive across calls).
     int& LastExportedDateYYYYMMDD = sc.GetPersistentInt(1);
 
-    if (sc.ArraySize > 1 && VAHArray.GetArraySize() > 1)
+    // Gated on Input_VP_StudyID itself (> 0), not on VAHArray.GetArraySize():
+    // see the vwapDeltaConfigured comment below for why array size alone
+    // doesn't reliably indicate a real, resolved study.
+    if (sc.ArraySize > 1 && Input_VP_StudyID.GetStudyID() > 0)
     {
         const int lastClosedBar = sc.ArraySize - 2; // last fully closed bar
         SCDateTime lastClosedTradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]);
@@ -455,9 +458,19 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // file is overwritten every refresh with the latest values for the
     // still-open session, so the Python engine always reads the most
     // recent snapshot rather than a growing history.
-    if (sc.ArraySize > 0 && VWAPMonthlyArray.GetArraySize() > 0
-        && VWAPWeeklyArray.GetArraySize() > 0 && VWAPIntradayArray.GetArraySize() > 0
-        && DeltaArray.GetArraySize() > 0)
+    //
+    // Gate this on the Study ID inputs themselves (> 0), not on
+    // GetArraySize(): a real test run showed sc.GetStudyArrayUsingID still
+    // returns a *non-empty* array even when the Study ID input is left at
+    // its default 0 (unconfigured) -- its size doesn't reliably signal a
+    // real, resolved study the way the comments here previously assumed.
+    // Checking the input directly is the only unambiguous way to know the
+    // four VWAP/delta studies have actually been pointed at something.
+    const bool vwapDeltaConfigured = Input_VWAP_MonthlyStudyID.GetStudyID() > 0
+        && Input_VWAP_WeeklyStudyID.GetStudyID() > 0
+        && Input_VWAP_IntradayStudyID.GetStudyID() > 0
+        && Input_Delta_StudyID.GetStudyID() > 0;
+    if (sc.ArraySize > 0 && vwapDeltaConfigured)
     {
         const int lastBar = sc.ArraySize - 1;
         std::ofstream liveOut(liveStatePath, std::ios::trunc);
