@@ -31,16 +31,22 @@
    Delta Bars study). Check its Subgraphs tab for the right index — this
    one varies by which delta study you use, unlike VWAP/Volume Value Area
    Lines where the layout is standard.
-6. Add the study ("Trading Hypothesis Display") to the same chart.
+6. Add the study ("Trading Hypothesis Display") to the same chart, or to
+   whichever chart will be the single instance that writes the bridge
+   files (see "Cross-chart Study IDs" below if your VWAP tiers live on
+   different charts).
 7. Set its inputs: `Instrument` (must match the subfolder name the Python
-   engine writes to), `Bridge Folder`, and point `Volume Value Area Lines
-   Study ID (this chart)` at the study from step 3 (click that input row to
-   pick it from the chart's study list). The VAH/VAL/POC subgraph index
-   inputs already default to the confirmed values (VAH=1, VAL=2, POC=0 —
-   i.e. SG2/SG3/SG1), so leave them unless your Subgraphs tab shows a
-   different order. Likewise point the three `VWAP Study ID: ... Tier`
-   inputs at the studies from step 4 and `Cumulative Delta Study ID` at the
-   study from step 5.
+   engine writes to), `Bridge Folder`, and the five Study ID inputs
+   (`Volume Value Area Lines Study ID`, the three `VWAP Study ID: ... Tier`
+   inputs, `Cumulative Delta Study ID`). **These are plain numbers you
+   type in, not a dropdown** — open each target study's own Settings
+   dialog and read the number after "ID:" in its title bar (e.g. "Study
+   Settings: Main VWAP. ID:1" means you type `1`). A dropdown picker
+   isn't used here because it would only ever list studies on the current
+   chart, which breaks as soon as a tier lives on a different chart. The
+   VAH/VAL/POC subgraph index inputs already default to the confirmed
+   values (VAH=1, VAL=2, POC=0 — i.e. SG2/SG3/SG1), so leave them unless
+   your Subgraphs tab shows a different order.
 
 `Bridge Folder` is just a path typed into that Input — the study now
 creates it (and the `<Instrument>` subfolder under it) on disk itself the
@@ -60,8 +66,8 @@ even when a Study ID input was left at its unconfigured default of `0`
 (the array's size didn't match anything meaningful in that case, and even
 varied between chart instances). So `...ArraySize` being non-zero does
 **not** mean that particular Study ID is pointing at a real study — the
-only reliable check is whether you've actually set the Study ID input
-itself (click the row and pick a study; leaving it unset keeps it at `0`).
+only reliable check is whether you've actually typed a real Study ID
+number into the input yourself (leaving it unset keeps it at `0`).
 Exporting/writing is now gated on the Study ID inputs being non-zero
 directly, not on array size, so nothing gets written with garbage
 zero/default values before you've configured all the required studies.
@@ -224,6 +230,18 @@ intraday VWAP/delta studies it can read as "this chart") and set:
 - `Cumulative Delta Chart Number` = `0` (or `5`)
 - `Volume Value Area Lines Chart Number` = whichever chart that study is
   actually on (`0` if it's on chart 5 too)
+
+**The Study ID inputs themselves are plain typed numbers, not a picker.**
+Sierra Chart's Study ID picker widget only lists studies on the chart
+you're currently editing, so it can't offer a study that lives on a
+different chart at all — even with the Chart Number input pointing there
+correctly, the picker for e.g. `VWAP Study ID: Monthly Tier` would show
+`<Main Price Graph>` with no way to select ID 1 on chart 4. So these five
+inputs (Volume Value Area Lines, the three VWAP tiers, Cumulative Delta)
+are declared as plain integers instead: open the target study's own
+Settings dialog and read the number after "ID:" in its title bar (e.g.
+"Study Settings: Main VWAP. ID:1" means type `1`), then type that number
+directly into the Study ID input.
 
 **Run only one bridge-writing instance per instrument.** If you keep
 multiple Trading Hypothesis Display instances active (one per chart) that

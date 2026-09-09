@@ -273,8 +273,16 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // arrays this study needs. Confirmed against a real chart's
         // Subgraphs tab: Vol POC = SG1 (index 0), Vol Value Area High =
         // SG2 (index 1), Vol Value Area Low = SG3 (index 2).
-        Input_VP_StudyID.Name = "Volume Value Area Lines Study ID";
-        Input_VP_StudyID.SetStudyID(0);
+        //
+        // Plain number, not a "pick a study" dropdown: Sierra Chart's
+        // Study ID picker only lists studies on THIS chart, so it can't
+        // select a study living on another chart even though the Chart
+        // Number input below lets this study read one. Type in the number
+        // shown after "ID:" in the target study's own Settings dialog
+        // title bar (e.g. "Study Settings: Main VWAP. ID:1").
+        Input_VP_StudyID.Name = "Volume Value Area Lines Study ID (type the number, see ID: in that study's own title bar)";
+        Input_VP_StudyID.SetInt(0);
+        Input_VP_StudyID.SetIntLimits(0, 9999);
 
         Input_VP_ChartNumber.Name = "Volume Value Area Lines Chart Number (0 = this chart)";
         Input_VP_ChartNumber.SetInt(0);
@@ -298,22 +306,25 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // on a default VWAP study; check that chart's Subgraphs tab and
         // adjust if it's been customized (e.g. standard-deviation bands
         // ahead of it).
-        Input_VWAP_MonthlyStudyID.Name = "VWAP Study ID: Monthly Tier";
-        Input_VWAP_MonthlyStudyID.SetStudyID(0);
+        Input_VWAP_MonthlyStudyID.Name = "VWAP Study ID: Monthly Tier (type the number, see ID: in that study's own title bar)";
+        Input_VWAP_MonthlyStudyID.SetInt(0);
+        Input_VWAP_MonthlyStudyID.SetIntLimits(0, 9999);
         Input_VWAP_MonthlyChartNumber.Name = "VWAP Chart Number: Monthly Tier (0 = this chart)";
         Input_VWAP_MonthlyChartNumber.SetInt(0);
         Input_VWAP_MonthlySubgraph.Name = "VWAP Monthly Subgraph Index";
         Input_VWAP_MonthlySubgraph.SetInt(0);
 
-        Input_VWAP_WeeklyStudyID.Name = "VWAP Study ID: Weekly Tier";
-        Input_VWAP_WeeklyStudyID.SetStudyID(0);
+        Input_VWAP_WeeklyStudyID.Name = "VWAP Study ID: Weekly Tier (type the number, see ID: in that study's own title bar)";
+        Input_VWAP_WeeklyStudyID.SetInt(0);
+        Input_VWAP_WeeklyStudyID.SetIntLimits(0, 9999);
         Input_VWAP_WeeklyChartNumber.Name = "VWAP Chart Number: Weekly Tier (0 = this chart)";
         Input_VWAP_WeeklyChartNumber.SetInt(0);
         Input_VWAP_WeeklySubgraph.Name = "VWAP Weekly Subgraph Index";
         Input_VWAP_WeeklySubgraph.SetInt(0);
 
-        Input_VWAP_IntradayStudyID.Name = "VWAP Study ID: Intraday Tier";
-        Input_VWAP_IntradayStudyID.SetStudyID(0);
+        Input_VWAP_IntradayStudyID.Name = "VWAP Study ID: Intraday Tier (type the number, see ID: in that study's own title bar)";
+        Input_VWAP_IntradayStudyID.SetInt(0);
+        Input_VWAP_IntradayStudyID.SetIntLimits(0, 9999);
         Input_VWAP_IntradayChartNumber.Name = "VWAP Chart Number: Intraday Tier (0 = this chart)";
         Input_VWAP_IntradayChartNumber.SetInt(0);
         Input_VWAP_IntradaySubgraph.Name = "VWAP Intraday Subgraph Index";
@@ -323,8 +334,9 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // "Numbers Bars - Bid vs Ask Volume Difference" or a Cumulative
         // Delta Bars study). Subgraph index depends on which one — check
         // its Subgraphs tab.
-        Input_Delta_StudyID.Name = "Cumulative Delta Study ID";
-        Input_Delta_StudyID.SetStudyID(0);
+        Input_Delta_StudyID.Name = "Cumulative Delta Study ID (type the number, see ID: in that study's own title bar)";
+        Input_Delta_StudyID.SetInt(0);
+        Input_Delta_StudyID.SetIntLimits(0, 9999);
         Input_Delta_ChartNumber.Name = "Cumulative Delta Chart Number (0 = this chart)";
         Input_Delta_ChartNumber.SetInt(0);
         Input_Delta_Subgraph.Name = "Cumulative Delta Subgraph Index";
@@ -382,15 +394,15 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     const std::string liveStatePath = bridgeDir + "\\live_state.csv";
 
     SCFloatArray VAHArray, VALArray, POCArray;
-    GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetStudyID(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
-    GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetStudyID(), Input_VP_VALSubgraph.GetInt(), VALArray);
-    GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetStudyID(), Input_VP_POCSubgraph.GetInt(), POCArray);
+    GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
+    GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_VALSubgraph.GetInt(), VALArray);
+    GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_POCSubgraph.GetInt(), POCArray);
 
     SCFloatArray VWAPMonthlyArray, VWAPWeeklyArray, VWAPIntradayArray, DeltaArray;
-    GetStudyArrayAnyChart(sc, Input_VWAP_MonthlyChartNumber.GetInt(), Input_VWAP_MonthlyStudyID.GetStudyID(), Input_VWAP_MonthlySubgraph.GetInt(), VWAPMonthlyArray);
-    GetStudyArrayAnyChart(sc, Input_VWAP_WeeklyChartNumber.GetInt(), Input_VWAP_WeeklyStudyID.GetStudyID(), Input_VWAP_WeeklySubgraph.GetInt(), VWAPWeeklyArray);
-    GetStudyArrayAnyChart(sc, Input_VWAP_IntradayChartNumber.GetInt(), Input_VWAP_IntradayStudyID.GetStudyID(), Input_VWAP_IntradaySubgraph.GetInt(), VWAPIntradayArray);
-    GetStudyArrayAnyChart(sc, Input_Delta_ChartNumber.GetInt(), Input_Delta_StudyID.GetStudyID(), Input_Delta_Subgraph.GetInt(), DeltaArray);
+    GetStudyArrayAnyChart(sc, Input_VWAP_MonthlyChartNumber.GetInt(), Input_VWAP_MonthlyStudyID.GetInt(), Input_VWAP_MonthlySubgraph.GetInt(), VWAPMonthlyArray);
+    GetStudyArrayAnyChart(sc, Input_VWAP_WeeklyChartNumber.GetInt(), Input_VWAP_WeeklyStudyID.GetInt(), Input_VWAP_WeeklySubgraph.GetInt(), VWAPWeeklyArray);
+    GetStudyArrayAnyChart(sc, Input_VWAP_IntradayChartNumber.GetInt(), Input_VWAP_IntradayStudyID.GetInt(), Input_VWAP_IntradaySubgraph.GetInt(), VWAPIntradayArray);
+    GetStudyArrayAnyChart(sc, Input_Delta_ChartNumber.GetInt(), Input_Delta_StudyID.GetInt(), Input_Delta_Subgraph.GetInt(), DeltaArray);
 
     // Log the resolved config once so you can verify it immediately instead
     // of waiting for end-of-day rollover to find out something's wrong.
@@ -405,19 +417,19 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             << " dailyProfilePath=" << dailyProfilePath
             << " compositesPath=" << compositesPath << " hypothesisPath=" << hypothesisPath
             << " liveStatePath=" << liveStatePath
-            << " VolumeValueAreaLinesStudyID=" << Input_VP_StudyID.GetStudyID()
+            << " VolumeValueAreaLinesStudyID=" << Input_VP_StudyID.GetInt()
             << " VolumeValueAreaLinesChart=" << Input_VP_ChartNumber.GetInt()
             << " VAHArraySize=" << VAHArray.GetArraySize()
-            << " VWAPMonthlyStudyID=" << Input_VWAP_MonthlyStudyID.GetStudyID()
+            << " VWAPMonthlyStudyID=" << Input_VWAP_MonthlyStudyID.GetInt()
             << " VWAPMonthlyChart=" << Input_VWAP_MonthlyChartNumber.GetInt()
             << " VWAPMonthlyArraySize=" << VWAPMonthlyArray.GetArraySize()
-            << " VWAPWeeklyStudyID=" << Input_VWAP_WeeklyStudyID.GetStudyID()
+            << " VWAPWeeklyStudyID=" << Input_VWAP_WeeklyStudyID.GetInt()
             << " VWAPWeeklyChart=" << Input_VWAP_WeeklyChartNumber.GetInt()
             << " VWAPWeeklyArraySize=" << VWAPWeeklyArray.GetArraySize()
-            << " VWAPIntradayStudyID=" << Input_VWAP_IntradayStudyID.GetStudyID()
+            << " VWAPIntradayStudyID=" << Input_VWAP_IntradayStudyID.GetInt()
             << " VWAPIntradayChart=" << Input_VWAP_IntradayChartNumber.GetInt()
             << " VWAPIntradayArraySize=" << VWAPIntradayArray.GetArraySize()
-            << " DeltaStudyID=" << Input_Delta_StudyID.GetStudyID()
+            << " DeltaStudyID=" << Input_Delta_StudyID.GetInt()
             << " DeltaChart=" << Input_Delta_ChartNumber.GetInt()
             << " DeltaArraySize=" << DeltaArray.GetArraySize();
         sc.AddMessageToLog(cfg.str().c_str(), 0);
@@ -455,7 +467,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // Gated on Input_VP_StudyID itself (> 0), not on VAHArray.GetArraySize():
     // see the vwapDeltaConfigured comment below for why array size alone
     // doesn't reliably indicate a real, resolved study.
-    if (sc.ArraySize > 1 && Input_VP_StudyID.GetStudyID() > 0)
+    if (sc.ArraySize > 1 && Input_VP_StudyID.GetInt() > 0)
     {
         const int lastClosedBar = sc.ArraySize - 2; // last fully closed bar
         SCDateTime lastClosedTradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]);
@@ -507,10 +519,10 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // real, resolved study the way the comments here previously assumed.
     // Checking the input directly is the only unambiguous way to know the
     // four VWAP/delta studies have actually been pointed at something.
-    const bool vwapDeltaConfigured = Input_VWAP_MonthlyStudyID.GetStudyID() > 0
-        && Input_VWAP_WeeklyStudyID.GetStudyID() > 0
-        && Input_VWAP_IntradayStudyID.GetStudyID() > 0
-        && Input_Delta_StudyID.GetStudyID() > 0;
+    const bool vwapDeltaConfigured = Input_VWAP_MonthlyStudyID.GetInt() > 0
+        && Input_VWAP_WeeklyStudyID.GetInt() > 0
+        && Input_VWAP_IntradayStudyID.GetInt() > 0
+        && Input_Delta_StudyID.GetInt() > 0;
     if (sc.ArraySize > 0 && vwapDeltaConfigured)
     {
         const int lastBar = sc.ArraySize - 1;
