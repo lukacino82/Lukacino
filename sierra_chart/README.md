@@ -85,6 +85,29 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Improved after a third real test:** once all Study IDs resolve correctly,
+`daily_profile_export.csv` and `live_state.csv` writes can still fail with
+`could not open ... for writing.` — this used to be logged with no further
+detail. Both messages now include the `errno`/`strerror` reason, same as the
+directory-creation error below. In practice this error means the file is
+locked by something else, not a code/config problem, since Study ID
+resolution and directory creation already succeeded by this point. The two
+realistic causes:
+- **The file is open in another program** — e.g. you opened `live_state.csv`
+  in Excel or Notepad to check its contents. Windows locks it exclusively
+  while it's open there; close it and the next refresh will write fine.
+- **More than one "Trading Hypothesis Display" instance is still configured
+  for the same `Instrument`** — e.g. leftover instances on other charts from
+  before you consolidated to a single master instance (see "Cross-chart
+  Study IDs" below). Two instances both trying to `ios::trunc`-open the same
+  path at the same moment race each other; only one instance per instrument
+  should ever have all five Study IDs configured.
+Check the errno the Message Log now shows: `errno 13` (permission
+denied/sharing violation) points at one of the two causes above; `errno 2`
+(no such file or directory) would instead mean `bridgeDir` doesn't actually
+exist, which "What live_state.csv is and when it appears" and the
+directory-creation fix above should already have ruled out.
+
 **Fixed after a real test run:** the first real test (on a chart with
 plenty of history behind it) confirmed `VAHArraySize` was non-zero — the
 Volume Value Area Lines connection works — but no `daily_profile_export.csv`

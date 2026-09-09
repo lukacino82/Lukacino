@@ -491,8 +491,15 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             }
             else
             {
+                // errno alone won't say "another process has this file open"
+                // on Windows (that's a sharing violation, not something
+                // fstream/errno models) but it does distinguish that from a
+                // real permissions/path problem, which "could not open" alone
+                // never did -- see the same reasoning on the live_state.csv
+                // write below.
                 std::string msg = "Trading Hypothesis Display: could not open "
-                                 + dailyProfilePath + " for writing.";
+                                 + dailyProfilePath + " for writing: "
+                                 + std::strerror(errno) + " (errno " + std::to_string(errno) + ").";
                 sc.AddMessageToLog(msg.c_str(), 1);
             }
         }
@@ -537,8 +544,17 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         }
         else
         {
+            // errno=13 (EACCES) here almost always means something else has
+            // the file open exclusively right now -- e.g. it's open in
+            // Excel/Notepad for inspection, or (if this ever regresses) a
+            // second Trading Hypothesis Display instance for the same
+            // Instrument still racing this one for the same path. errno=2
+            // (ENOENT) instead would point at bridgeDir not actually
+            // existing. Either way this is strictly more diagnosable than
+            // the old bare "could not open" message.
             std::string msg = "Trading Hypothesis Display: could not open "
-                             + liveStatePath + " for writing.";
+                             + liveStatePath + " for writing: "
+                             + std::strerror(errno) + " (errno " + std::to_string(errno) + ").";
             sc.AddMessageToLog(msg.c_str(), 1);
         }
     }
