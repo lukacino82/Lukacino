@@ -110,8 +110,14 @@ CSV/text files** on disk, in `trading_system/bridge/`'s format:
 
 - `daily_profile_export.csv` (ACSIL writes, Python reads) — one row per
   session close: `date,instrument,val,vah,poc`. ACSIL sources these values
-  from its own Volume Profile study via `sc.GetStudyArrayUsingID` /
-  `sc.GetStudyArrayFromChartUsingID`; it does not compute them itself.
+  via `sc.GetStudyArrayUsingID` from a **"Volume Value Area Lines"** study
+  (Time Period Type = Days, Draw Developing Value Area Lines = No) added to
+  the chart specifically for this — not from whatever "Volume Profile" /
+  TPO Profile study the trader uses for their own visual analysis, which
+  only exposes Color subgraphs over ACSIL, not the numeric POC/VAH/VAL
+  arrays (confirmed against a real chart's Subgraphs tab and Sierra
+  Chart's own support board). ACSIL does not compute VAL/VAH/POC itself
+  either way.
 - `composites.csv` (Python writes, ACSIL reads) — one row per composite,
   refreshed after each new daily profile is ingested:
   `instrument,start_date,end_date,val,vah,day_count,tier,active,invalidated_on,remaining_ranges`

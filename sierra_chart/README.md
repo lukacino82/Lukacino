@@ -6,13 +6,25 @@
    folder.
 2. In Sierra Chart: Analysis → Build Custom Studies DLL (or add this file to
    your existing custom studies DLL project) and build.
-3. Add the study ("Trading Hypothesis Display") to each instrument's chart
-   that also carries your Volume Profile study.
-4. Set the study's inputs: `Instrument` (must match the subfolder name the
-   Python engine writes to), `Bridge Folder`, and the Volume Profile study
-   ID + VAH/VAL/POC subgraph indexes (open your Volume Profile study's
-   settings to find its Study ID, or use Sierra Chart's "Study Values"
-   window to confirm which subgraph is which).
+3. Add a **"Volume Value Area Lines"** study to the same chart (this is
+   separate from whatever "Volume Profile" / TPO Profile study you use for
+   your own visual analysis — that one only exposes Color subgraphs over
+   ACSIL, not numeric POC/VAH/VAL; confirmed both from Sierra Chart's own
+   docs/support board and from a real chart's Subgraphs tab). Configure it:
+   - `Draw Developing Value Area Lines` = No
+   - `Time Period Type` = Days, `Time Period Length` = 1
+   - Optionally check `Hide Study` — it only needs to exist for ACSIL to
+     read, not to be visible.
+   Its Subgraphs tab should show `Vol POC (SG1)`, `Vol Value Area High
+   (SG2)`, `Vol Value Area Low (SG3)` — confirmed on a real chart.
+4. Add the study ("Trading Hypothesis Display") to the same chart.
+5. Set its inputs: `Instrument` (must match the subfolder name the Python
+   engine writes to), `Bridge Folder`, and point `Volume Value Area Lines
+   Study ID (this chart)` at the study from step 3 (click that input row to
+   pick it from the chart's study list). The VAH/VAL/POC subgraph index
+   inputs already default to the confirmed values (VAH=1, VAL=2, POC=0 —
+   i.e. SG2/SG3/SG1), so leave them unless your Subgraphs tab shows a
+   different order.
 
 ## What is verified vs. what to check first if it doesn't compile
 

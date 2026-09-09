@@ -200,17 +200,24 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_Mode.SetCustomInputStrings("Hypothesis Only;Semi Auto;Fully Auto");
         Input_Mode.SetCustomInputIndex(0);
 
-        Input_VP_StudyID.Name = "Volume Profile Study ID (this chart)";
+        // Point this at a "Volume Value Area Lines" study (Time Period Type
+        // = Days, Length = 1, Draw Developing Value Area Lines = No), NOT
+        // at a "Volume Profile" study drawn as a TPO Profile — that draw
+        // type only exposes Color subgraphs, not the numeric POC/VAH/VAL
+        // arrays this study needs. Confirmed against a real chart's
+        // Subgraphs tab: Vol POC = SG1 (index 0), Vol Value Area High =
+        // SG2 (index 1), Vol Value Area Low = SG3 (index 2).
+        Input_VP_StudyID.Name = "Volume Value Area Lines Study ID (this chart)";
         Input_VP_StudyID.SetStudyID(0);
 
-        Input_VP_VAHSubgraph.Name = "Volume Profile VAH Subgraph Index";
-        Input_VP_VAHSubgraph.SetInt(0);
+        Input_VP_VAHSubgraph.Name = "Vol Value Area High Subgraph Index (SG2 = 1)";
+        Input_VP_VAHSubgraph.SetInt(1);
 
-        Input_VP_VALSubgraph.Name = "Volume Profile VAL Subgraph Index";
-        Input_VP_VALSubgraph.SetInt(1);
+        Input_VP_VALSubgraph.Name = "Vol Value Area Low Subgraph Index (SG3 = 2)";
+        Input_VP_VALSubgraph.SetInt(2);
 
-        Input_VP_POCSubgraph.Name = "Volume Profile POC Subgraph Index";
-        Input_VP_POCSubgraph.SetInt(2);
+        Input_VP_POCSubgraph.Name = "Vol POC Subgraph Index (SG1 = 0)";
+        Input_VP_POCSubgraph.SetInt(0);
 
         Input_ShowCompositeZones.Name = "Show Composite Zones";
         Input_ShowCompositeZones.SetYesNo(1);
