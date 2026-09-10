@@ -245,6 +245,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     SCInputRef Input_RefreshIntervalSeconds = sc.Input[++InputIdx];
     SCInputRef Input_HypothesisFontSize = sc.Input[++InputIdx];
     SCInputRef Input_HypothesisVerticalPosition = sc.Input[++InputIdx]; // 0-100, 100=top
+    SCInputRef Input_HypothesisTextColor = sc.Input[++InputIdx];
 
     SCInputRef Input_Color_Tier_2_3 = sc.Input[++InputIdx];
     SCInputRef Input_Color_Tier_4 = sc.Input[++InputIdx];
@@ -369,6 +370,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_HypothesisVerticalPosition.Name = "Hypothesis Text Vertical Position (0=bottom,100=top)";
         Input_HypothesisVerticalPosition.SetInt(92);
         Input_HypothesisVerticalPosition.SetIntLimits(0, 100);
+
+        // Was hardcoded white, which is invisible on a light/white chart
+        // background -- confirmed on a real chart (text was being drawn,
+        // just unreadable). Defaulting to black instead; change this if
+        // your chart background is dark.
+        Input_HypothesisTextColor.Name = "Hypothesis Text Color";
+        Input_HypothesisTextColor.SetColor(RGB(0, 0, 0));
 
         Input_Color_Tier_2_3.Name = "Composite Color: 2-3 Day Tier";
         Input_Color_Tier_2_3.SetColor(RGB(255, 192, 203)); // light pink
@@ -685,7 +693,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             TextTool.UseRelativeVerticalValues = 1;
             TextTool.BeginValue = static_cast<float>(Input_HypothesisVerticalPosition.GetInt());
             TextTool.FontSize = Input_HypothesisFontSize.GetInt();
-            TextTool.Color = RGB(255, 255, 255);
+            TextTool.Color = Input_HypothesisTextColor.GetColor();
             TextTool.Text.Format("%s", fullText.c_str()); // "%s" as the format string keeps any literal '%' in fullText harmless
             TextTool.AddAsUserDrawnDrawing = 0;
             sc.UseTool(TextTool);

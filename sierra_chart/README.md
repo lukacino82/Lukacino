@@ -85,6 +85,15 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Fixed after a sixth real test:** the hypothesis text box (`hypothesis.txt`
+drawn on the chart) was being written and drawn correctly -- confirmed via
+`sc.UseTool()` running with no error -- but was invisible on a real chart
+with a light/white background. Cause: its color was hardcoded to
+`RGB(255, 255, 255)` (white), which is only visible on a dark chart
+background. Added a `Hypothesis Text Color` input (same pattern as the
+composite zone colors), defaulted to black instead of white. If your chart
+background is dark, change this input back to a light color.
+
 **Fixed after a fifth real test:** the `date` column in a real
 `daily_profile_export.csv` came out as garbage like `0004-62-73` instead of
 a real calendar date -- which would have crashed the Python side outright
