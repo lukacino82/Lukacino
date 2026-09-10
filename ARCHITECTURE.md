@@ -133,14 +133,18 @@ CSV/text files** on disk, in `trading_system/bridge/`'s format:
   every refresh (`RefreshIntervalSeconds` input, default 5s), not
   appended to — it's a live snapshot, not a history. One header row plus
   exactly one data row:
-  `timestamp,instrument,last_price,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta`
+  `timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta`
   where `timestamp` is a naive local ISO datetime
   (`datetime.fromisoformat`-compatible). ACSIL sources these values from
   three separate native "VWAP" study instances (one per Time Period Type:
   Month, Week, Day — Sierra Chart's VWAP study only computes one tier per
   instance) and one cumulative-delta study, all added to the chart and
   pointed to via Study ID inputs, the same pattern as the Volume Value
-  Area Lines study in Step 2.
+  Area Lines study in Step 2. `session_open` is the current trading day's
+  opening price (captured once per session, not re-derived every refresh)
+  — added for the `hypothesis/regime.py` A-day/B-day gap check, since the
+  skill's "small gap vs. gap outside value area" test needs the session
+  open, which `last_price` alone can't give.
 
 Each instrument gets its own subfolder under a shared bridge directory —
 `<bridge_dir>/<INSTRUMENT>/daily_profile_export.csv` etc. — so the ACSIL
@@ -178,15 +182,19 @@ debugging.
      a rolling window of `LiveMarketState` snapshots (strong delta move
      with no price move = absorption; price move with no delta
      confirmation, or delta disagreeing with price, = divergence).
-   - Not yet built: A-day/B-day regime classification (needs today's
-     session open price and yesterday's value area — `LiveMarketState`
-     doesn't carry an open price yet, only `last_price`) and the full
-     hypothesis table (types, entries, targets, invalidation) the skill
-     writes to Notion. These are real trading-decision rules, not
-     mechanical bridge plumbing — validate the concrete thresholds against
-     real chart examples before wiring them in, the same way the
-     composite merge/invalidation percentages above were flagged for
-     validation.
+   - ~~`regime.py`~~ (done, thresholds unvalidated): A-day/B-day
+     classification from `session_open` vs. yesterday's `DailyProfile`
+     value area (gap size), `cum_delta` magnitude (balanced vs. one-sided),
+     and `tiers.py`'s structural bias (price between tiers vs. accepted
+     outside them). Returns `UNCLEAR` unless all three signs agree, rather
+     than forcing a call on a mixed read. `gap_threshold_fraction` and
+     `delta_imbalance` are best-effort defaults, not calibrated numbers —
+     like the composite merge/invalidation percentages above, check them
+     against real NQ chart examples (cum_delta magnitude especially varies
+     wildly by instrument) before trusting this for a real hypothesis.
+   - Not yet built: the full hypothesis table (types, entries, targets,
+     invalidation) the skill writes to Notion, and wiring any of this
+     into ACSIL's `composites.csv`/`hypothesis.txt` output.
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
 4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the

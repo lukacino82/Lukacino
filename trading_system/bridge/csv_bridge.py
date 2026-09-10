@@ -29,6 +29,7 @@ class LiveMarketState:
     instrument: str
     timestamp: datetime
     last_price: float
+    session_open: float
     vwap_monthly: float
     vwap_weekly: float
     vwap_intraday: float
@@ -39,6 +40,7 @@ LIVE_STATE_FIELDS = [
     "timestamp",
     "instrument",
     "last_price",
+    "session_open",
     "vwap_monthly",
     "vwap_weekly",
     "vwap_intraday",
@@ -104,6 +106,7 @@ def write_live_state(path: Path, state: LiveMarketState) -> None:
                 state.timestamp.isoformat(),
                 state.instrument,
                 state.last_price,
+                state.session_open,
                 state.vwap_monthly,
                 state.vwap_weekly,
                 state.vwap_intraday,
@@ -123,6 +126,7 @@ def read_live_state(path: Path) -> Optional[LiveMarketState]:
         instrument=row["instrument"],
         timestamp=datetime.fromisoformat(row["timestamp"]),
         last_price=float(row["last_price"]),
+        session_open=float(row["session_open"]),
         vwap_monthly=float(row["vwap_monthly"]),
         vwap_weekly=float(row["vwap_weekly"]),
         vwap_intraday=float(row["vwap_intraday"]),

@@ -544,12 +544,32 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     if (sc.ArraySize > 0 && vwapDeltaConfigured)
     {
         const int lastBar = sc.ArraySize - 1;
+
+        // Track today's session open price: needed by the Python side's
+        // A-day/B-day regime read (gap vs. yesterday's value area). Only
+        // rescans for the first bar of the day when the trading day itself
+        // changes, not on every refresh -- sc.GetTradingDayDate per bar
+        // isn't free, and this only needs to run once per session.
+        int& SessionOpenTradingDayYYYYMMDD = sc.GetPersistentInt(4);
+        double& SessionOpenPrice = sc.GetPersistentDouble(2);
+        const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]).GetDate();
+        if (currentTradingDayYYYYMMDD != SessionOpenTradingDayYYYYMMDD)
+        {
+            int firstBarOfSession = lastBar;
+            while (firstBarOfSession > 0
+                && sc.GetTradingDayDate(sc.BaseDateTimeIn[firstBarOfSession - 1]).GetDate() == currentTradingDayYYYYMMDD)
+                --firstBarOfSession;
+            SessionOpenPrice = sc.Open[firstBarOfSession];
+            SessionOpenTradingDayYYYYMMDD = currentTradingDayYYYYMMDD;
+        }
+
         std::ofstream liveOut(liveStatePath, std::ios::trunc);
         if (liveOut.is_open())
         {
-            liveOut << "timestamp,instrument,last_price,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n";
+            liveOut << "timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n";
             liveOut << FormatISODateTime(nowTimeT) << "," << instrument << ","
-                    << sc.Close[lastBar] << "," << LastArrayValue(VWAPMonthlyArray) << ","
+                    << sc.Close[lastBar] << "," << SessionOpenPrice << ","
+                    << LastArrayValue(VWAPMonthlyArray) << ","
                     << LastArrayValue(VWAPWeeklyArray) << "," << LastArrayValue(VWAPIntradayArray) << ","
                     << LastArrayValue(DeltaArray) << "\n";
         }

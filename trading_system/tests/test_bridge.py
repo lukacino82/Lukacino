@@ -70,6 +70,7 @@ def test_live_state_round_trip(tmp_path):
         instrument="ES",
         timestamp=datetime(2024, 1, 2, 14, 30, 5),
         last_price=4801.25,
+        session_open=4790.0,
         vwap_monthly=4795.5,
         vwap_weekly=4802.75,
         vwap_intraday=4799.0,
@@ -81,8 +82,8 @@ def test_live_state_round_trip(tmp_path):
 
 def test_live_state_overwritten_not_appended(tmp_path):
     path = tmp_path / "live_state.csv"
-    first = LiveMarketState("ES", datetime(2024, 1, 2, 14, 30), 4801.25, 4795.5, 4802.75, 4799.0, -1250.0)
-    second = LiveMarketState("ES", datetime(2024, 1, 2, 14, 30, 5), 4802.0, 4795.5, 4802.75, 4799.5, -1200.0)
+    first = LiveMarketState("ES", datetime(2024, 1, 2, 14, 30), 4801.25, 4790.0, 4795.5, 4802.75, 4799.0, -1250.0)
+    second = LiveMarketState("ES", datetime(2024, 1, 2, 14, 30, 5), 4802.0, 4790.0, 4795.5, 4802.75, 4799.5, -1200.0)
     write_live_state(path, first)
     write_live_state(path, second)
     assert read_live_state(path) == second
