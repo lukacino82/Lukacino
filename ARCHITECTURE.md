@@ -209,8 +209,25 @@ debugging.
      chart), and the Notion sync module (Step 5).
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
-4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the
-   `FULLY_AUTO`/`SEMI_AUTO` switch, DTC bridge for orders
+4. Order management (Step 4, in progress) -- built to SEMI_AUTO first
+   (engine proposes, trader confirms by hand), per the user's explicit
+   choice over jumping straight to FULLY_AUTO. `trading_system/risk/`:
+   - ~~`sizing.py`~~ (done): confluence -> contract count, per the skill's
+     section 6 (A+ = full risk, clean A = half size, weak = pass). Both
+     `FIXED_CONTRACTS` (a flat count per tier) and `PERCENT_RISK` (% of
+     account equity, converted via the instrument's real tick size/value)
+     are implemented, at the user's request -- unlike regime.py's
+     thresholds, tick size/value are real contract specs, not guesses.
+   - ~~`order.py`~~ (done): `OrderProposal` (instrument, direction,
+     entry/stop/targets, sized contracts) from a `Hypothesis` + sizing
+     config. Computes what SEMI_AUTO would show the trader; places
+     nothing.
+   - Not yet built: actually surfacing an `OrderProposal` for the trader
+     to confirm (a chart drawing, a bridge file, or similar), the DTC
+     order-placement bridge itself (the user has a Sierra Chart SIM
+     account over DTC ready to test against once this is needed), and
+     FULLY_AUTO (pyramiding, trailing, kill switch) after SEMI_AUTO is
+     validated.
 5. Notion sync module (reuses the `trading-vwap-hypotezy` skill's schema and
    property names so both paths write to the same database consistently)
 6. Backtest harness over historical Sierra Chart exports, before anything
