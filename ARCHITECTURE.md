@@ -192,9 +192,21 @@ debugging.
      like the composite merge/invalidation percentages above, check them
      against real NQ chart examples (cum_delta magnitude especially varies
      wildly by instrument) before trusting this for a real hypothesis.
-   - Not yet built: the full hypothesis table (types, entries, targets,
-     invalidation) the skill writes to Notion, and wiring any of this
-     into ACSIL's `composites.csv`/`hypothesis.txt` output.
+   - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
+     entry, target_1/target_2/runner, invalidation, confluence) from the
+     current regime + tier + delta read + active composites. A-day reads
+     as mean reversion toward the intraday VWAP; B-day as momentum
+     continuation in the direction of acceptance beyond monthly/weekly
+     VWAP — per the skill's section 4/6. Only ever produces the one setup
+     consistent with the *live* regime, not the full four-type table the
+     skill lays out from a static screenshot. Confluence
+     (`A_PLUS`/`CLEAN`/`WEAK`, full/half/pass sizing per the skill's
+     section 6) is read from delta agreeing or disagreeing with the
+     thesis and whether a composite target exists — no new unvalidated
+     numeric thresholds here, unlike `regime.py`.
+   - Not yet built: wiring `generator.py`'s output into ACSIL's
+     `composites.csv`/`hypothesis.txt` (so it actually draws on the
+     chart), and the Notion sync module (Step 5).
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
 4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the
