@@ -85,6 +85,28 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Fixed after a fifth real test:** the `date` column in a real
+`daily_profile_export.csv` came out as garbage like `0004-62-73` instead of
+a real calendar date -- which would have crashed the Python side outright
+(`date.fromisoformat` rejects a month of 62). Cause: `sc.GetTradingDayDate()`
+returns a plain `int` already in YYYYMMDD format (the real compiler already
+confirmed this -- chaining `.GetDate()` straight onto its return fails to
+compile, since the return type is `int`, not a class with a `GetDate()`
+method). The code was instead wrapping that int in an `SCDateTime` first and
+calling `.GetDate()` on *that*, which compiles fine but is silently wrong:
+`SCDateTime`'s int constructor treats a raw int as its own internal
+date-time serial value, not as YYYYMMDD digits, corrupting the date on the
+round trip. This had been in the code since the very first build and only
+surfaced now because nobody had opened `daily_profile_export.csv` and
+checked the date column's actual value until this test. Fixed by using
+`sc.GetTradingDayDate()`'s return directly, no `SCDateTime` involved, in
+both the daily profile export block and the newer session-open capture.
+**If you already have a `daily_profile_export.csv` with rows like this,
+delete it before the next session rollover** -- the bad rows will crash
+`read_daily_profiles()` on the Python side, and unlike `live_state.csv` this
+file is appended to, not overwritten, so the garbage rows won't clear
+themselves out on their own.
+
 **Fixed after a fourth real test:** even with all Study IDs resolved and the
 file writing successfully, `vwap_monthly` and `vwap_weekly` in `live_state.csv`
 came out as `0` while `vwap_intraday` and `cum_delta` were correct. Cause: the

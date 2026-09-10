@@ -481,11 +481,20 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     if (sc.ArraySize > 1 && Input_VP_StudyID.GetInt() > 0)
     {
         const int lastClosedBar = sc.ArraySize - 2; // last fully closed bar
-        SCDateTime lastClosedTradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]);
-        SCDateTime currentTradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[sc.ArraySize - 1]);
-
-        int lastClosedYYYYMMDD = lastClosedTradingDay.GetDate();
-        if (currentTradingDay.GetDate() != lastClosedYYYYMMDD
+        // sc.GetTradingDayDate() returns a plain int already in YYYYMMDD
+        // format (confirmed by the real compiler: chaining .GetDate()
+        // straight onto its return fails to compile because the return
+        // type is 'int', not a class with a GetDate() method). Wrapping it
+        // in SCDateTime first and calling .GetDate() on THAT compiles fine
+        // but is silently wrong -- SCDateTime's constructor treats a raw
+        // int as its own internal date-time serial value, not as YYYYMMDD
+        // digits, so the round trip corrupts the date. Confirmed against a
+        // real daily_profile_export.csv: this previously produced garbage
+        // like "0004-62-73" instead of a real calendar date. Use the int
+        // directly, no SCDateTime involved.
+        const int lastClosedYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]);
+        const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[sc.ArraySize - 1]);
+        if (currentTradingDayYYYYMMDD != lastClosedYYYYMMDD
             && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
         {
             std::ofstream out(dailyProfilePath, std::ios::app);
@@ -552,22 +561,19 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // isn't free, and this only needs to run once per session.
         int& SessionOpenTradingDayYYYYMMDD = sc.GetPersistentInt(4);
         double& SessionOpenPrice = sc.GetPersistentDouble(2);
-        // sc.GetTradingDayDate() returns a plain int (YYYYMMDD), not an
-        // SCDateTime -- matches the existing usage above (lastClosedTradingDay
-        // / currentTradingDay), where the real compiler already confirmed
-        // this int-returning signature.
-        SCDateTime currentTradingDaySCDT = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]);
-        const int currentTradingDayYYYYMMDD = currentTradingDaySCDT.GetDate();
+        // sc.GetTradingDayDate() returns a plain int already in YYYYMMDD
+        // format -- see the fix/comment on the daily profile export block
+        // above. Wrapping it in SCDateTime and calling .GetDate() on that
+        // (what this block originally did) compiled fine but was confirmed
+        // wrong against a real daily_profile_export.csv (garbage dates).
+        // Use the int directly.
+        const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]);
         if (currentTradingDayYYYYMMDD != SessionOpenTradingDayYYYYMMDD)
         {
             int firstBarOfSession = lastBar;
-            while (firstBarOfSession > 0)
-            {
-                SCDateTime priorBarTradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[firstBarOfSession - 1]);
-                if (priorBarTradingDay.GetDate() != currentTradingDayYYYYMMDD)
-                    break;
+            while (firstBarOfSession > 0
+                && sc.GetTradingDayDate(sc.BaseDateTimeIn[firstBarOfSession - 1]) == currentTradingDayYYYYMMDD)
                 --firstBarOfSession;
-            }
             SessionOpenPrice = sc.Open[firstBarOfSession];
             SessionOpenTradingDayYYYYMMDD = currentTradingDayYYYYMMDD;
         }
