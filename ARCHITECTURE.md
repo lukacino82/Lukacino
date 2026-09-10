@@ -162,9 +162,31 @@ debugging.
 3. ~~VWAP tiers + cumulative delta~~ (Step 3, done): ACSIL reads three VWAP
    study instances (Monthly/Weekly/Intraday) and a cumulative-delta study,
    writing a live snapshot to `live_state.csv` on the refresh interval.
-   Not yet built: the Python side that *consumes* `live_state.csv` (VWAP
-   bounce/rejection detection, the `hypothesis/` package's A/B day
-   classification) — this step only gets the data into Python's reach.
+   Verified against a real chart: `vwap_monthly`/`vwap_weekly` now read
+   genuinely distinct values and `cum_delta` a real nonzero figure (a
+   cross-chart array indexing bug and a Study ID/Subgraph misconfiguration
+   both made these read as 0 before).
+   `hypothesis/` package (Step 3b, in progress): reads `LiveMarketState`
+   and classifies it the way the `trading-vwap-hypotezy` skill reads a
+   screenshot.
+   - ~~`tiers.py`~~ (done): position of price vs. each VWAP tier
+     (above/at/below) and a structural bias (bullish/bearish/neutral) from
+     all three tiers agreeing or not. Only reads the VWAP centerlines —
+     the skill's +-2 standard deviation band edges around each closed
+     period aren't exposed over the bridge yet.
+   - ~~`delta.py`~~ (done): absorption/divergence/confirming reading from
+     a rolling window of `LiveMarketState` snapshots (strong delta move
+     with no price move = absorption; price move with no delta
+     confirmation, or delta disagreeing with price, = divergence).
+   - Not yet built: A-day/B-day regime classification (needs today's
+     session open price and yesterday's value area — `LiveMarketState`
+     doesn't carry an open price yet, only `last_price`) and the full
+     hypothesis table (types, entries, targets, invalidation) the skill
+     writes to Notion. These are real trading-decision rules, not
+     mechanical bridge plumbing — validate the concrete thresholds against
+     real chart examples before wiring them in, the same way the
+     composite merge/invalidation percentages above were flagged for
+     validation.
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
 4. Order management in ACSIL (pyramiding, trailing, kill switch) behind the
