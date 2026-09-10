@@ -50,6 +50,13 @@ def test_title_and_date_from_timestamp():
     assert record.instrument == "NQ"
 
 
+def test_htf_bias_neutral_matches_notions_combined_select_option():
+    # The live Notion data source combines these into one select option,
+    # "Neutral / Balance" -- not two separate ones.
+    record = build_notion_record(_state(), _NEUTRAL_TIERS, Regime.UNCLEAR, DeltaSignal.NEUTRAL, None)
+    assert record.htf_bias == "Neutral / Balance"
+
+
 def test_htf_bias_and_regime_text():
     record = build_notion_record(_state(), _BEARISH_TIERS, Regime.B_DAY, DeltaSignal.CONFIRMING, None)
     assert record.htf_bias == "Bearish"

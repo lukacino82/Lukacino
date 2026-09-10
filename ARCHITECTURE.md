@@ -262,25 +262,29 @@ debugging.
    `trading-vwap-hypotezy` skill's schema and property names so both paths
    write to the same database ("Trading denik -- hypotezy",
    `53b58aaa-dfc2-4fbd-9b66-5a869047fffe`) consistently.
-   - ~~`notion_sync/record.py`~~ (done): `build_notion_record()` maps a
-     live tick's `TierReport`/`Regime`/`DeltaSignal`/`Hypothesis`/
-     composites onto the skill's exact property names and select values
-     (Nazev/Datum/Instrument/HTF bias/Rezim/Primarni setup, VWAP/Supply/
-     Demand/Delta as English text). Only builds the record -- no Notion
-     API call.
-   - **Open item, not guessed past:** the skill's `Instrument` select only
+   - ~~`notion_sync/record.py`~~ (done, schema confirmed against the live
+     database via `notion-fetch`, not just the skill's description text):
+     `build_notion_record()` maps a live tick's
+     `TierReport`/`Regime`/`DeltaSignal`/`Hypothesis`/composites onto the
+     exact property names and select values (Nazev/Datum/Instrument/HTF
+     bias/Rezim/Primarni setup, VWAP/Supply/Demand/Delta as English text).
+     Only builds the record -- no Notion API call. Fetching the real
+     schema caught two mismatches the skill's description text alone
+     didn't reveal: "HTF bias"'s neutral option is one combined value,
+     "Neutral / Balance", not two separate ones; "Rezim" needs
+     "Nejasne"'s diacritic exactly.
+   - **Open item, not guessed past:** the live `Instrument` select only
      lists ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY,
-     GBP/JPY -- NQ isn't among them. `record.instrument` passes the raw
-     bridge instrument code through unchanged; check the live Notion
-     database's actual select options before writing a real NQ record, a
-     strict select rejects a value that isn't already a choice.
-   - Not yet built and needs a decision, not a guess: how the record
-     actually reaches Notion. Two different things could both be called
-     "Notion sync" -- (a) I write it through my own Notion connector when
-     asked (a one-off, per instrument/day), or (b) `run_live.py` writes it
-     itself via a direct Notion API integration (its own token, an HTTP
-     client dependency, running unattended on the user's machine). These
-     have very different setup costs; pick one before building further.
+     GBP/JPY -- NQ isn't among them (confirmed). `record.instrument`
+     passes the raw bridge instrument code through unchanged; writing a
+     real NQ record needs either an "NQ" option added to that select
+     (touches a database the `trading-vwap-hypotezy` skill also writes
+     to -- ask before changing it) or some other mapping decision.
+   - **Decided:** the user chose (a) -- I write the record through my own
+     Notion connector when asked (a one-off, per instrument/day), not (b)
+     `run_live.py` writing it itself via a direct API integration. `record.py`
+     works for either path unchanged; only how the record reaches Notion
+     differs.
 6. Backtest harness over historical Sierra Chart exports, before anything
    trades on a live or even sim account
 7. News filter, position recovery after Sierra Chart restart, multi-timeframe

@@ -1,20 +1,20 @@
 """Maps live engine output onto the trading-vwap-hypotezy skill's Notion schema.
 
-Property names and select values are copied verbatim from that skill (same
-database: "Trading denik -- hypotezy",
-data source `53b58aaa-dfc2-4fbd-9b66-5a869047fffe`) so the manual,
-screenshot-driven path and this automated path write consistently. The
-skill's own text -- Nazev/Datum/Instrument/HTF bias/Rezim/Primarni setup,
-then VWAP/Supply/Demand/Delta as English text fields -- is the source of
-truth for the schema; check it before renaming anything here.
+Property names and select values are confirmed against the live Notion data
+source (`53b58aaa-dfc2-4fbd-9b66-5a869047fffe`, "Trading denik -- hypotezy")
+via notion-fetch, not just the skill's description text, so the manual
+screenshot-driven path and this automated path write consistently. Notable
+exact-match details confirmed this way: "HTF bias"'s neutral option is one
+combined select value, "Neutral / Balance", not two separate ones; "Rezim"
+uses "Nejasne" with its diacritic.
 
-Open item, not something to guess past: the skill's Instrument select
-lists ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY,
-GBP/JPY -- NQ (Nasdaq futures) isn't among them. This passes the bridge's
-raw instrument code through unchanged; check the live Notion database's
-actual Instrument select options before writing a real NQ record; a
-strict select property rejects a value that isn't already one of its
-options.
+Open item, not something to guess past: the live Instrument select lists
+ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY, GBP/JPY --
+NQ (Nasdaq futures) isn't among them. This passes the bridge's raw
+instrument code through unchanged; a strict select property rejects a
+value that isn't already one of its options, so writing a real NQ record
+needs either an "NQ" option added to that select (ask before touching a
+shared database) or a mapping decided some other way.
 """
 
 from __future__ import annotations
@@ -33,13 +33,16 @@ from ..hypothesis.tiers import StructuralBias, TierReport
 _REGIME_TEXT = {
     Regime.A_DAY: "A-den (range)",
     Regime.B_DAY: "B-den (trend)",
-    Regime.UNCLEAR: "Nejasne",
+    Regime.UNCLEAR: "Nejasné",
 }
 
+# Exact select option strings confirmed against the live Notion data source
+# (53b58aaa-dfc2-4fbd-9b66-5a869047fffe) -- "Neutral / Balance" is one
+# combined option there, not two separate ones.
 _BIAS_TEXT = {
     StructuralBias.BULLISH: "Bullish",
     StructuralBias.BEARISH: "Bearish",
-    StructuralBias.NEUTRAL: "Neutral",
+    StructuralBias.NEUTRAL: "Neutral / Balance",
 }
 
 
