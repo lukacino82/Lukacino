@@ -258,8 +258,29 @@ debugging.
      Sierra Chart SIM account over DTC ready to test against once this is
      needed), and FULLY_AUTO (pyramiding, trailing, kill switch) after
      SEMI_AUTO is validated.
-5. Notion sync module (reuses the `trading-vwap-hypotezy` skill's schema and
-   property names so both paths write to the same database consistently)
+5. Notion sync module (Step 5, in progress) -- reuses the
+   `trading-vwap-hypotezy` skill's schema and property names so both paths
+   write to the same database ("Trading denik -- hypotezy",
+   `53b58aaa-dfc2-4fbd-9b66-5a869047fffe`) consistently.
+   - ~~`notion_sync/record.py`~~ (done): `build_notion_record()` maps a
+     live tick's `TierReport`/`Regime`/`DeltaSignal`/`Hypothesis`/
+     composites onto the skill's exact property names and select values
+     (Nazev/Datum/Instrument/HTF bias/Rezim/Primarni setup, VWAP/Supply/
+     Demand/Delta as English text). Only builds the record -- no Notion
+     API call.
+   - **Open item, not guessed past:** the skill's `Instrument` select only
+     lists ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY,
+     GBP/JPY -- NQ isn't among them. `record.instrument` passes the raw
+     bridge instrument code through unchanged; check the live Notion
+     database's actual select options before writing a real NQ record, a
+     strict select rejects a value that isn't already a choice.
+   - Not yet built and needs a decision, not a guess: how the record
+     actually reaches Notion. Two different things could both be called
+     "Notion sync" -- (a) I write it through my own Notion connector when
+     asked (a one-off, per instrument/day), or (b) `run_live.py` writes it
+     itself via a direct Notion API integration (its own token, an HTTP
+     client dependency, running unattended on the user's machine). These
+     have very different setup costs; pick one before building further.
 6. Backtest harness over historical Sierra Chart exports, before anything
    trades on a live or even sim account
 7. News filter, position recovery after Sierra Chart restart, multi-timeframe
