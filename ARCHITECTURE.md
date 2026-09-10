@@ -273,13 +273,12 @@ debugging.
      didn't reveal: "HTF bias"'s neutral option is one combined value,
      "Neutral / Balance", not two separate ones; "Rezim" needs
      "Nejasne"'s diacritic exactly.
-   - **Open item, not guessed past:** the live `Instrument` select only
-     lists ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY,
-     GBP/JPY -- NQ isn't among them (confirmed). `record.instrument`
-     passes the raw bridge instrument code through unchanged; writing a
-     real NQ record needs either an "NQ" option added to that select
-     (touches a database the `trading-vwap-hypotezy` skill also writes
-     to -- ask before changing it) or some other mapping decision.
+   - **Resolved:** the live `Instrument` select was missing NQ (only
+     ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY,
+     GBP/JPY). Added an "NQ" option to it with the user's explicit
+     confirmation before changing a database the `trading-vwap-hypotezy`
+     skill also writes to. `record.instrument` passes the raw bridge
+     instrument code through unchanged, which now resolves for NQ.
    - **Decided:** the user chose (a) -- I write the record through my own
      Notion connector when asked (a one-off, per instrument/day), not (b)
      `run_live.py` writing it itself via a direct API integration. `record.py`

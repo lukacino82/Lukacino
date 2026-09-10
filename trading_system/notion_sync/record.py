@@ -8,13 +8,12 @@ exact-match details confirmed this way: "HTF bias"'s neutral option is one
 combined select value, "Neutral / Balance", not two separate ones; "Rezim"
 uses "Nejasne" with its diacritic.
 
-Open item, not something to guess past: the live Instrument select lists
-ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY, GBP/JPY --
-NQ (Nasdaq futures) isn't among them. This passes the bridge's raw
-instrument code through unchanged; a strict select property rejects a
-value that isn't already one of its options, so writing a real NQ record
-needs either an "NQ" option added to that select (ask before touching a
-shared database) or a mapping decided some other way.
+The Instrument select originally lacked an "NQ" option (only
+ES/S&P500, Gold (XAUUSD), WTI Oil, GBP/USD, EUR/USD, USD/JPY, GBP/JPY) --
+added "NQ" to it with the user's confirmation before touching a database
+the `trading-vwap-hypotezy` skill also writes to. `record.instrument`
+passes the bridge's raw instrument code through unchanged, which now
+resolves correctly for NQ.
 """
 
 from __future__ import annotations
