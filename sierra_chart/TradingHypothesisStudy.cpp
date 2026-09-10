@@ -552,13 +552,22 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // isn't free, and this only needs to run once per session.
         int& SessionOpenTradingDayYYYYMMDD = sc.GetPersistentInt(4);
         double& SessionOpenPrice = sc.GetPersistentDouble(2);
-        const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]).GetDate();
+        // sc.GetTradingDayDate() returns a plain int (YYYYMMDD), not an
+        // SCDateTime -- matches the existing usage above (lastClosedTradingDay
+        // / currentTradingDay), where the real compiler already confirmed
+        // this int-returning signature.
+        SCDateTime currentTradingDaySCDT = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]);
+        const int currentTradingDayYYYYMMDD = currentTradingDaySCDT.GetDate();
         if (currentTradingDayYYYYMMDD != SessionOpenTradingDayYYYYMMDD)
         {
             int firstBarOfSession = lastBar;
-            while (firstBarOfSession > 0
-                && sc.GetTradingDayDate(sc.BaseDateTimeIn[firstBarOfSession - 1]).GetDate() == currentTradingDayYYYYMMDD)
+            while (firstBarOfSession > 0)
+            {
+                SCDateTime priorBarTradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[firstBarOfSession - 1]);
+                if (priorBarTradingDay.GetDate() != currentTradingDayYYYYMMDD)
+                    break;
                 --firstBarOfSession;
+            }
             SessionOpenPrice = sc.Open[firstBarOfSession];
             SessionOpenTradingDayYYYYMMDD = currentTradingDayYYYYMMDD;
         }
