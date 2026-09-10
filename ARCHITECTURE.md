@@ -215,17 +215,25 @@ debugging.
      across ticks on the same instance) -> regime -> hypothesis -> order
      proposal -> formatted text. Pure logic, no file I/O, unit-tested with
      in-memory data.
-   - ~~`run_live.py`~~ (done): the actual polling loop -- reads
-     `live_state.csv`/`daily_profile_export.csv`, feeds new closed days
-     into `CompositeEngine`, writes `composites.csv` (nothing wrote this
-     before now -- ACSIL's composite-zone drawing was reading a file
-     nothing produced) and `hypothesis.txt` every `LiveEngine.tick()`.
-     **Not yet run for real** -- needs a decision on where this process
-     runs continuously (most likely the same Windows machine as Sierra
-     Chart, via `python -m trading_system.run_live`), and its placeholder
-     constants (`SIZING`, `PRICE_MOVE_THRESHOLD`, `DELTA_MOVE_THRESHOLD`,
-     `GAP_THRESHOLD_FRACTION`, `DELTA_IMBALANCE`) are explicitly marked
-     "not calibrated" — same open item as `regime.py`'s thresholds.
+   - ~~`run_live.py`~~ (done, confirmed running live): the actual polling
+     loop -- reads `live_state.csv`/`daily_profile_export.csv`, feeds new
+     closed days into `CompositeEngine`, writes `composites.csv` (nothing
+     wrote this before now -- ACSIL's composite-zone drawing was reading a
+     file nothing produced) and `hypothesis.txt` every `LiveEngine.tick()`.
+     Run as a long-lived process on the same Windows machine as Sierra
+     Chart (`python -m trading_system.run_live --bridge-dir ... --instrument
+     NQ`) -- confirmed end to end on a real chart, including the drawn text
+     box (see the text color fix in README.md's "sixth real test").
+     Every threshold (price/delta move, gap fraction, delta imbalance) and
+     the sizing tick specs are instrument-specific, so they're keyed by
+     instrument in `INSTRUMENT_CONFIGS`; an instrument with no entry fails
+     loudly at startup rather than silently reusing another instrument's
+     numbers (NQ's tick_size/tick_value would badly mis-size a position on
+     anything else). Only `NQ` has an entry so far -- add one per new
+     instrument, same as the ACSIL Study ID/Chart Number setup. All
+     threshold values (not the NQ tick specs, which are real contract
+     facts) are still marked "not calibrated" — same open item as
+     `regime.py`'s thresholds.
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
 4. Order management (Step 4, in progress) -- built to SEMI_AUTO first

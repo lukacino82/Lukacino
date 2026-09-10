@@ -4,18 +4,23 @@ up to date for ACSIL to draw.
 Run as a long-lived process alongside Sierra Chart, e.g.:
     python -m trading_system.run_live --bridge-dir "C:\\SierraChart\\TradingHypothesisBridge" --instrument NQ
 
-The constants below marked "placeholder, not calibrated" are exactly that --
-see ARCHITECTURE.md and hypothesis/regime.py. Fill in real values (sizing
-especially -- account_equity, risk fractions or fixed contract counts) before
-trusting this for anything beyond watching the output.
+Every threshold below is instrument-specific -- price/delta magnitudes on
+NQ mean nothing on Gold or EURUSD, and NQ's tick_size/tick_value are wrong
+for any other contract. There is no sane fallback, so an instrument with no
+entry in INSTRUMENT_CONFIGS fails loudly at startup instead of silently
+running with another instrument's numbers. Add an entry before running this
+for a new instrument. All values here are placeholders, not calibrated
+(see ARCHITECTURE.md / hypothesis/regime.py), except NQ's tick_size/
+tick_value, which are its real CME contract specs.
 """
 
 from __future__ import annotations
 
 import argparse
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 from .bridge.csv_bridge import (
     read_daily_profiles,
@@ -28,14 +33,27 @@ from .composite.models import DailyProfile
 from .engine import LiveEngine
 from .risk.sizing import SizingConfig, SizingMode
 
-# --- Fill these in before running for real ----------------------------------
-SIZING = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1)
-PRICE_MOVE_THRESHOLD = 5.0  # NQ points -- placeholder, not calibrated
-DELTA_MOVE_THRESHOLD = 500.0  # placeholder, not calibrated
-GAP_THRESHOLD_FRACTION = 0.25  # placeholder, not calibrated
-DELTA_IMBALANCE = 1000.0  # placeholder, not calibrated
+
+@dataclass(frozen=True)
+class InstrumentConfig:
+    sizing: SizingConfig
+    price_move_threshold: float
+    delta_move_threshold: float
+    gap_threshold_fraction: float
+    delta_imbalance: float
+
+
+INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
+    "NQ": InstrumentConfig(
+        sizing=SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1),
+        price_move_threshold=5.0,  # NQ points -- placeholder, not calibrated
+        delta_move_threshold=500.0,  # placeholder, not calibrated
+        gap_threshold_fraction=0.25,  # placeholder, not calibrated
+        delta_imbalance=1000.0,  # placeholder, not calibrated
+    ),
+}
+
 POLL_INTERVAL_SECONDS = 5
-# -----------------------------------------------------------------------------
 
 
 def _most_recent_profile(daily_profile_path: Path) -> Optional[DailyProfile]:
@@ -47,6 +65,7 @@ def _tick(
     engine: LiveEngine,
     composite_engine: CompositeEngine,
     ingested_dates: Set,
+    config: InstrumentConfig,
     live_state_path: Path,
     daily_profile_path: Path,
     composites_path: Path,
@@ -71,16 +90,26 @@ def _tick(
         state,
         yesterday,
         composite_engine.composites,
-        SIZING,
-        PRICE_MOVE_THRESHOLD,
-        DELTA_MOVE_THRESHOLD,
-        GAP_THRESHOLD_FRACTION,
-        DELTA_IMBALANCE,
+        config.sizing,
+        config.price_move_threshold,
+        config.delta_move_threshold,
+        config.gap_threshold_fraction,
+        config.delta_imbalance,
     )
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
 
 
 def run(bridge_dir: Path, instrument: str) -> None:
+    if instrument not in INSTRUMENT_CONFIGS:
+        known = ", ".join(sorted(INSTRUMENT_CONFIGS)) or "(none configured)"
+        raise ValueError(
+            f"No InstrumentConfig for {instrument!r} in run_live.py's INSTRUMENT_CONFIGS "
+            f"(configured: {known}). Add one with this instrument's real tick_size/"
+            f"tick_value before running -- reusing another instrument's numbers would "
+            f"silently size positions wrong."
+        )
+    config = INSTRUMENT_CONFIGS[instrument]
+
     instrument_dir = bridge_dir / instrument
     live_state_path = instrument_dir / "live_state.csv"
     daily_profile_path = instrument_dir / "daily_profile_export.csv"
@@ -98,6 +127,7 @@ def run(bridge_dir: Path, instrument: str) -> None:
                 engine,
                 composite_engine,
                 ingested_dates,
+                config,
                 live_state_path,
                 daily_profile_path,
                 composites_path,
