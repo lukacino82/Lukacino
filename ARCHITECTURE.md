@@ -204,9 +204,28 @@ debugging.
      section 6) is read from delta agreeing or disagreeing with the
      thesis and whether a composite target exists — no new unvalidated
      numeric thresholds here, unlike `regime.py`.
-   - Not yet built: wiring `generator.py`'s output into ACSIL's
-     `composites.csv`/`hypothesis.txt` (so it actually draws on the
-     chart), and the Notion sync module (Step 5).
+   - ~~`formatter.py`~~ (done): renders a `Hypothesis` + `OrderProposal`
+     as the plain-text body `hypothesis.txt` already carries -- reuses the
+     existing ACSIL text-drawing pipe (see "4. Draw the hypothesis text
+     box" in TradingHypothesisStudy.cpp) instead of adding a new file
+     format or touching ACSIL again.
+   - ~~`engine.py`~~ (`LiveEngine`, done): per-tick orchestration --
+     `live_state.csv` snapshot + yesterday's `DailyProfile` + active
+     composites -> tier report -> delta signal (its `DeltaHistory` persists
+     across ticks on the same instance) -> regime -> hypothesis -> order
+     proposal -> formatted text. Pure logic, no file I/O, unit-tested with
+     in-memory data.
+   - ~~`run_live.py`~~ (done): the actual polling loop -- reads
+     `live_state.csv`/`daily_profile_export.csv`, feeds new closed days
+     into `CompositeEngine`, writes `composites.csv` (nothing wrote this
+     before now -- ACSIL's composite-zone drawing was reading a file
+     nothing produced) and `hypothesis.txt` every `LiveEngine.tick()`.
+     **Not yet run for real** -- needs a decision on where this process
+     runs continuously (most likely the same Windows machine as Sierra
+     Chart, via `python -m trading_system.run_live`), and its placeholder
+     constants (`SIZING`, `PRICE_MOVE_THRESHOLD`, `DELTA_MOVE_THRESHOLD`,
+     `GAP_THRESHOLD_FRACTION`, `DELTA_IMBALANCE`) are explicitly marked
+     "not calibrated" — same open item as `regime.py`'s thresholds.
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
 4. Order management (Step 4, in progress) -- built to SEMI_AUTO first
@@ -217,17 +236,20 @@ debugging.
      `FIXED_CONTRACTS` (a flat count per tier) and `PERCENT_RISK` (% of
      account equity, converted via the instrument's real tick size/value)
      are implemented, at the user's request -- unlike regime.py's
-     thresholds, tick size/value are real contract specs, not guesses.
+     thresholds, tick size/value are real contract specs, not guesses
+     (the user trades E-mini NQ: tick_size=0.25, tick_value=$5).
    - ~~`order.py`~~ (done): `OrderProposal` (instrument, direction,
      entry/stop/targets, sized contracts) from a `Hypothesis` + sizing
      config. Computes what SEMI_AUTO would show the trader; places
      nothing.
-   - Not yet built: actually surfacing an `OrderProposal` for the trader
-     to confirm (a chart drawing, a bridge file, or similar), the DTC
-     order-placement bridge itself (the user has a Sierra Chart SIM
-     account over DTC ready to test against once this is needed), and
-     FULLY_AUTO (pyramiding, trailing, kill switch) after SEMI_AUTO is
-     validated.
+   - ~~Surfacing the proposal on the chart~~ (done, via `formatter.py` +
+     `run_live.py` above): the user chose drawing it on the chart over a
+     separate bridge file, and since `hypothesis.txt`'s ACSIL-side drawing
+     already existed, no ACSIL/C++ change was needed for this.
+   - Not yet built: the DTC order-placement bridge itself (the user has a
+     Sierra Chart SIM account over DTC ready to test against once this is
+     needed), and FULLY_AUTO (pyramiding, trailing, kill switch) after
+     SEMI_AUTO is validated.
 5. Notion sync module (reuses the `trading-vwap-hypotezy` skill's schema and
    property names so both paths write to the same database consistently)
 6. Backtest harness over historical Sierra Chart exports, before anything
