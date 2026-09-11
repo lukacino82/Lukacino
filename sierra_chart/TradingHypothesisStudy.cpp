@@ -565,7 +565,15 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                      << " VAHArraySize=" << VAHArray.GetArraySize()
                      << " VAH[last]=" << LastArrayValue(VAHArray)
                      << " VAL[last]=" << LastArrayValue(VALArray)
-                     << " POC[last]=" << LastArrayValue(POCArray);
+                     << " POC[last]=" << LastArrayValue(POCArray)
+                     // The values actually written below -- logged separately
+                     // from VAH/VAL/POC[last] above so a stale build (still
+                     // running the old one-bar-back fallback instead of this
+                     // backward scan) is immediately visible in the log
+                     // instead of only showing up as a wrong CSV row.
+                     << " VAH[scanned]=" << LastClosedProfileValue(VAHArray)
+                     << " VAL[scanned]=" << LastClosedProfileValue(VALArray)
+                     << " POC[scanned]=" << LastClosedProfileValue(POCArray);
                 sc.AddMessageToLog(diag.str().c_str(), 0);
 
                 std::ofstream out(dailyProfilePath, std::ios::app);
