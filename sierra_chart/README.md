@@ -85,6 +85,20 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Diagnosing a tenth real test:** even with the ninth test's full backward
+scan in place, VAH/VAL/POC still exported as 0. A raw dump of the array at a
+spread of indices (`0, 300, 800, 1300, 1600, ..., 1799`) came back 0.0 at
+*every single one*, including index 0 -- the oldest bar in the whole
+1800-bar history. That rules out a scan bug: subgraph index 1 ("Vol Value
+Area High") is simply never populated under this study's current settings,
+even though the chart visibly draws real, non-zero value-area lines. The
+likely cause: "Draw Developing Value Area Lines = No" disables the
+developing subgraphs (0-2) entirely, and the actual non-developing/final
+values the chart draws from live at different subgraph indices. Added a
+probe that reads subgraph indices 0-9 on the same study/chart and logs the
+last and scanned value for each, to find the correct index from real
+evidence instead of guessing again.
+
 **Fixed after a ninth real test:** even with the eighth test's fix in place,
 VAH/VAL/POC still exported as 0 -- confirmed via the diagnostic log line
 added in that fix: `VAHArraySize=1800 VAH[last]=0 VAL[last]=0 POC[last]=0`.

@@ -576,27 +576,31 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                      << " POC[scanned]=" << LastClosedProfileValue(POCArray);
                 sc.AddMessageToLog(diag.str().c_str(), 0);
 
-                // The chart visibly draws real, distinct value-area levels
-                // per day, yet both the last value and a full backward scan
-                // of VAHArray came back 0.0 in a real test -- something
-                // doesn't add up between what's drawn and what
-                // GetStudyArrayFromChartUsingID returns for this subgraph.
-                // Dump raw values at a spread of indices (not just the
-                // ends) so the actual fill pattern is visible instead of
-                // guessed at: are there really no non-zero floats anywhere
-                // in this array, or did the earlier scan/last-value checks
-                // have a bug?
+                // Confirmed by a real raw dump: subgraph index 1 (the one
+                // configured as "Vol Value Area High") is 0.0 at EVERY
+                // sampled index, including index 0 -- the oldest bar in the
+                // whole 1800-bar history. That rules out a scan bug; this
+                // subgraph is simply never populated with this study's
+                // current settings (Draw Developing Value Area Lines=No
+                // likely disables the developing subgraphs 0-2 entirely and
+                // moves the actual non-developing/final values other
+                // studies draw from to different subgraph indices). Rather
+                // than guess which index, probe every subgraph 0-9 on the
+                // same study/chart and print the last value AND a backward-
+                // scanned non-zero value for each, so the correct index can
+                // be read directly out of the log.
                 {
-                    const int n = VAHArray.GetArraySize();
                     std::stringstream dump;
-                    dump << "Trading Hypothesis Display: VAHArray raw dump (size=" << n << "):";
-                    const int sampleIndices[] = { n - 1, n - 2, n - 3, n - 5, n - 10,
-                        n - 20, n - 50, n - 100, n - 200, n - 500, n - 1000, n - 1500, 0 };
-                    for (int idx : sampleIndices)
+                    dump << "Trading Hypothesis Display: Volume Value Area Lines subgraph probe (StudyID="
+                         << Input_VP_StudyID.GetInt() << " Chart=" << Input_VP_ChartNumber.GetInt() << "):";
+                    for (int sg = 0; sg <= 9; ++sg)
                     {
-                        if (idx < 0 || idx >= n)
-                            continue;
-                        dump << " [" << idx << "]=" << VAHArray[idx];
+                        SCFloatArray probeArray;
+                        GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), sg, probeArray);
+                        const int size = probeArray.GetArraySize();
+                        dump << " SG[" << sg << "](size=" << size << ")";
+                        if (size > 0)
+                            dump << ":last=" << probeArray[size - 1] << ",scanned=" << LastClosedProfileValue(probeArray);
                     }
                     sc.AddMessageToLog(dump.str().c_str(), 0);
                 }
