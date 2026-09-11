@@ -648,15 +648,26 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // confirm or rule that out without waiting for the next real day
     // change.
     {
+        // Comparing only against the persistent double's own previous value
+        // was a bug: that persistent double *starts* at 0.0 by default, the
+        // same as the value being watched, so "did it change" was always
+        // false on the very first real value too -- no log line could ever
+        // appear even if this ran every single tick, silently making the
+        // whole diagnostic useless. HasLoggedLiveVAH forces at least one
+        // unconditional log line so there's positive proof this code path
+        // actually runs and what it currently sees, not just silence that's
+        // ambiguous between "never ran" and "value never changed".
+        int& HasLoggedLiveVAH = sc.GetPersistentInt(5);
         double& LastLoggedLiveVAH = sc.GetPersistentDouble(3);
         const float currentVAH = LastArrayValue(VAHArray);
-        if (currentVAH != static_cast<float>(LastLoggedLiveVAH))
+        if (!HasLoggedLiveVAH || currentVAH != static_cast<float>(LastLoggedLiveVAH))
         {
             std::stringstream live;
-            live << "Trading Hypothesis Display: live VAH subgraph value changed to " << currentVAH
+            live << "Trading Hypothesis Display: live VAH subgraph value is " << currentVAH
                  << " (VAHArraySize=" << VAHArray.GetArraySize() << ")";
             sc.AddMessageToLog(live.str().c_str(), 0);
             LastLoggedLiveVAH = currentVAH;
+            HasLoggedLiveVAH = 1;
         }
     }
 
