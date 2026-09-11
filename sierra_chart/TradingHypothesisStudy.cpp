@@ -156,12 +156,22 @@ std::string EnsureDirectoryExists(const std::string& path) {
          + " (errno " + std::to_string(errno) + ")";
 }
 
-std::string FormatISODateFromYYYYMMDD(int yyyymmdd) {
-    int year = yyyymmdd / 10000;
-    int month = (yyyymmdd / 100) % 100;
-    int day = yyyymmdd % 100;
+// sc.GetTradingDayDate()'s return value is only ever used as an opaque
+// comparison key here (does this bar belong to the same trading day as that
+// one?) -- equality/inequality works no matter what numeric encoding it
+// actually uses internally. Formatting it as if it were YYYYMMDD digits
+// assumed a specific encoding that a real daily_profile_export.csv proved
+// wrong twice now: both the SCDateTime-wrapped attempt and the later "use
+// the int directly" attempt produced the same style of garbage
+// ("0004-62-73", then "0004-62-75", two days apart matching two days of
+// real testing) -- a low, slowly incrementing number consistent with a raw
+// day-count serial, not YYYYMMDD. Sidestep the ambiguity entirely for the
+// actual printed date: read the real calendar Y/M/D straight off the bar's
+// own SCDateTime via its documented accessors instead of decoding any
+// function's return value.
+std::string FormatISODateFromSCDateTime(const SCDateTime& dt) {
     char buf[11];
-    snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, month, day);
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d", dt.GetYear(), dt.GetMonth(), dt.GetDay());
     return std::string(buf);
 }
 
@@ -199,6 +209,23 @@ void GetStudyArrayAnyChart(SCStudyInterfaceRef sc, int chartNumber, int studyID,
 // the array's own last index to get its latest value.
 float LastArrayValue(SCFloatArray& array) {
     return array.GetArraySize() > 0 ? array[array.GetArraySize() - 1] : 0.0f;
+}
+
+// The Volume Value Area Lines study runs on its own "Time Period Type =
+// Days" chart with developing lines off, so its own new daily bar can
+// already exist by the time this fires -- that bar's VAH/VAL/POC subgraph
+// value stays 0.0 until its period actually closes, because developing
+// values are switched off. That chart's own day boundary (typically
+// calendar midnight) doesn't necessarily line up with the session-based
+// trading-day boundary used elsewhere in this file, so its last bar can be
+// "today, still empty" exactly when this export fires. 0.0 is never a
+// plausible real price level, so treat it as "not ready yet" and fall back
+// to the previous (fully closed) bar instead.
+float LastClosedProfileValue(SCFloatArray& array) {
+    const int size = array.GetArraySize();
+    if (size < 1) return 0.0f;
+    if (array[size - 1] != 0.0f || size < 2) return array[size - 1];
+    return array[size - 2];
 }
 
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
@@ -479,8 +506,11 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
 
     // --- 1. Export the just-closed trading day's volume profile ---------
     // Persistent storage across recalculations: index 1 = last exported
-    // trading day as YYYYMMDD, reused via sc.GetPersistentInt (a standard
-    // ACSIL idiom for state that must survive across calls).
+    // trading day, as whatever opaque comparison value sc.GetTradingDayDate()
+    // returns (see the comment on FormatISODateFromSCDateTime -- it is NOT
+    // reliably YYYYMMDD, just a value that changes exactly when the trading
+    // day changes), reused via sc.GetPersistentInt (a standard ACSIL idiom
+    // for state that must survive across calls).
     int& LastExportedDateYYYYMMDD = sc.GetPersistentInt(1);
 
     // Gated on Input_VP_StudyID itself (> 0), not on VAHArray.GetArraySize():
@@ -489,17 +519,17 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     if (sc.ArraySize > 1 && Input_VP_StudyID.GetInt() > 0)
     {
         const int lastBar = sc.ArraySize - 1;
-        // sc.GetTradingDayDate() returns a plain int already in YYYYMMDD
-        // format (confirmed by the real compiler: chaining .GetDate()
-        // straight onto its return fails to compile because the return
-        // type is 'int', not a class with a GetDate() method). Wrapping it
-        // in SCDateTime first and calling .GetDate() on THAT compiles fine
-        // but is silently wrong -- SCDateTime's constructor treats a raw
-        // int as its own internal date-time serial value, not as YYYYMMDD
-        // digits, so the round trip corrupts the date. Confirmed against a
-        // real daily_profile_export.csv: this previously produced garbage
-        // like "0004-62-73" instead of a real calendar date. Use the int
-        // directly, no SCDateTime involved.
+        // sc.GetTradingDayDate()'s return value is used purely as an opaque
+        // token here to detect a day change (==/!=) -- never decoded as
+        // YYYYMMDD. Two different assumptions about its numeric encoding
+        // (SCDateTime-wrapped-then-.GetDate(), and "it's already a plain
+        // YYYYMMDD int") both produced the same style of garbage against a
+        // real daily_profile_export.csv ("0004-62-73", then "0004-62-75"),
+        // consistent with it actually being a raw day-count serial. The
+        // actual printed date is now built separately, straight from the
+        // bar's own SCDateTime (see FormatISODateFromSCDateTime), so this
+        // value's real encoding no longer matters -- only that it changes
+        // exactly when the trading day does.
         const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]);
 
         // Don't rely on catching the exact bar where the day changes (the
@@ -529,12 +559,21 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             if (lastClosedYYYYMMDD != currentTradingDayYYYYMMDD
                 && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
             {
+                std::stringstream diag;
+                diag << "Trading Hypothesis Display: daily export firing. lastClosedBar=" << lastClosedBar
+                     << " date=" << FormatISODateFromSCDateTime(sc.BaseDateTimeIn[lastClosedBar])
+                     << " VAHArraySize=" << VAHArray.GetArraySize()
+                     << " VAH[last]=" << LastArrayValue(VAHArray)
+                     << " VAL[last]=" << LastArrayValue(VALArray)
+                     << " POC[last]=" << LastArrayValue(POCArray);
+                sc.AddMessageToLog(diag.str().c_str(), 0);
+
                 std::ofstream out(dailyProfilePath, std::ios::app);
                 if (out.is_open())
                 {
-                    out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
-                        << LastArrayValue(VALArray) << "," << LastArrayValue(VAHArray) << ","
-                        << LastArrayValue(POCArray) << "\n";
+                    out << FormatISODateFromSCDateTime(sc.BaseDateTimeIn[lastClosedBar]) << "," << instrument << ","
+                        << LastClosedProfileValue(VALArray) << "," << LastClosedProfileValue(VAHArray) << ","
+                        << LastClosedProfileValue(POCArray) << "\n";
                     // Only remember this day as exported once the write actually
                     // succeeded — otherwise a transient failure (e.g. the
                     // directory not existing yet) would silently and permanently
@@ -594,12 +633,10 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // isn't free, and this only needs to run once per session.
         int& SessionOpenTradingDayYYYYMMDD = sc.GetPersistentInt(4);
         double& SessionOpenPrice = sc.GetPersistentDouble(2);
-        // sc.GetTradingDayDate() returns a plain int already in YYYYMMDD
-        // format -- see the fix/comment on the daily profile export block
-        // above. Wrapping it in SCDateTime and calling .GetDate() on that
-        // (what this block originally did) compiled fine but was confirmed
-        // wrong against a real daily_profile_export.csv (garbage dates).
-        // Use the int directly.
+        // sc.GetTradingDayDate()'s return value is only ever used as an
+        // opaque day-change token here (==/!=), never formatted -- see the
+        // comment on the daily profile export block above for why decoding
+        // its actual numeric encoding turned out to be unreliable.
         const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]);
         if (currentTradingDayYYYYMMDD != SessionOpenTradingDayYYYYMMDD)
         {

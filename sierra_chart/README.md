@@ -85,6 +85,42 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Fixed after an eighth real test:** even with the backward-scan fix from
+the seventh test in place and a confirmed rebuild, `daily_profile_export.csv`
+still produced a garbage row -- `0004-62-75,NQ,0,0,0` -- nearly identical to
+the "already fixed" `0004-62-73` garbage from before. Two bugs, both real:
+
+1. **The date was never actually fixed.** `sc.GetTradingDayDate()`'s return
+   value was assumed to already be a plain YYYYMMDD int (based on an earlier
+   "confirmed by the real compiler" note that chaining `.GetDate()` onto it
+   failed to compile). That assumption was wrong: the garbage output both
+   times decodes to a small number in the 46,000s -- consistent with a raw
+   day-count date serial, not YYYYMMDD digits -- and it barely moved between
+   the two tests (73 vs 75), exactly as you'd expect from a day-count
+   incrementing by 1 across ~2 days of testing. Whatever this function
+   actually returns, its numeric encoding is not reliably decodable as
+   YYYYMMDD. Fixed by no longer trying: the value is now used purely as an
+   opaque "did the trading day change" comparison token (`==`/`!=`, which
+   works regardless of encoding), and the date actually written to the CSV
+   is built separately, straight from the bar's own `SCDateTime` via its
+   `GetYear()`/`GetMonth()`/`GetDay()` accessors.
+2. **VAH/VAL/POC were still 0.** The Volume Value Area Lines study runs on
+   its own `Time Period Type = Days` chart with developing lines off. As
+   soon as a new day starts, that chart gets a new bar immediately, and that
+   bar's subgraph value stays `0.0` until its period actually closes --
+   because developing values are switched off. That chart's own day
+   boundary (calendar midnight, by default) doesn't necessarily line up
+   with the session-based trading-day boundary used elsewhere in this file,
+   so its last bar can be "today, still empty" exactly when the export
+   fires. Since `0.0` is never a plausible real price level, the read now
+   falls back to the array's previous (fully closed) value whenever the
+   last one is exactly `0.0`.
+
+A diagnostic log line (`Trading Hypothesis Display: daily export firing.
+...`) was also added right at the write, printing the resolved date and the
+VAH/VAL/POC array sizes and last values -- check Message Log after the next
+export if the row still looks wrong.
+
 **Fixed after a seventh real test:** even with the date bug, the Volume
 Value Area Lines Study ID, and the duplicate chart-3 instance all fixed,
 `daily_profile_export.csv` still never got a real row across an entire
