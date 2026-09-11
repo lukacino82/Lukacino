@@ -85,6 +85,16 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Fixed after a ninth real test:** even with the eighth test's fix in place,
+VAH/VAL/POC still exported as 0 -- confirmed via the diagnostic log line
+added in that fix: `VAHArraySize=1800 VAH[last]=0 VAL[last]=0 POC[last]=0`.
+The array is real (1800 fully-computed values), but reading exactly one bar
+back was still 0.0 -- meaning more than one trailing bar on the Volume
+Value Area Lines study's own chart belonged to today's still-open trading
+day, not just the last one. Fixed by scanning backward through the array
+for the last actually non-zero value instead of assuming it's one or two
+bars back.
+
 **Fixed after an eighth real test:** even with the backward-scan fix from
 the seventh test in place and a confirmed rebuild, `daily_profile_export.csv`
 still produced a garbage row -- `0004-62-75,NQ,0,0,0` -- nearly identical to

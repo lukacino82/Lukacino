@@ -211,21 +211,21 @@ float LastArrayValue(SCFloatArray& array) {
     return array.GetArraySize() > 0 ? array[array.GetArraySize() - 1] : 0.0f;
 }
 
-// The Volume Value Area Lines study runs on its own "Time Period Type =
-// Days" chart with developing lines off, so its own new daily bar can
-// already exist by the time this fires -- that bar's VAH/VAL/POC subgraph
-// value stays 0.0 until its period actually closes, because developing
-// values are switched off. That chart's own day boundary (typically
-// calendar midnight) doesn't necessarily line up with the session-based
-// trading-day boundary used elsewhere in this file, so its last bar can be
-// "today, still empty" exactly when this export fires. 0.0 is never a
-// plausible real price level, so treat it as "not ready yet" and fall back
-// to the previous (fully closed) bar instead.
+// The Volume Value Area Lines study's own chart doesn't necessarily have
+// "1 bar = 1 day": with developing lines off, every bar belonging to
+// today's still-open trading day reads 0.0 until the day actually closes,
+// and today's forming day can already span more than one trailing bar by
+// the time this fires (confirmed against a real chart: a single
+// fall-back-one-bar attempt still read 0.0 -- VAHArraySize=1800,
+// VAH[last]=0 -- because more than one trailing bar belonged to the still-
+// open day). 0.0 is never a plausible real price level, so scan backward
+// for the last actually-computed (non-zero) value instead of assuming it's
+// exactly one or two bars back.
 float LastClosedProfileValue(SCFloatArray& array) {
-    const int size = array.GetArraySize();
-    if (size < 1) return 0.0f;
-    if (array[size - 1] != 0.0f || size < 2) return array[size - 1];
-    return array[size - 2];
+    for (int i = array.GetArraySize() - 1; i >= 0; --i)
+        if (array[i] != 0.0f)
+            return array[i];
+    return 0.0f;
 }
 
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
