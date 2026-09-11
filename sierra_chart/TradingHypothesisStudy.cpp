@@ -634,6 +634,32 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         }
     }
 
+    // Confirmed by the subgraph probe: subgraphs 0-2 on the Volume Value
+    // Area Lines study exist (size=1800, matching this chart's bar count)
+    // but scan as 0.0 across the ENTIRE array, and subgraphs 3-9 don't
+    // exist at all (size=0) -- so there's no separate "non-developing"
+    // subgraph hiding the real data either. Working theory: with "Draw
+    // Developing Value Area Lines=No", this study may never write these
+    // subgraphs at all (drawing the visible lines through some other,
+    // non-subgraph mechanism), rather than writing them only for closed
+    // days. Log the LIVE last-bar value every time it actually changes
+    // (not gated on a day rollover) so toggling "Draw Developing Value
+    // Area Lines" to Yes on that study (chart 2) and watching this log can
+    // confirm or rule that out without waiting for the next real day
+    // change.
+    {
+        double& LastLoggedLiveVAH = sc.GetPersistentDouble(3);
+        const float currentVAH = LastArrayValue(VAHArray);
+        if (currentVAH != static_cast<float>(LastLoggedLiveVAH))
+        {
+            std::stringstream live;
+            live << "Trading Hypothesis Display: live VAH subgraph value changed to " << currentVAH
+                 << " (VAHArraySize=" << VAHArray.GetArraySize() << ")";
+            sc.AddMessageToLog(live.str().c_str(), 0);
+            LastLoggedLiveVAH = currentVAH;
+        }
+    }
+
     // --- 2. Throttle bridge-file reads/writes to Input_RefreshIntervalSeconds --
     double& LastRefreshUnixTime = sc.GetPersistentDouble(1);
     const time_t nowTimeT = time(nullptr);
