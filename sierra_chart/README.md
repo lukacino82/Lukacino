@@ -10,7 +10,16 @@
    separate from whatever "Volume Profile" / TPO Profile study you use for
    your own visual analysis — that one only exposes Color subgraphs over
    ACSIL, not numeric POC/VAH/VAL; confirmed both from Sierra Chart's own
-   docs/support board and from a real chart's Subgraphs tab). Configure it:
+   docs/support board and from a real chart's Subgraphs tab). **Confirmed by
+   a real test: this must be a regular OHLC or volume-bar chart, not a TPO /
+   Market Profile chart type** — a TPO-type chart's own native "Highlight
+   TPO Value Area"/"Highlight TPO POC" display looks identical on screen but
+   is baked into the chart engine with no subgraphs at all, and a Volume
+   Value Area Lines study added to that same TPO chart never computes
+   anything (stays 0 forever). Check the chart's own Settings dialog title
+   bar first — if it reads like "... Period: 1 Days, TPOs: 0.50 x 30 min",
+   it's a TPO chart; use a different chart of the same instrument instead.
+   Configure the study:
    - `Draw Developing Value Area Lines` = No
    - `Time Period Type` = Days, `Time Period Length` = 1
    - Optionally check `Hide Study` — it only needs to exist for ACSIL to
@@ -84,6 +93,35 @@ resolve to real, already-calculated studies (same "array size 0" check as
 above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
+
+**Fixed after an eleventh real test:** even with "Draw Developing Value Area
+Lines" switched to Yes (ruling out the tenth test's hypothesis), VAH/VAL/POC
+still came back 0 -- but `live_state.csv`'s VWAP/delta columns (read via the
+exact same cross-chart array function) had real, non-zero values the whole
+time, proving the read mechanism itself was fine. The real cause: the chart
+the Volume Value Area Lines study was attached to (Chart Studies dialog,
+`ID:1`) turned out to be a native **TPO / Market Profile chart type**
+(Settings dialog titled "... Period: 1 Days, TPOs: 0.50 x 30 min"), not a
+regular OHLC chart -- its own "Highlight TPO Value Area" / "Highlight TPO
+POC" inputs are what actually drew the value-area rows and POC line the
+chart visibly showed. That native TPO profile display is baked into the
+chart engine itself and has no subgraphs at all; it is not the same thing as
+a "Volume Value Area Lines" study and can't be read via ACSIL. The Volume
+Value Area Lines study instance living on that same TPO chart (a genuinely
+separate, second item in the Chart Studies list) really was just never
+computing anything. **Fix: add/use the Volume Value Area Lines study on a
+normal (non-TPO) OHLC or volume-bar chart of the same instrument instead**,
+and point `Volume Value Area Lines Chart Number`/`...Study ID` at that chart
+and its `ID:` there. Confirmed working on a real test: switching to a plain
+"5000 Volume" chart's own Volume Value Area Lines instance made
+`live VAH subgraph value` immediately report real prices (`29488.8`,
+`29489.2`) instead of `0`.
+
+Updated the Install section above (step 3) to call this out explicitly:
+double-check that whatever chart you add Volume Value Area Lines to is a
+regular price/volume chart, not a TPO or Market/Volume Profile chart type --
+those have their own native value-area display that looks identical at a
+glance but is architecturally unrelated and unreadable from ACSIL.
 
 **Diagnosing a tenth real test:** even with the ninth test's full backward
 scan in place, VAH/VAL/POC still exported as 0. A raw dump of the array at a
