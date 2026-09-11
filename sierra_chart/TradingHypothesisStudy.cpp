@@ -576,6 +576,31 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                      << " POC[scanned]=" << LastClosedProfileValue(POCArray);
                 sc.AddMessageToLog(diag.str().c_str(), 0);
 
+                // The chart visibly draws real, distinct value-area levels
+                // per day, yet both the last value and a full backward scan
+                // of VAHArray came back 0.0 in a real test -- something
+                // doesn't add up between what's drawn and what
+                // GetStudyArrayFromChartUsingID returns for this subgraph.
+                // Dump raw values at a spread of indices (not just the
+                // ends) so the actual fill pattern is visible instead of
+                // guessed at: are there really no non-zero floats anywhere
+                // in this array, or did the earlier scan/last-value checks
+                // have a bug?
+                {
+                    const int n = VAHArray.GetArraySize();
+                    std::stringstream dump;
+                    dump << "Trading Hypothesis Display: VAHArray raw dump (size=" << n << "):";
+                    const int sampleIndices[] = { n - 1, n - 2, n - 3, n - 5, n - 10,
+                        n - 20, n - 50, n - 100, n - 200, n - 500, n - 1000, n - 1500, 0 };
+                    for (int idx : sampleIndices)
+                    {
+                        if (idx < 0 || idx >= n)
+                            continue;
+                        dump << " [" << idx << "]=" << VAHArray[idx];
+                    }
+                    sc.AddMessageToLog(dump.str().c_str(), 0);
+                }
+
                 std::ofstream out(dailyProfilePath, std::ios::app);
                 if (out.is_open())
                 {
