@@ -85,6 +85,23 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
+**Fixed after a seventh real test:** even with the date bug, the Volume
+Value Area Lines Study ID, and the duplicate chart-3 instance all fixed,
+`daily_profile_export.csv` still never got a real row across an entire
+trading day. Cause: the day-rollover check compared only the chart's last
+two bars to detect "the day just changed" -- but this study is non-looping
+(`sc.AutoLoop=0`), so a full recalculation (a DLL rebuild, a settings
+change on this or a cross-chart study, or Sierra Chart itself being closed
+across the rollover) calls it just once with the chart already several
+bars or days past the boundary. The two-bar comparison then never fires,
+and that day's export is silently, permanently skipped -- with no error,
+since nothing actually failed. This session triggered several full
+recalculations right around a session boundary while debugging the other
+issues, which is almost certainly why no real row ever appeared. Fixed by
+scanning backward for the last bar of the most recently closed day
+whenever the current day differs from what's already been exported,
+instead of assuming the transition happened on the last two bars.
+
 **Fixed after a sixth real test:** the hypothesis text box (`hypothesis.txt`
 drawn on the chart) was being written and drawn correctly -- confirmed via
 `sc.UseTool()` running with no error -- but was invisible on a real chart

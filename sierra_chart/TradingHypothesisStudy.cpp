@@ -488,7 +488,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // doesn't reliably indicate a real, resolved study.
     if (sc.ArraySize > 1 && Input_VP_StudyID.GetInt() > 0)
     {
-        const int lastClosedBar = sc.ArraySize - 2; // last fully closed bar
+        const int lastBar = sc.ArraySize - 1;
         // sc.GetTradingDayDate() returns a plain int already in YYYYMMDD
         // format (confirmed by the real compiler: chaining .GetDate()
         // straight onto its return fails to compile because the return
@@ -500,35 +500,60 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // real daily_profile_export.csv: this previously produced garbage
         // like "0004-62-73" instead of a real calendar date. Use the int
         // directly, no SCDateTime involved.
-        const int lastClosedYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]);
-        const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[sc.ArraySize - 1]);
-        if (currentTradingDayYYYYMMDD != lastClosedYYYYMMDD
-            && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
+        const int currentTradingDayYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastBar]);
+
+        // Don't rely on catching the exact bar where the day changes (the
+        // previous version compared only the last two bars): a full
+        // recalculation -- triggered by a DLL rebuild, a settings change on
+        // this or a cross-chart study, or Sierra Chart itself being closed
+        // across the rollover -- calls this non-looping (sc.AutoLoop=0)
+        // function just once with the chart already several bars (or days)
+        // past the boundary. The last-two-bars comparison then never fires,
+        // and the whole day silently, permanently goes unexported.
+        // Confirmed against a real chart: multiple full recalculations
+        // during a session boundary meant daily_profile_export.csv never
+        // got a real row at all. Instead, whenever the last bar's day
+        // differs from what's already been exported, scan backward for the
+        // last bar that still belongs to the most recently closed day.
+        if (currentTradingDayYYYYMMDD != LastExportedDateYYYYMMDD)
         {
-            std::ofstream out(dailyProfilePath, std::ios::app);
-            if (out.is_open())
+            int lastClosedBar = lastBar;
+            while (lastClosedBar > 0
+                && sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]) == currentTradingDayYYYYMMDD)
+                --lastClosedBar;
+            const int lastClosedYYYYMMDD = sc.GetTradingDayDate(sc.BaseDateTimeIn[lastClosedBar]);
+
+            // lastClosedYYYYMMDD == currentTradingDayYYYYMMDD here means the
+            // whole chart is a single, still-open day -- nothing has closed
+            // yet to export.
+            if (lastClosedYYYYMMDD != currentTradingDayYYYYMMDD
+                && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
             {
-                out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
-                    << LastArrayValue(VALArray) << "," << LastArrayValue(VAHArray) << ","
-                    << LastArrayValue(POCArray) << "\n";
-                // Only remember this day as exported once the write actually
-                // succeeded — otherwise a transient failure (e.g. the
-                // directory not existing yet) would silently and permanently
-                // skip this day, with no file ever produced and no retry.
-                LastExportedDateYYYYMMDD = lastClosedYYYYMMDD;
-            }
-            else
-            {
-                // errno alone won't say "another process has this file open"
-                // on Windows (that's a sharing violation, not something
-                // fstream/errno models) but it does distinguish that from a
-                // real permissions/path problem, which "could not open" alone
-                // never did -- see the same reasoning on the live_state.csv
-                // write below.
-                std::string msg = "Trading Hypothesis Display: could not open "
-                                 + dailyProfilePath + " for writing: "
-                                 + std::strerror(errno) + " (errno " + std::to_string(errno) + ").";
-                sc.AddMessageToLog(msg.c_str(), 1);
+                std::ofstream out(dailyProfilePath, std::ios::app);
+                if (out.is_open())
+                {
+                    out << FormatISODateFromYYYYMMDD(lastClosedYYYYMMDD) << "," << instrument << ","
+                        << LastArrayValue(VALArray) << "," << LastArrayValue(VAHArray) << ","
+                        << LastArrayValue(POCArray) << "\n";
+                    // Only remember this day as exported once the write actually
+                    // succeeded — otherwise a transient failure (e.g. the
+                    // directory not existing yet) would silently and permanently
+                    // skip this day, with no file ever produced and no retry.
+                    LastExportedDateYYYYMMDD = lastClosedYYYYMMDD;
+                }
+                else
+                {
+                    // errno alone won't say "another process has this file open"
+                    // on Windows (that's a sharing violation, not something
+                    // fstream/errno models) but it does distinguish that from a
+                    // real permissions/path problem, which "could not open" alone
+                    // never did -- see the same reasoning on the live_state.csv
+                    // write below.
+                    std::string msg = "Trading Hypothesis Display: could not open "
+                                     + dailyProfilePath + " for writing: "
+                                     + std::strerror(errno) + " (errno " + std::to_string(errno) + ").";
+                    sc.AddMessageToLog(msg.c_str(), 1);
+                }
             }
         }
     }
