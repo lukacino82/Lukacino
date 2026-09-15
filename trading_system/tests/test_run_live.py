@@ -2,7 +2,14 @@ from datetime import date, datetime
 
 import pytest
 
-from trading_system.bridge.csv_bridge import LiveMarketState, read_composites, read_hypothesis, write_daily_profiles, write_live_state
+from trading_system.bridge.csv_bridge import (
+    LiveMarketState,
+    read_composites,
+    read_hypothesis,
+    read_live_state_history,
+    write_daily_profiles,
+    write_live_state,
+)
 from trading_system.composite.engine import CompositeEngine
 from trading_system.composite.models import DailyProfile
 from trading_system.engine import LiveEngine
@@ -56,6 +63,59 @@ def test_tick_writes_hypothesis_end_to_end(tmp_path):
     # a missing file once this process is running.
     assert composites_path.exists()
     assert read_composites(composites_path) == []
+
+
+def test_tick_appends_to_history_and_dedupes_unchanged_snapshots(tmp_path):
+    instrument_dir = tmp_path / "NQ"
+    instrument_dir.mkdir()
+    live_state_path = instrument_dir / "live_state.csv"
+    history_path = instrument_dir / "historical_intraday.csv"
+
+    state = LiveMarketState(
+        instrument="NQ",
+        timestamp=datetime(2026, 9, 10, 14, 0, 0),
+        last_price=102.0,
+        session_open=105.0,
+        vwap_monthly=95.0,
+        vwap_weekly=110.0,
+        vwap_intraday=100.0,
+        cum_delta=50.0,
+    )
+    write_live_state(live_state_path, state)
+    composite_engine = CompositeEngine()
+    engine = LiveEngine("NQ")
+
+    # Two polls before ACSIL has refreshed live_state.csv again -- must not
+    # write the same snapshot to history twice (see _append_new_history_row).
+    for _ in range(2):
+        _tick(
+            engine,
+            composite_engine,
+            set(),
+            INSTRUMENT_CONFIGS["NQ"],
+            live_state_path,
+            instrument_dir / "daily_profile_export.csv",
+            instrument_dir / "composites.csv",
+            instrument_dir / "hypothesis.txt",
+            history_path,
+        )
+    assert read_live_state_history(history_path) == [state]
+
+    # A genuine new refresh (later timestamp) must append a second row.
+    later_state = LiveMarketState(**{**state.__dict__, "timestamp": datetime(2026, 9, 10, 14, 0, 5)})
+    write_live_state(live_state_path, later_state)
+    _tick(
+        engine,
+        composite_engine,
+        set(),
+        INSTRUMENT_CONFIGS["NQ"],
+        live_state_path,
+        instrument_dir / "daily_profile_export.csv",
+        instrument_dir / "composites.csv",
+        instrument_dir / "hypothesis.txt",
+        history_path,
+    )
+    assert read_live_state_history(history_path) == [state, later_state]
 
 
 def test_tick_is_a_noop_when_live_state_missing(tmp_path):

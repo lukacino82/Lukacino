@@ -144,6 +144,34 @@ def read_live_state(path: Path) -> Optional[LiveMarketState]:
     return _live_state_from_row(row)
 
 
+def append_live_state(path: Path, state: LiveMarketState) -> None:
+    """Appends one snapshot to a growing historical series.
+
+    Unlike ``write_live_state`` (which overwrites in place -- the live
+    single-row file ACSIL refreshes), this builds up the kind of file
+    ``read_live_state_history`` reads for a backtest replay: writes the
+    header only the first time (when ``path`` doesn't exist yet), then
+    appends one row per call after that.
+    """
+    is_new = not path.exists()
+    with open(path, "a", newline="") as f:
+        writer = csv.writer(f)
+        if is_new:
+            writer.writerow(LIVE_STATE_FIELDS)
+        writer.writerow(
+            [
+                state.timestamp.isoformat(),
+                state.instrument,
+                state.last_price,
+                state.session_open,
+                state.vwap_monthly,
+                state.vwap_weekly,
+                state.vwap_intraday,
+                state.cum_delta,
+            ]
+        )
+
+
 def read_live_state_history(path: Path) -> List[LiveMarketState]:
     """Reads every row as a chronological series of snapshots.
 

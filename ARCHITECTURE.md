@@ -233,6 +233,13 @@ debugging.
      instrument, same as the ACSIL Study ID/Chart Number setup. All
      threshold values (not the NQ tick specs, which are real contract
      facts) are still marked "not calibrated" — same open item as
+     regime.py's thresholds. Pass `--history-out <path>` to also append
+     every new `live_state.csv` snapshot (deduped on timestamp) to a
+     growing historical CSV in the same column shape — this is what turns
+     into real input for `trading_system/backtest/replay.py` /
+     `run_backtest.py` after it's run for a while, since there's still no
+     ACSIL-side historical VWAP/delta export to produce that file any other
+     way. Omitting the flag runs exactly as before (no history logging).
      `regime.py`'s thresholds.
    Order management / mode switching inputs are declared but not wired to
    any order logic yet (Step 4).
@@ -300,11 +307,14 @@ debugging.
    `runner` are recorded as "also reached" but don't change the primary
    call, and a hypothesis with no `target_1` at all is counted separately
    (`skipped_no_target`) rather than dropped or force-scored. There is
-   deliberately no ACSIL-side historical VWAP/delta export yet to feed this
-   from a real chart — the harness itself and its tests (synthetic data) are
-   what's built; producing a real historical intraday CSV from Sierra Chart
-   is the next practical step before this can calibrate `regime.py`'s
-   thresholds against real NQ history.
+   deliberately no ACSIL-side historical VWAP/delta export -- `run_live.py`'s
+   new `--history-out` flag (see above) is what accumulates a real
+   historical CSV over time instead, by logging `live_state.csv` snapshots
+   as they happen rather than exporting them retroactively from Sierra
+   Chart. Once that's run for a while, it's the direct input this harness
+   needs to actually calibrate `regime.py`'s thresholds against real NQ
+   history — until then this remains proven only against the harness's own
+   synthetic-data tests.
 7. News filter, position recovery after Sierra Chart restart, multi-timeframe
    chart sync — tracked so they aren't forgotten, not blocking Step 1–3
 

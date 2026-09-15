@@ -2,10 +2,12 @@ from datetime import date, datetime
 
 from trading_system.bridge.csv_bridge import (
     LiveMarketState,
+    append_live_state,
     read_composites,
     read_daily_profiles,
     read_hypothesis,
     read_live_state,
+    read_live_state_history,
     write_composites,
     write_daily_profiles,
     write_hypothesis,
@@ -24,6 +26,21 @@ def test_daily_profiles_round_trip(tmp_path):
     write_daily_profiles(path, profiles)
     result = read_daily_profiles(path)
     assert result == profiles
+
+
+def test_append_live_state_builds_a_history_read_back_in_order(tmp_path):
+    path = tmp_path / "historical_intraday.csv"
+    states = [
+        LiveMarketState("NQ", datetime(2024, 1, 2, 9, 30), 101.0, 100.5, 95.0, 95.0, 103.0, 0.0),
+        LiveMarketState("NQ", datetime(2024, 1, 2, 9, 31), 102.0, 100.5, 95.0, 95.0, 103.0, 10.0),
+    ]
+    for state in states:
+        append_live_state(path, state)
+
+    result = read_live_state_history(path)
+    assert result == states
+    # Only one header line -- append_live_state must not rewrite it on later calls.
+    assert path.read_text().count("timestamp,instrument") == 1
 
 
 def test_active_composite_round_trip(tmp_path):

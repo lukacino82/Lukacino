@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Dict, Optional, Set
 
 from .bridge.csv_bridge import (
+    append_live_state,
     read_daily_profiles,
     read_live_state,
+    read_live_state_history,
     write_composites,
     write_hypothesis,
 )
@@ -61,6 +63,26 @@ def _most_recent_profile(daily_profile_path: Path) -> Optional[DailyProfile]:
     return max(profiles, key=lambda p: p.session_date) if profiles else None
 
 
+def _append_new_history_row(history_path: Optional[Path], state) -> None:
+    """No-op unless ``--history-out`` was passed. Dedupes on timestamp so
+    polling faster than ACSIL's own refresh interval doesn't write the same
+    snapshot twice -- this is the historical_intraday.csv the backtest
+    harness (trading_system/backtest/replay.py) reads via
+    read_live_state_history, so duplicate rows would double-count that tick.
+    Re-reads the whole file each call to find the last row, same tradeoff
+    _most_recent_profile already makes for daily_profile_export.csv --
+    fine at 5s polling, would need revisiting for a very long-running
+    history file.
+    """
+    if history_path is None:
+        return
+    if history_path.exists():
+        existing = read_live_state_history(history_path)
+        if existing and existing[-1].timestamp == state.timestamp:
+            return  # ACSIL hasn't refreshed since the last poll -- same snapshot
+    append_live_state(history_path, state)
+
+
 def _tick(
     engine: LiveEngine,
     composite_engine: CompositeEngine,
@@ -70,12 +92,14 @@ def _tick(
     daily_profile_path: Path,
     composites_path: Path,
     hypothesis_path: Path,
+    history_path: Optional[Path] = None,
 ) -> None:
     if not live_state_path.exists():
         return  # ACSIL hasn't written a snapshot yet
     state = read_live_state(live_state_path)
     if state is None:
         return  # header written but no data row yet
+    _append_new_history_row(history_path, state)
 
     if daily_profile_path.exists():
         for profile in read_daily_profiles(daily_profile_path):
@@ -99,7 +123,7 @@ def _tick(
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
 
 
-def run(bridge_dir: Path, instrument: str) -> None:
+def run(bridge_dir: Path, instrument: str, history_path: Optional[Path] = None) -> None:
     if instrument not in INSTRUMENT_CONFIGS:
         known = ", ".join(sorted(INSTRUMENT_CONFIGS)) or "(none configured)"
         raise ValueError(
@@ -132,6 +156,7 @@ def run(bridge_dir: Path, instrument: str) -> None:
                 daily_profile_path,
                 composites_path,
                 hypothesis_path,
+                history_path,
             )
         except FileNotFoundError:
             pass  # ACSIL hasn't created the bridge folder yet
@@ -144,5 +169,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--bridge-dir", required=True)
     parser.add_argument("--instrument", required=True)
+    parser.add_argument(
+        "--history-out",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to append every new live_state.csv snapshot to, building up "
+            "real intraday history for trading_system/run_backtest.py / threshold "
+            "calibration over time. Omit to run exactly as before (no history logging)."
+        ),
+    )
     args = parser.parse_args()
-    run(Path(args.bridge_dir), args.instrument)
+    run(Path(args.bridge_dir), args.instrument, args.history_out)
