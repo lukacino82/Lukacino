@@ -284,8 +284,27 @@ debugging.
      `run_live.py` writing it itself via a direct API integration. `record.py`
      works for either path unchanged; only how the record reaches Notion
      differs.
-6. Backtest harness over historical Sierra Chart exports, before anything
-   trades on a live or even sim account
+6. ~~Backtest harness~~ (Step 6, done): `trading_system/backtest/replay.py`
+   replays a chronological history of `DailyProfile` rows (any real,
+   accumulated `daily_profile_export.csv` works unchanged) and
+   `LiveMarketState` snapshots (same column shape as `live_state.csv`, but
+   many historical rows instead of one) through the exact same `LiveEngine`
+   production uses — same `INSTRUMENT_CONFIGS` thresholds, via
+   `trading_system/run_backtest.py`'s CLI, so a backtest can never silently
+   drift out of sync with what `run_live.py` actually does. Lookahead is
+   avoided explicitly (a day's profile only becomes visible once the
+   intraday clock has passed it, mirroring the guarantee ACSIL gives
+   `run_live.py` for free), and only one trade is tracked open at a time
+   (the SEMI_AUTO "one trader, one instrument" model) with outcome judged as
+   win/loss against `target_1` vs. the invalidation (stop) — `target_2`/
+   `runner` are recorded as "also reached" but don't change the primary
+   call, and a hypothesis with no `target_1` at all is counted separately
+   (`skipped_no_target`) rather than dropped or force-scored. There is
+   deliberately no ACSIL-side historical VWAP/delta export yet to feed this
+   from a real chart — the harness itself and its tests (synthetic data) are
+   what's built; producing a real historical intraday CSV from Sierra Chart
+   is the next practical step before this can calibrate `regime.py`'s
+   thresholds against real NQ history.
 7. News filter, position recovery after Sierra Chart restart, multi-timeframe
    chart sync — tracked so they aren't forgotten, not blocking Step 1–3
 

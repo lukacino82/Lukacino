@@ -115,13 +115,7 @@ def write_live_state(path: Path, state: LiveMarketState) -> None:
         )
 
 
-def read_live_state(path: Path) -> Optional[LiveMarketState]:
-    """Returns ``None`` if ACSIL hasn't written a snapshot yet (empty/missing rows)."""
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        row = next(reader, None)
-    if row is None:
-        return None
+def _live_state_from_row(row: dict) -> LiveMarketState:
     return LiveMarketState(
         instrument=row["instrument"],
         timestamp=datetime.fromisoformat(row["timestamp"]),
@@ -132,6 +126,36 @@ def read_live_state(path: Path) -> Optional[LiveMarketState]:
         vwap_intraday=float(row["vwap_intraday"]),
         cum_delta=float(row["cum_delta"]),
     )
+
+
+def read_live_state(path: Path) -> Optional[LiveMarketState]:
+    """Returns ``None`` if ACSIL hasn't written a snapshot yet (empty/missing rows).
+
+    Only reads the first row: ``live_state.csv`` is overwritten in place on
+    every refresh, so it only ever has one data row on the live side. For a
+    historical *series* of snapshots (a backtest replay), use
+    ``read_live_state_history`` instead.
+    """
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        row = next(reader, None)
+    if row is None:
+        return None
+    return _live_state_from_row(row)
+
+
+def read_live_state_history(path: Path) -> List[LiveMarketState]:
+    """Reads every row as a chronological series of snapshots.
+
+    Same column format as ``live_state.csv``, but meant for a file someone
+    has appended to over time (a backtest's historical input), not the
+    single-row file ACSIL overwrites live. Rows are returned in file order —
+    callers that need chronological order should sort by ``.timestamp``
+    themselves if the source file isn't already sorted.
+    """
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        return [_live_state_from_row(row) for row in reader]
 
 
 def write_composites(path: Path, composites: Iterable[Composite]) -> None:
