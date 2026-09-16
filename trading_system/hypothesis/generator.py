@@ -150,6 +150,18 @@ def _a_day_hypothesis(
     runner = _strongest_composite_target(composites, state.last_price, long)
     invalidation = _opposing_invalidation(composites, state.last_price, long, fallback=state.session_open)
 
+    # The session_open fallback (only used when no composite gives a real
+    # invalidation level) is nothing but the day's opening print -- there's
+    # no guarantee it sits on the correct side of entry. A real live run
+    # showed it doesn't always: price can already have moved past the
+    # session open in either direction before this hypothesis fires,
+    # putting the "invalidation" on the WRONG side of both entry and the
+    # target (a short with its stop below the target it's aiming at).
+    # Proposing a trade with a backwards risk level is worse than proposing
+    # none -- same principle as B-day's missing-target_1 case below.
+    if (long and invalidation >= state.last_price) or (not long and invalidation <= state.last_price):
+        return None
+
     thesis = (
         f"Price {'below' if long else 'above'} intraday VWAP on a range day -- "
         f"expect reversion toward intraday VWAP ({state.vwap_intraday:.2f})."

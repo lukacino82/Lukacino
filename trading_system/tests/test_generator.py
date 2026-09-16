@@ -50,7 +50,10 @@ def test_unclear_regime_produces_no_hypothesis():
 
 
 def test_a_day_long_when_price_below_intraday_vwap():
-    state = _state(price=95.0, intraday=100.0)
+    # session_open below entry -- the fallback invalidation must land on
+    # the correct (below-entry) side for this hypothesis to be proposed
+    # at all, see test_a_day_no_hypothesis_when_session_open_fallback_... below.
+    state = _state(price=95.0, intraday=100.0, session_open=90.0)
     result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.NEUTRAL)
     assert result is not None
     assert result.type == HypothesisType.A_LONG
@@ -58,7 +61,7 @@ def test_a_day_long_when_price_below_intraday_vwap():
 
 
 def test_a_day_short_when_price_above_intraday_vwap():
-    state = _state(price=105.0, intraday=100.0)
+    state = _state(price=105.0, intraday=100.0, session_open=110.0)
     result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_ABOVE, DeltaSignal.NEUTRAL)
     assert result is not None
     assert result.type == HypothesisType.A_SHORT
@@ -70,8 +73,25 @@ def test_a_day_no_hypothesis_when_price_at_intraday_vwap():
     assert result is None
 
 
+def test_a_day_no_hypothesis_when_session_open_fallback_is_on_the_wrong_side_short():
+    """Reproduces a real live run: price already traded above the session
+    open before this A-short setup fired, so falling back to session_open
+    as the invalidation would put the stop BELOW both entry and the target
+    -- a backwards risk level. Must return None, not a broken hypothesis.
+    """
+    state = _state(price=105.0, intraday=100.0, session_open=95.0)  # open is below price -- wrong side for a short
+    result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_ABOVE, DeltaSignal.NEUTRAL)
+    assert result is None
+
+
+def test_a_day_no_hypothesis_when_session_open_fallback_is_on_the_wrong_side_long():
+    state = _state(price=95.0, intraday=100.0, session_open=105.0)  # open is above price -- wrong side for a long
+    result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.NEUTRAL)
+    assert result is None
+
+
 def test_a_day_target_falls_back_to_intraday_vwap_with_no_composites():
-    state = _state(price=95.0, intraday=100.0)
+    state = _state(price=95.0, intraday=100.0, session_open=90.0)
     result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.NEUTRAL)
     assert result.target_1 == 100.0
     assert result.target_2 is None
@@ -93,7 +113,7 @@ def test_a_day_uses_nearest_composite_as_target_and_defends_invalidation():
 
 
 def test_a_day_confluence_a_plus_with_supporting_delta_and_target():
-    state = _state(price=95.0, intraday=100.0)
+    state = _state(price=95.0, intraday=100.0, session_open=90.0)
     composites = [_composite(val=98.0, vah=99.0, day_count=3)]
     result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.DIVERGENCE, composites)
     assert result.confluence == Confluence.A_PLUS
@@ -101,7 +121,7 @@ def test_a_day_confluence_a_plus_with_supporting_delta_and_target():
 
 
 def test_a_day_confluence_weak_when_delta_confirms_the_move_away_from_mean():
-    state = _state(price=95.0, intraday=100.0)
+    state = _state(price=95.0, intraday=100.0, session_open=90.0)
     result = generate_hypothesis(state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.CONFIRMING)
     assert result.confluence == Confluence.WEAK
     assert not result.is_primary

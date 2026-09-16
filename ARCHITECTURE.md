@@ -212,6 +212,24 @@ debugging.
      `INSTRUMENT_CONFIGS` as a less-obviously-wrong placeholder; still not
      a real calibration, which needs a distribution across many real
      days/times-of-day, not one sample.
+     **First real hypothesis output** (2026-09-16, once `delta_imbalance`
+     and the running process were both fixed) surfaced a genuine
+     correctness bug, not a calibration gap: `_a_day_hypothesis`'s
+     `invalidation` falls back to `state.session_open` whenever no
+     composite gives a real stop level, but nothing ever checked that
+     `session_open` actually sits on the correct side of entry (below for
+     a long, above for a short). The live output showed an `A_SHORT` with
+     `Invalidation: 29286.80` sitting *below both* `Entry: 29452.80` and
+     `Targets: T1 29419.80` -- a backwards stop, since price had already
+     traded past the session open before the setup fired. Fixed by
+     rejecting the hypothesis entirely (returning `None`) whenever the
+     computed invalidation lands on the wrong side, same principle as
+     B-day's missing-`target_1` case just above -- proposing a trade with
+     a broken risk level is worse than proposing none. Two of the existing
+     `test_generator.py` fixtures had `session_open` on the wrong side too
+     (they just never asserted on `invalidation`, so the bug was invisible
+     to them) and needed fixing alongside two new tests reproducing the
+     real failure directly.
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads
