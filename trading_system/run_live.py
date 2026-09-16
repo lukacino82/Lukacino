@@ -51,7 +51,18 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
         price_move_threshold=5.0,  # NQ points -- placeholder, not calibrated
         delta_move_threshold=500.0,  # placeholder, not calibrated
         gap_threshold_fraction=0.25,  # placeholder, not calibrated
-        delta_imbalance=1000.0,  # placeholder, not calibrated
+        # Bumped from the original 1000.0 placeholder after a real
+        # --history-out sample (2026-09-15, 19:17-19:24 ET) showed NQ's
+        # cum_delta already sitting at 4600-4800 within that single 7-minute
+        # window -- 1000 would have made "balanced_delta" (required for
+        # A_DAY) essentially never true, and the backtest's regime_counts
+        # diagnostic confirmed 100% UNCLEAR against that data. 5000 isn't a
+        # calibrated number either (still needs a real distribution across
+        # many days, ideally by time-of-day since cum_delta only grows
+        # through the session) -- it's a less-obviously-wrong placeholder so
+        # near-term backtests have a chance to see A_DAY at all while more
+        # history accumulates.
+        delta_imbalance=5000.0,
     ),
 }
 

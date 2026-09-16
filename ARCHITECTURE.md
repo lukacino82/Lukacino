@@ -192,6 +192,26 @@ debugging.
      like the composite merge/invalidation percentages above, check them
      against real NQ chart examples (cum_delta magnitude especially varies
      wildly by instrument) before trusting this for a real hypothesis.
+     **First real backtest run** (a `--history-out` sample from
+     2026-09-15, 19:17-19:24 ET) confirmed a real limitation rather than a
+     bug: `regime_counts` came back 100% `UNCLEAR` for that window, because
+     `session_open` sat *inside* yesterday's value area (`small_gap=True`,
+     fixed for the whole session) while `cum_delta` (~4600-4800, one-sided)
+     and the tier bias (BEARISH, not neutral) both looked B-day-like —
+     `classify_regime` requires all three of `small_gap`/`balanced_delta`/
+     `price_between_tiers` to agree, and `small_gap` can never flip mid-
+     session once set at the open. This matches the source skill's own
+     B-day definition exactly ("gap ven z VA" is one of its three signs) —
+     asked the user whether to loosen this for a session that trends
+     without an opening gap, and the answer was to **keep the strict,
+     gap-required definition as-is**, faithful to the skill, rather than
+     inventing a new "intraday trend without a gap" regime. Separately,
+     that same sample also showed `delta_imbalance=1000.0` was clearly far
+     too low for NQ (real `cum_delta` was already 4.6-4.8x over it within a
+     single 7-minute window) — bumped to `5000.0` in `run_live.py`'s
+     `INSTRUMENT_CONFIGS` as a less-obviously-wrong placeholder; still not
+     a real calibration, which needs a distribution across many real
+     days/times-of-day, not one sample.
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads
