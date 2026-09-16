@@ -15,7 +15,7 @@ from datetime import date, datetime
 from trading_system.backtest.replay import BacktestConfig, TradeStatus, run_backtest
 from trading_system.bridge.csv_bridge import LiveMarketState
 from trading_system.composite.models import DailyProfile
-from trading_system.hypothesis.generator import HypothesisType
+from trading_system.hypothesis.generator import Confluence, HypothesisType
 from trading_system.risk.sizing import SizingConfig, SizingMode
 
 INSTRUMENT = "NQ"
@@ -118,6 +118,38 @@ def test_no_new_signal_is_opened_while_a_trade_is_still_active() -> None:
     assert report.trades[0].status == TradeStatus.WIN
     assert report.trades[1].status == TradeStatus.LOSS
     assert report.win_rate == 0.5
+
+
+def test_report_groups_by_hypothesis_type_and_confluence() -> None:
+    """Same win-then-loss sequence as
+    test_no_new_signal_is_opened_while_a_trade_is_still_active -- both
+    trades are A_LONG/CLEAN here, so the grouped stats for that one bucket
+    must equal the report's own overall totals, and no other bucket exists.
+    """
+    states = [
+        _a_day_state(datetime(2024, 1, 2, 9, 30), last_price=101.0),
+        _a_day_state(datetime(2024, 1, 2, 9, 31), last_price=101.2),
+        _a_day_state(datetime(2024, 1, 2, 9, 32), last_price=103.5),  # WIN
+        _a_day_state(datetime(2024, 1, 2, 9, 33), last_price=101.5),
+        _a_day_state(datetime(2024, 1, 2, 9, 34), last_price=100.0),  # LOSS
+    ]
+
+    report = run_backtest(INSTRUMENT, [YESTERDAY], states, CONFIG)
+
+    by_type = report.by_hypothesis_type()
+    assert set(by_type) == {HypothesisType.A_LONG}
+    stats = by_type[HypothesisType.A_LONG]
+    assert stats.trades == 2
+    assert stats.wins == 1
+    assert stats.losses == 1
+    assert stats.open_count == 0
+    assert stats.win_rate == report.win_rate
+    assert stats.total_r == report.total_r
+    assert stats.average_r == report.average_r
+
+    by_confluence = report.by_confluence()
+    assert set(by_confluence) == {Confluence.CLEAN}
+    assert by_confluence[Confluence.CLEAN] == stats  # same two trades, same numbers
 
 
 def test_same_day_profile_is_not_usable_as_yesterday_no_lookahead() -> None:

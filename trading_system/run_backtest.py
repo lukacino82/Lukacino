@@ -23,9 +23,18 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .backtest.replay import BacktestConfig, BacktestReport, run_backtest
+from .backtest.replay import BacktestConfig, BacktestReport, GroupStats, run_backtest
 from .bridge.csv_bridge import read_daily_profiles, read_live_state_history
 from .run_live import INSTRUMENT_CONFIGS
+
+
+def _print_group_line(label: str, stats: GroupStats) -> None:
+    if stats.open_count == stats.trades:
+        print(f"    {label:10s} {stats.trades} trade(s), all still open -- nothing resolved yet")
+        return
+    win_rate = f"{stats.win_rate:.1%}" if stats.win_rate is not None else "n/a"
+    print(f"    {label:10s} {stats.trades} trade(s)  wins={stats.wins} losses={stats.losses} "
+          f"open={stats.open_count}  win rate={win_rate}  total R={stats.total_r:+.2f}")
 
 
 def _print_report(instrument: str, report: BacktestReport) -> None:
@@ -39,6 +48,14 @@ def _print_report(instrument: str, report: BacktestReport) -> None:
     print(f"  wins: {len(report.wins)}  losses: {len(report.losses)}  "
           f"win rate: {report.win_rate:.1%}")
     print(f"  total R: {report.total_r:+.2f}  average R: {report.average_r:+.2f}")
+
+    print("  by hypothesis type:")
+    for hyp_type, stats in sorted(report.by_hypothesis_type().items(), key=lambda kv: kv[0].value):
+        _print_group_line(hyp_type.value, stats)
+    print("  by confluence:")
+    for confluence, stats in sorted(report.by_confluence().items(), key=lambda kv: kv[0].value):
+        _print_group_line(confluence.value, stats)
+
     for trade in report.trades:
         outcome = trade.status.value.upper()
         r_str = f"{trade.r_multiple:+.2f}R" if trade.r_multiple is not None else "n/a"

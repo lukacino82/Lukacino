@@ -36,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, TypeVar
 
 from ..bridge.csv_bridge import LiveMarketState
 from ..composite.engine import CompositeEngine
@@ -69,6 +69,52 @@ class TradeResult:
     runner_reached: bool = False
 
 
+@dataclass(frozen=True)
+class GroupStats:
+    """Win/loss/R summary for one slice of trades -- the same numbers
+    BacktestReport's own top-level properties report for *all* trades, but
+    computed for just one HypothesisType or Confluence bucket (see
+    BacktestReport.by_hypothesis_type / by_confluence). An overall win rate
+    can hide a real setup: e.g. A-day longs carrying the edge while B-day
+    shorts are pure noise averages out to something that looks mediocre
+    either way -- this is what makes that visible.
+    """
+
+    trades: int
+    wins: int
+    losses: int
+    open_count: int
+    win_rate: Optional[float]
+    total_r: float
+    average_r: Optional[float]
+
+
+def _group_stats(trades: Sequence[TradeResult]) -> GroupStats:
+    resolved = [t for t in trades if t.status != TradeStatus.OPEN]
+    wins = [t for t in resolved if t.status == TradeStatus.WIN]
+    losses = [t for t in resolved if t.status == TradeStatus.LOSS]
+    total_r = sum(t.r_multiple for t in resolved if t.r_multiple is not None)
+    return GroupStats(
+        trades=len(trades),
+        wins=len(wins),
+        losses=len(losses),
+        open_count=len(trades) - len(resolved),
+        win_rate=(len(wins) / len(resolved)) if resolved else None,
+        total_r=total_r,
+        average_r=(total_r / len(resolved)) if resolved else None,
+    )
+
+
+_GroupKey = TypeVar("_GroupKey")
+
+
+def _group_by(trades: Sequence[TradeResult], key: Callable[[TradeResult], _GroupKey]) -> Dict[_GroupKey, GroupStats]:
+    buckets: Dict[_GroupKey, List[TradeResult]] = {}
+    for trade in trades:
+        buckets.setdefault(key(trade), []).append(trade)
+    return {group_key: _group_stats(group_trades) for group_key, group_trades in buckets.items()}
+
+
 @dataclass
 class BacktestReport:
     trades: List[TradeResult] = field(default_factory=list)
@@ -88,21 +134,28 @@ class BacktestReport:
 
     @property
     def win_rate(self) -> Optional[float]:
-        resolved = self.resolved
-        if not resolved:
-            return None
-        return len(self.wins) / len(resolved)
+        return _group_stats(self.trades).win_rate
 
     @property
     def total_r(self) -> float:
-        return sum(t.r_multiple for t in self.resolved if t.r_multiple is not None)
+        return _group_stats(self.trades).total_r
 
     @property
     def average_r(self) -> Optional[float]:
-        resolved = self.resolved
-        if not resolved:
-            return None
-        return self.total_r / len(resolved)
+        return _group_stats(self.trades).average_r
+
+    def by_hypothesis_type(self) -> Dict[HypothesisType, GroupStats]:
+        """Separates A long/short vs. B long/short -- see GroupStats' docstring
+        on why an overall win rate alone can hide which setup actually works.
+        """
+        return _group_by(self.trades, key=lambda t: t.hypothesis_type)
+
+    def by_confluence(self) -> Dict[Confluence, GroupStats]:
+        """Separates A_PLUS (full risk) vs. CLEAN (half size) trades -- WEAK
+        never reaches a trade at all (build_order_proposal returns None for
+        it), so it never appears here.
+        """
+        return _group_by(self.trades, key=lambda t: t.confluence)
 
 
 @dataclass(frozen=True)
