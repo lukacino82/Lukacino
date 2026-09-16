@@ -38,10 +38,20 @@ def _print_group_line(label: str, stats: GroupStats) -> None:
 
 
 def _print_report(instrument: str, report: BacktestReport) -> None:
+    total_ticks = sum(report.regime_counts.values())
+    print(f"{instrument}: {total_ticks} tick(s) classified "
+          f"({len(report.trades)} trade(s), {report.skipped_no_target} skipped -- no target_1)")
+    for regime in sorted(report.regime_counts, key=lambda r: r.value):
+        count = report.regime_counts[regime]
+        share = f"{count / total_ticks:.1%}" if total_ticks else "n/a"
+        print(f"    {regime.value:8s} {count} ({share})")
+
     resolved = report.resolved
-    print(f"{instrument}: {len(report.trades)} trade(s) ({len(resolved)} resolved, "
-          f"{len(report.trades) - len(resolved)} still open at end of data)")
-    print(f"  skipped (actionable but no target_1 to judge): {report.skipped_no_target}")
+    if not report.trades:
+        print("  no trades at all -- if UNCLEAR dominates above, "
+              "regime.py's thresholds (gap_threshold_fraction/delta_imbalance in "
+              "run_live.py's INSTRUMENT_CONFIGS) are too strict for this data, not broken")
+        return
     if not resolved:
         print("  no resolved trades -- nothing to score yet")
         return

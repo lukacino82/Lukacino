@@ -43,6 +43,7 @@ from ..composite.engine import CompositeEngine
 from ..composite.models import DailyProfile
 from ..engine import LiveEngine
 from ..hypothesis.generator import Confluence, HypothesisType
+from ..hypothesis.regime import Regime
 from ..risk.sizing import SizingConfig
 
 
@@ -119,6 +120,15 @@ def _group_by(trades: Sequence[TradeResult], key: Callable[[TradeResult], _Group
 class BacktestReport:
     trades: List[TradeResult] = field(default_factory=list)
     skipped_no_target: int = 0  # actionable hypotheses with no target_1 to judge a win against
+    regime_counts: Dict[Regime, int] = field(default_factory=dict)
+    """How many ticks classified into each Regime -- the direct answer to
+    "why zero trades": if UNCLEAR dominates, classify_regime's thresholds
+    (gap_threshold_fraction / delta_imbalance) are too strict for this
+    instrument/period rather than anything being broken. Only counts ticks
+    that actually reached engine.tick() -- a tick spent updating an already-
+    open trade (see run_backtest's "one trade at a time" rule) isn't
+    re-classified and so isn't counted here.
+    """
 
     @property
     def resolved(self) -> List[TradeResult]:
@@ -297,6 +307,7 @@ def run_backtest(
             config.gap_threshold_fraction,
             config.delta_imbalance,
         )
+        report.regime_counts[result.regime] = report.regime_counts.get(result.regime, 0) + 1
         if result.proposal is None:
             continue
         if result.hypothesis is None or result.hypothesis.target_1 is None:

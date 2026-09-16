@@ -16,6 +16,7 @@ from trading_system.backtest.replay import BacktestConfig, TradeStatus, run_back
 from trading_system.bridge.csv_bridge import LiveMarketState
 from trading_system.composite.models import DailyProfile
 from trading_system.hypothesis.generator import Confluence, HypothesisType
+from trading_system.hypothesis.regime import Regime
 from trading_system.risk.sizing import SizingConfig, SizingMode
 
 INSTRUMENT = "NQ"
@@ -66,6 +67,9 @@ def test_a_day_long_hits_target_is_a_win() -> None:
     assert trade.r_multiple == (103.0 - 101.0) / (101.0 - 100.5)  # == 4.0
     assert report.win_rate == 1.0
     assert report.average_r == trade.r_multiple
+    # Only the opening tick reaches engine.tick() -- the other two are spent
+    # checking the already-open trade, per the "one trade at a time" rule.
+    assert report.regime_counts == {Regime.A_DAY: 1}
 
 
 def test_a_day_long_hits_stop_is_a_loss() -> None:
@@ -164,6 +168,7 @@ def test_same_day_profile_is_not_usable_as_yesterday_no_lookahead() -> None:
 
     assert report.trades == []
     assert report.skipped_no_target == 0  # never even reached a proposal -- regime was UNCLEAR
+    assert report.regime_counts == {Regime.UNCLEAR: 1}
 
 
 def test_b_day_hypothesis_with_no_composite_target_is_counted_not_dropped() -> None:
