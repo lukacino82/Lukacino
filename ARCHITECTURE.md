@@ -299,10 +299,40 @@ debugging.
      `run_live.py` above): the user chose drawing it on the chart over a
      separate bridge file, and since `hypothesis.txt`'s ACSIL-side drawing
      already existed, no ACSIL/C++ change was needed for this.
-   - Not yet built: the DTC order-placement bridge itself (the user has a
-     Sierra Chart SIM account over DTC ready to test against once this is
-     needed), and FULLY_AUTO (pyramiding, trailing, kill switch) after
-     SEMI_AUTO is validated.
+   - **Staged rollout, decided with the user**: build and prove manual
+     one-click order triggering first (test thoroughly on the user's real
+     Sierra Chart SIM/DTC account), *then* add a Manual/Auto mode switch
+     that reuses that same tested order-placement code path for true
+     automatic firing. The user explicitly chose this over jumping
+     straight to full automation.
+   - ~~`order_proposal.csv` bridge format~~ (done, in
+     `bridge/csv_bridge.py`): a new machine-readable file, distinct from
+     `hypothesis.txt` (free text meant for a human/the chart's drawn text
+     box). `OrderProposalSnapshot` carries `direction`
+     (`"long"`/`"short"`/`"none"`), `hypothesis_type`, `confluence`,
+     `entry`/`stop`/`target_1`/`target_2`/`runner`, and `contracts`. Always
+     written every tick by `run_live.py` -- even when nothing is
+     tradeable, as a `direction="none"`/`contracts=0` row -- so ACSIL can
+     tell "checked, nothing to do right now" apart from "stale/missing
+     file" from one read, without a second existence-check file that could
+     race against it. `run_live.py` writes it by default to
+     `<bridge-dir>/<instrument>/order_proposal.csv` (override with
+     `--order-proposal-out`); no opt-in flag like `--history-out`, since
+     this file needs to exist continuously once ACSIL's order-placement
+     side reads it.
+   - Not yet built (the concrete "acute" next step): the **ACSIL C++ side**
+     that reads `order_proposal.csv` and actually places a bracket order
+     (`sc.BuyEntry`/`sc.SellEntry` + attached stop + attached target) —
+     needs a manual-trigger input (most likely a boolean toggle Input the
+     trader flips to Yes, ACSIL acts once and resets it to No, since there
+     is no native clickable-button Input type), a one-trade-at-a-time
+     guard mirroring the backtest's model, and a second, defensive
+     re-check in C++ that stop/target land on the correct side of entry
+     before submitting (the same class of bug the backwards-invalidation
+     fix above caught in Python — cheap insurance against a real order).
+     Requires a new build/test cycle against the user's SIM/DTC account.
+     FULLY_AUTO (pyramiding, trailing, kill switch) stays explicitly
+     deferred until manual triggering is proven reliable on SIM.
 5. Notion sync module (Step 5, in progress) -- reuses the
    `trading-vwap-hypotezy` skill's schema and property names so both paths
    write to the same database ("Trading denik -- hypotezy",

@@ -35,6 +35,48 @@ class LiveMarketState:
     vwap_intraday: float
     cum_delta: float
 
+@dataclass(frozen=True)
+class OrderProposalSnapshot:
+    """A single, always-present row describing what SEMI_AUTO's order
+    proposal looks like right now.
+
+    Unlike ``hypothesis.txt`` (free text meant for a human/chart display),
+    this is the machine-readable counterpart ACSIL parses to actually place
+    an order (Step 4's manual-trigger and, later, auto modes). Always
+    written every tick, even when nothing is tradeable
+    (``direction="none"``, ``contracts=0``) -- that way ACSIL can check
+    both actionability (``contracts > 0``) and freshness (``timestamp``
+    recent) from one row, without a separate "does a real proposal exist"
+    file check that could race with a stale leftover file.
+    """
+
+    timestamp: datetime
+    instrument: str
+    direction: str  # "long", "short", or "none" when nothing is tradeable
+    hypothesis_type: str  # HypothesisType.value (e.g. "A long"), "" when direction == "none"
+    confluence: str  # Confluence.value, "" when direction == "none"
+    entry: Optional[float]
+    stop: Optional[float]
+    target_1: Optional[float]
+    target_2: Optional[float]
+    runner: Optional[float]
+    contracts: int
+
+
+ORDER_PROPOSAL_FIELDS = [
+    "timestamp",
+    "instrument",
+    "direction",
+    "hypothesis_type",
+    "confluence",
+    "entry",
+    "stop",
+    "target_1",
+    "target_2",
+    "runner",
+    "contracts",
+]
+
 DAILY_PROFILE_FIELDS = ["date", "instrument", "val", "vah", "poc"]
 LIVE_STATE_FIELDS = [
     "timestamp",
@@ -249,3 +291,52 @@ def read_hypothesis(path: Path) -> Tuple[str, datetime, str]:
         body = f.read()
     instrument, generated_at_str = header.split("|", 1)
     return instrument, datetime.fromisoformat(generated_at_str), body
+
+
+def _opt(value: Optional[float]) -> str:
+    return "" if value is None else str(value)
+
+
+def write_order_proposal(path: Path, snapshot: OrderProposalSnapshot) -> None:
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(ORDER_PROPOSAL_FIELDS)
+        writer.writerow(
+            [
+                snapshot.timestamp.isoformat(),
+                snapshot.instrument,
+                snapshot.direction,
+                snapshot.hypothesis_type,
+                snapshot.confluence,
+                _opt(snapshot.entry),
+                _opt(snapshot.stop),
+                _opt(snapshot.target_1),
+                _opt(snapshot.target_2),
+                _opt(snapshot.runner),
+                snapshot.contracts,
+            ]
+        )
+
+
+def read_order_proposal(path: Path) -> Optional[OrderProposalSnapshot]:
+    """Returns ``None`` if ACSIL/run_live.py hasn't written a snapshot yet
+    (empty/missing rows) -- same convention as ``read_live_state``.
+    """
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        row = next(reader, None)
+    if row is None:
+        return None
+    return OrderProposalSnapshot(
+        timestamp=datetime.fromisoformat(row["timestamp"]),
+        instrument=row["instrument"],
+        direction=row["direction"],
+        hypothesis_type=row["hypothesis_type"],
+        confluence=row["confluence"],
+        entry=float(row["entry"]) if row["entry"] else None,
+        stop=float(row["stop"]) if row["stop"] else None,
+        target_1=float(row["target_1"]) if row["target_1"] else None,
+        target_2=float(row["target_2"]) if row["target_2"] else None,
+        runner=float(row["runner"]) if row["runner"] else None,
+        contracts=int(row["contracts"]),
+    )

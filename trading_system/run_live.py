@@ -23,12 +23,14 @@ from pathlib import Path
 from typing import Dict, Optional, Set
 
 from .bridge.csv_bridge import (
+    OrderProposalSnapshot,
     append_live_state,
     read_daily_profiles,
     read_live_state,
     read_live_state_history,
     write_composites,
     write_hypothesis,
+    write_order_proposal,
 )
 from .composite.engine import CompositeEngine
 from .composite.models import DailyProfile
@@ -94,6 +96,43 @@ def _append_new_history_row(history_path: Optional[Path], state) -> None:
     append_live_state(history_path, state)
 
 
+def _order_proposal_snapshot(state, result) -> OrderProposalSnapshot:
+    """Always returns a row -- direction="none"/contracts=0 when
+    ``result.proposal`` is None, so ACSIL can tell "checked, nothing
+    tradeable right now" apart from a missing/stale file. See
+    OrderProposalSnapshot's docstring for why this shape exists at all
+    (Step 4: a machine-readable counterpart to hypothesis.txt's free text).
+    """
+    proposal = result.proposal
+    if proposal is None:
+        return OrderProposalSnapshot(
+            timestamp=state.timestamp,
+            instrument=state.instrument,
+            direction="none",
+            hypothesis_type="",
+            confluence="",
+            entry=None,
+            stop=None,
+            target_1=None,
+            target_2=None,
+            runner=None,
+            contracts=0,
+        )
+    return OrderProposalSnapshot(
+        timestamp=state.timestamp,
+        instrument=proposal.instrument,
+        direction=proposal.direction,
+        hypothesis_type=proposal.hypothesis_type.value,
+        confluence=proposal.confluence.value,
+        entry=proposal.entry,
+        stop=proposal.stop,
+        target_1=proposal.target_1,
+        target_2=proposal.target_2,
+        runner=proposal.runner,
+        contracts=proposal.contracts,
+    )
+
+
 def _tick(
     engine: LiveEngine,
     composite_engine: CompositeEngine,
@@ -104,6 +143,7 @@ def _tick(
     composites_path: Path,
     hypothesis_path: Path,
     history_path: Optional[Path] = None,
+    order_proposal_path: Optional[Path] = None,
 ) -> None:
     if not live_state_path.exists():
         return  # ACSIL hasn't written a snapshot yet
@@ -132,9 +172,16 @@ def _tick(
         config.delta_imbalance,
     )
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
+    if order_proposal_path is not None:
+        write_order_proposal(order_proposal_path, _order_proposal_snapshot(state, result))
 
 
-def run(bridge_dir: Path, instrument: str, history_path: Optional[Path] = None) -> None:
+def run(
+    bridge_dir: Path,
+    instrument: str,
+    history_path: Optional[Path] = None,
+    order_proposal_path: Optional[Path] = None,
+) -> None:
     if instrument not in INSTRUMENT_CONFIGS:
         known = ", ".join(sorted(INSTRUMENT_CONFIGS)) or "(none configured)"
         raise ValueError(
@@ -150,6 +197,11 @@ def run(bridge_dir: Path, instrument: str, history_path: Optional[Path] = None) 
     daily_profile_path = instrument_dir / "daily_profile_export.csv"
     composites_path = instrument_dir / "composites.csv"
     hypothesis_path = instrument_dir / "hypothesis.txt"
+    # Written every tick by default (unlike --history-out, which is opt-in) --
+    # this is the Step 4 order-automation bridge file, so ACSIL should always
+    # have a current one to read once its manual-trigger side is built.
+    if order_proposal_path is None:
+        order_proposal_path = instrument_dir / "order_proposal.csv"
 
     composite_engine = CompositeEngine()
     ingested_dates: Set = set()
@@ -168,6 +220,7 @@ def run(bridge_dir: Path, instrument: str, history_path: Optional[Path] = None) 
                 composites_path,
                 hypothesis_path,
                 history_path,
+                order_proposal_path,
             )
         except FileNotFoundError:
             pass  # ACSIL hasn't created the bridge folder yet
@@ -190,5 +243,16 @@ if __name__ == "__main__":
             "calibration over time. Omit to run exactly as before (no history logging)."
         ),
     )
+    parser.add_argument(
+        "--order-proposal-out",
+        type=Path,
+        default=None,
+        help=(
+            "Optional override for order_proposal.csv's path (defaults to "
+            "<bridge-dir>/<instrument>/order_proposal.csv, written every tick). "
+            "This is the machine-readable file ACSIL reads to place orders "
+            "(Step 4: manual trigger first, auto mode later) -- see ARCHITECTURE.md."
+        ),
+    )
     args = parser.parse_args()
-    run(Path(args.bridge_dir), args.instrument, args.history_out)
+    run(Path(args.bridge_dir), args.instrument, args.history_out, args.order_proposal_out)

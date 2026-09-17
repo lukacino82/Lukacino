@@ -2,16 +2,19 @@ from datetime import date, datetime
 
 from trading_system.bridge.csv_bridge import (
     LiveMarketState,
+    OrderProposalSnapshot,
     append_live_state,
     read_composites,
     read_daily_profiles,
     read_hypothesis,
     read_live_state,
     read_live_state_history,
+    read_order_proposal,
     write_composites,
     write_daily_profiles,
     write_hypothesis,
     write_live_state,
+    write_order_proposal,
 )
 from trading_system.composite.engine import CompositeEngine
 from trading_system.composite.models import DailyProfile, Tier
@@ -41,6 +44,54 @@ def test_append_live_state_builds_a_history_read_back_in_order(tmp_path):
     assert result == states
     # Only one header line -- append_live_state must not rewrite it on later calls.
     assert path.read_text().count("timestamp,instrument") == 1
+
+
+def test_order_proposal_round_trip_actionable(tmp_path):
+    path = tmp_path / "order_proposal.csv"
+    snapshot = OrderProposalSnapshot(
+        timestamp=datetime(2026, 9, 16, 19, 46, 50),
+        instrument="NQ",
+        direction="short",
+        hypothesis_type="A short",
+        confluence="clean",
+        entry=29452.80,
+        stop=29486.20,
+        target_1=29419.80,
+        target_2=None,
+        runner=None,
+        contracts=1,
+    )
+    write_order_proposal(path, snapshot)
+    assert read_order_proposal(path) == snapshot
+
+
+def test_order_proposal_round_trip_none_actionable(tmp_path):
+    """When there's nothing tradeable, a row is still written (direction
+    "none", contracts=0) so ACSIL can tell "checked, nothing to do" apart
+    from "no file/stale file at all" -- see OrderProposalSnapshot's docstring.
+    """
+    path = tmp_path / "order_proposal.csv"
+    snapshot = OrderProposalSnapshot(
+        timestamp=datetime(2026, 9, 16, 19, 46, 50),
+        instrument="NQ",
+        direction="none",
+        hypothesis_type="",
+        confluence="",
+        entry=None,
+        stop=None,
+        target_1=None,
+        target_2=None,
+        runner=None,
+        contracts=0,
+    )
+    write_order_proposal(path, snapshot)
+    assert read_order_proposal(path) == snapshot
+
+
+def test_read_order_proposal_returns_none_when_file_has_no_data_row(tmp_path):
+    path = tmp_path / "order_proposal.csv"
+    path.write_text("timestamp,instrument,direction,hypothesis_type,confluence,entry,stop,target_1,target_2,runner,contracts\n")
+    assert read_order_proposal(path) is None
 
 
 def test_active_composite_round_trip(tmp_path):

@@ -7,6 +7,7 @@ from trading_system.bridge.csv_bridge import (
     read_composites,
     read_hypothesis,
     read_live_state_history,
+    read_order_proposal,
     write_daily_profiles,
     write_live_state,
 )
@@ -116,6 +117,94 @@ def test_tick_appends_to_history_and_dedupes_unchanged_snapshots(tmp_path):
         history_path,
     )
     assert read_live_state_history(history_path) == [state, later_state]
+
+
+def test_tick_writes_order_proposal_when_path_given(tmp_path):
+    instrument_dir = tmp_path / "NQ"
+    instrument_dir.mkdir()
+    daily_profile_path = instrument_dir / "daily_profile_export.csv"
+    live_state_path = instrument_dir / "live_state.csv"
+    order_proposal_path = instrument_dir / "order_proposal.csv"
+
+    write_daily_profiles(
+        daily_profile_path,
+        [DailyProfile("NQ", date(2026, 9, 9), val=100.0, vah=110.0, poc=105.0)],
+    )
+    # Same setup as test_tick_writes_hypothesis_end_to_end -- known to
+    # produce an actionable A-short hypothesis.
+    state = LiveMarketState(
+        instrument="NQ",
+        timestamp=datetime(2026, 9, 10, 14, 0, 0),
+        last_price=102.0,
+        session_open=105.0,
+        vwap_monthly=95.0,
+        vwap_weekly=110.0,
+        vwap_intraday=100.0,
+        cum_delta=50.0,
+    )
+    write_live_state(live_state_path, state)
+
+    composite_engine = CompositeEngine()
+    engine = LiveEngine("NQ")
+    _tick(
+        engine,
+        composite_engine,
+        set(),
+        INSTRUMENT_CONFIGS["NQ"],
+        live_state_path,
+        daily_profile_path,
+        instrument_dir / "composites.csv",
+        instrument_dir / "hypothesis.txt",
+        None,
+        order_proposal_path,
+    )
+
+    proposal = read_order_proposal(order_proposal_path)
+    assert proposal is not None
+    assert proposal.timestamp == state.timestamp
+    assert proposal.direction == "short"
+    assert proposal.contracts > 0
+
+
+def test_tick_writes_none_order_proposal_when_regime_unclear(tmp_path):
+    instrument_dir = tmp_path / "NQ"
+    instrument_dir.mkdir()
+    live_state_path = instrument_dir / "live_state.csv"
+    order_proposal_path = instrument_dir / "order_proposal.csv"
+
+    # No daily_profile_export.csv / composites -- yesterday is None, which
+    # LiveEngine treats as an unclear regime, so no hypothesis/proposal.
+    state = LiveMarketState(
+        instrument="NQ",
+        timestamp=datetime(2026, 9, 10, 14, 0, 0),
+        last_price=100.0,
+        session_open=100.0,
+        vwap_monthly=100.0,
+        vwap_weekly=100.0,
+        vwap_intraday=100.0,
+        cum_delta=0.0,
+    )
+    write_live_state(live_state_path, state)
+
+    composite_engine = CompositeEngine()
+    engine = LiveEngine("NQ")
+    _tick(
+        engine,
+        composite_engine,
+        set(),
+        INSTRUMENT_CONFIGS["NQ"],
+        live_state_path,
+        instrument_dir / "daily_profile_export.csv",
+        instrument_dir / "composites.csv",
+        instrument_dir / "hypothesis.txt",
+        None,
+        order_proposal_path,
+    )
+
+    proposal = read_order_proposal(order_proposal_path)
+    assert proposal is not None
+    assert proposal.direction == "none"
+    assert proposal.contracts == 0
 
 
 def test_tick_is_a_noop_when_live_state_missing(tmp_path):
