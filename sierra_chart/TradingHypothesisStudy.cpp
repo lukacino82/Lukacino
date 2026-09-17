@@ -112,6 +112,69 @@ std::vector<CompositeRow> ReadCompositesCSV(const std::string& path) {
     return rows;
 }
 
+// --- Step 4: order_proposal.csv (see trading_system/bridge/csv_bridge.py's
+// OrderProposalSnapshot) -- overwritten in place every tick, like
+// live_state.csv, never a growing history. An empty field means "None" on
+// the Python side (direction="none" rows leave entry/stop/target_1/
+// target_2/runner all empty) -- ParseOptionalDouble mirrors that instead of
+// defaulting a missing stop/target to 0.0, which would silently read as a
+// real (and catastrophically wrong) price level.
+struct OrderProposalRow {
+    std::string timestamp;
+    std::string instrument;
+    std::string direction; // "long", "short", or "none"
+    std::string hypothesis_type;
+    std::string confluence;
+    bool hasEntry = false;
+    double entry = 0.0;
+    bool hasStop = false;
+    double stop = 0.0;
+    bool hasTarget1 = false;
+    double target1 = 0.0;
+    bool hasTarget2 = false;
+    double target2 = 0.0;
+    bool hasRunner = false;
+    double runner = 0.0;
+    int contracts = 0;
+};
+
+void ParseOptionalDouble(const std::string& field, bool& hasValue, double& value) {
+    if (field.empty()) {
+        hasValue = false;
+        value = 0.0;
+        return;
+    }
+    hasValue = true;
+    value = std::stod(field);
+}
+
+// Returns false if the file doesn't exist or has no data row yet (header
+// only) -- same convention as the Python side's read_order_proposal().
+bool ReadOrderProposalCSV(const std::string& path, OrderProposalRow& out) {
+    std::ifstream file(path);
+    if (!file.is_open())
+        return false;
+    std::string header, line;
+    std::getline(file, header);
+    if (!std::getline(file, line) || line.empty())
+        return false;
+    auto f = SplitCSVLine(line, ',');
+    if (f.size() < 11)
+        return false;
+    out.timestamp = f[0];
+    out.instrument = f[1];
+    out.direction = f[2];
+    out.hypothesis_type = f[3];
+    out.confluence = f[4];
+    ParseOptionalDouble(f[5], out.hasEntry, out.entry);
+    ParseOptionalDouble(f[6], out.hasStop, out.stop);
+    ParseOptionalDouble(f[7], out.hasTarget1, out.target1);
+    ParseOptionalDouble(f[8], out.hasTarget2, out.target2);
+    ParseOptionalDouble(f[9], out.hasRunner, out.runner);
+    out.contracts = std::stoi(f[10]);
+    return true;
+}
+
 std::string ReadWholeFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())
@@ -187,6 +250,26 @@ std::string FormatISODateTime(time_t t) {
     return std::string(buf);
 }
 
+// Inverse of FormatISODateTime -- parses the same naive local
+// "YYYY-MM-DDTHH:MM:SS" string order_proposal.csv/live_state.csv carry,
+// so a manual order trigger can check the proposal's freshness against
+// "now" using the same local-time convention ACSIL itself writes with.
+// Returns 0 (treated as infinitely stale, never as "now") if the string is
+// too short to parse.
+time_t ParseISODateTimeToUnix(const std::string& iso) {
+    if (iso.size() < 19)
+        return 0;
+    struct tm tmVal = {};
+    tmVal.tm_year = std::stoi(iso.substr(0, 4)) - 1900;
+    tmVal.tm_mon = std::stoi(iso.substr(5, 2)) - 1;
+    tmVal.tm_mday = std::stoi(iso.substr(8, 2));
+    tmVal.tm_hour = std::stoi(iso.substr(11, 2));
+    tmVal.tm_min = std::stoi(iso.substr(14, 2));
+    tmVal.tm_sec = std::stoi(iso.substr(17, 2));
+    tmVal.tm_isdst = -1;
+    return mktime(&tmVal);
+}
+
 // sc.GetStudyArrayUsingID only ever looks at the current chart. A real setup
 // often spreads the VWAP tiers (and the delta/volume-profile studies) across
 // several charts in the same chartbook -- e.g. one chart per tier -- rather
@@ -240,7 +323,17 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     SCInputRef Input_Instrument = sc.Input[++InputIdx];
     SCInputRef Input_BridgeFolder = sc.Input[++InputIdx];
 
-    SCInputRef Input_Mode = sc.Input[++InputIdx]; // reserved for Step 4, not wired yet
+    SCInputRef Input_Mode = sc.Input[++InputIdx];
+    // Step 4, staged rollout: manual one-click trigger first (tested on the
+    // user's SIM/DTC account), a Manual/Auto mode switch reusing the same
+    // order-placement code only after that's proven reliable -- the user's
+    // explicit choice over jumping straight to full automation. There is no
+    // native clickable-button Input type in ACSIL, so a self-resetting
+    // Yes/No toggle (flip to Yes, ACSIL acts once and flips it back to No)
+    // is the standard idiom for a one-shot manual action.
+    SCInputRef Input_ManualTriggerOrder = sc.Input[++InputIdx];
+    SCInputRef Input_MaxProposalAgeSeconds = sc.Input[++InputIdx];
+    SCInputRef Input_MaxContractsSafetyCap = sc.Input[++InputIdx];
 
     SCInputRef Input_VP_StudyID = sc.Input[++InputIdx];
     SCInputRef Input_VP_ChartNumber = sc.Input[++InputIdx];
@@ -295,15 +388,41 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         sc.UpdateAlways = 1; // so the refresh-interval timer keeps ticking with no new bars
         sc.CalculationPrecedence = LOW_PREC_LEVEL; // ensure the Volume Profile study has already calculated
 
+        // Needed to submit an entry order with an attached stop and target
+        // in one call (Target1Price/Stop1Price below) rather than three
+        // separate order submissions. AllowMultipleEntriesInSameDirection=0
+        // is a first line of defense against a double-fire; the explicit
+        // sc.GetTradePosition check in the manual-trigger block below is
+        // the real, verified one-trade-at-a-time guard this code controls
+        // directly -- sc.MaximumPositionAllowed is deliberately left at its
+        // default rather than set here, since its exact interaction with
+        // attached-order brackets isn't verified against the real SDK.
+        sc.SupportAttachedOrdersForTrading = 1;
+        sc.AllowMultipleEntriesInSameDirection = 0;
+
         Input_Instrument.Name = "Instrument (bridge subfolder name, e.g. ES)";
         Input_Instrument.SetString("ES");
 
         Input_BridgeFolder.Name = "Bridge Folder (shared with Python engine)";
         Input_BridgeFolder.SetString("C:\\SierraChart\\TradingHypothesisBridge");
 
-        Input_Mode.Name = "Mode (reserved, not wired to order logic yet)";
+        // "Semi Auto" wires up the manual one-click trigger below.
+        // "Fully Auto" is NOT implemented -- selecting it only logs a
+        // warning and places no orders, per the staged rollout.
+        Input_Mode.Name = "Mode (Hypothesis Only / Semi Auto = manual trigger / Fully Auto = not implemented)";
         Input_Mode.SetCustomInputStrings("Hypothesis Only;Semi Auto;Fully Auto");
         Input_Mode.SetCustomInputIndex(0);
+
+        Input_ManualTriggerOrder.Name = "Trigger Order Now (flip to Yes to act on the current order_proposal.csv -- auto-resets to No)";
+        Input_ManualTriggerOrder.SetYesNo(0);
+
+        Input_MaxProposalAgeSeconds.Name = "Max Order Proposal Age (seconds) -- refuse to trigger on a stale file";
+        Input_MaxProposalAgeSeconds.SetInt(30);
+        Input_MaxProposalAgeSeconds.SetIntLimits(1, 3600);
+
+        Input_MaxContractsSafetyCap.Name = "Max Contracts Safety Cap (independent of Python sizing -- refuses to trigger above this)";
+        Input_MaxContractsSafetyCap.SetInt(5);
+        Input_MaxContractsSafetyCap.SetIntLimits(1, 100);
 
         // Point this at a "Volume Value Area Lines" study (Time Period Type
         // = Days, Length = 1, Draw Developing Value Area Lines = No), NOT
@@ -438,6 +557,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     const std::string compositesPath = bridgeDir + "\\composites.csv";
     const std::string hypothesisPath = bridgeDir + "\\hypothesis.txt";
     const std::string liveStatePath = bridgeDir + "\\live_state.csv";
+    const std::string orderProposalPath = bridgeDir + "\\order_proposal.csv";
 
     SCFloatArray VAHArray, VALArray, POCArray;
     GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
@@ -463,6 +583,8 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             << " dailyProfilePath=" << dailyProfilePath
             << " compositesPath=" << compositesPath << " hypothesisPath=" << hypothesisPath
             << " liveStatePath=" << liveStatePath
+            << " orderProposalPath=" << orderProposalPath
+            << " Mode=" << Input_Mode.GetIndex()
             << " VolumeValueAreaLinesStudyID=" << Input_VP_StudyID.GetInt()
             << " VolumeValueAreaLinesChart=" << Input_VP_ChartNumber.GetInt()
             << " VAHArraySize=" << VAHArray.GetArraySize()
@@ -671,10 +793,140 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         }
     }
 
-    // --- 2. Throttle bridge-file reads/writes to Input_RefreshIntervalSeconds --
-    double& LastRefreshUnixTime = sc.GetPersistentDouble(1);
+    // "now"/"nowTimeT" are needed by both section 1b (proposal-freshness
+    // check) and section 2b (live_state.csv's timestamp column) below --
+    // computed once here, ahead of both, rather than duplicated.
     const time_t nowTimeT = time(nullptr);
     const double now = static_cast<double>(nowTimeT);
+
+    // --- 1b. Manual order trigger (Step 4: SEMI_AUTO manual-trigger stage) --
+    // Placed before the refresh-interval throttle below (section 2) so a
+    // trigger flip is honored immediately on the next recalculation rather
+    // than waiting up to Input_RefreshIntervalSeconds. Only acts in "Semi
+    // Auto" mode; "Fully Auto" is explicitly not implemented yet, per the
+    // staged rollout the user chose.
+    //
+    // VERIFICATION STATUS: this block's use of s_SCNewOrder's field names
+    // (Target1Price/Stop1Price/AttachedOrderTarget1Type/
+    // AttachedOrderStop1Type), sc.BuyEntry/sc.SellEntry's return-value
+    // convention (>0 = submitted), s_SCPositionData's PositionQuantity
+    // field, and Input_Mode.GetIndex() are my best-effort reading of ACSIL
+    // documentation and example code, NOT yet compiled against the real
+    // Sierra Chart SDK header -- check this block first if it fails to
+    // compile, and confirm the exact field/return-value semantics against
+    // sierrachart.h before ever flipping the trigger on a real SIM account.
+    const int modeIndex = Input_Mode.GetIndex(); // 0=Hypothesis Only, 1=Semi Auto, 2=Fully Auto
+    if (modeIndex == 2)
+    {
+        int& HasWarnedFullyAuto = sc.GetPersistentInt(6);
+        if (!HasWarnedFullyAuto)
+        {
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: 'Fully Auto' mode is selected but NOT implemented -- "
+                "no orders will ever be placed automatically. Only 'Semi Auto' (manual trigger) is "
+                "wired up so far, per the staged rollout in ARCHITECTURE.md.", 1);
+            HasWarnedFullyAuto = 1;
+        }
+    }
+    else if (modeIndex == 1 && Input_ManualTriggerOrder.GetYesNo())
+    {
+        // Reset the trigger immediately, before doing anything else -- so
+        // this is always a one-shot action per click, never a standing
+        // condition that could re-fire on a later recalculation if
+        // something below returns early in some future edit.
+        Input_ManualTriggerOrder.SetYesNo(0);
+
+        OrderProposalRow proposal;
+        if (!ReadOrderProposalCSV(orderProposalPath, proposal))
+        {
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but order_proposal.csv has no "
+                "data row yet -- nothing to act on.", 1);
+        }
+        else if (proposal.direction != "long" && proposal.direction != "short")
+        {
+            sc.AddMessageToLog(
+                ("Trading Hypothesis Display: manual trigger fired but the current proposal direction "
+                 "is '" + proposal.direction + "' -- nothing tradeable right now.").c_str(), 1);
+        }
+        else if (proposal.instrument != instrument)
+        {
+            sc.AddMessageToLog(
+                ("Trading Hypothesis Display: manual trigger fired but order_proposal.csv's instrument "
+                 "('" + proposal.instrument + "') does not match this study's Instrument input ('"
+                 + instrument + "') -- refusing to act on a mismatched file.").c_str(), 1);
+        }
+        else if ((now - static_cast<double>(ParseISODateTimeToUnix(proposal.timestamp))) > Input_MaxProposalAgeSeconds.GetInt())
+        {
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but order_proposal.csv is stale "
+                "(older than Max Order Proposal Age) -- refusing to act on it. Check that run_live.py "
+                "is still running.", 1);
+        }
+        else if (proposal.contracts <= 0 || proposal.contracts > Input_MaxContractsSafetyCap.GetInt())
+        {
+            sc.AddMessageToLog(
+                ("Trading Hypothesis Display: manual trigger fired but proposed contracts ("
+                 + std::to_string(proposal.contracts) + ") is 0 or exceeds the Max Contracts Safety "
+                 "Cap -- refusing to act.").c_str(), 1);
+        }
+        else if (!proposal.hasStop || !proposal.hasTarget1)
+        {
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but the proposal is missing a stop "
+                "or target_1 -- refusing to place an order with no risk level.", 1);
+        }
+        else if ((proposal.direction == "long" && proposal.stop >= proposal.target1)
+               || (proposal.direction == "short" && proposal.stop <= proposal.target1))
+        {
+            // Second, independent safety net -- the same class of bug the
+            // backwards A-day invalidation fix caught in Python
+            // (hypothesis/generator.py's _a_day_hypothesis). run_live.py's
+            // engine already refuses to write a backwards hypothesis to
+            // order_proposal.csv in the first place, so this should never
+            // actually trigger -- if it does, treat it as a bug to fix, not
+            // something to override or work around here.
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but stop/target_1 are on the wrong "
+                "side of each other for this direction -- refusing to place a backwards bracket order.", 1);
+        }
+        else
+        {
+            s_SCPositionData PositionData;
+            sc.GetTradePosition(PositionData);
+            if (PositionData.PositionQuantity != 0)
+            {
+                sc.AddMessageToLog(
+                    ("Trading Hypothesis Display: manual trigger fired but a position is already open ("
+                     + std::to_string(PositionData.PositionQuantity) + " contracts) -- refusing to open "
+                     "a second one. Flatten first if this is intentional.").c_str(), 1);
+            }
+            else
+            {
+                s_SCNewOrder NewOrder;
+                NewOrder.OrderQuantity = proposal.contracts;
+                NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
+                NewOrder.TimeInForce = SCT_TIF_DAY;
+                NewOrder.Target1Price = proposal.target1;
+                NewOrder.Stop1Price = proposal.stop;
+                NewOrder.AttachedOrderTarget1Type = SCT_ORDERTYPE_LIMIT;
+                NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
+
+                const int result = (proposal.direction == "long") ? sc.BuyEntry(NewOrder) : sc.SellEntry(NewOrder);
+                std::stringstream msg;
+                msg << "Trading Hypothesis Display: manual trigger -> " << proposal.direction << " "
+                    << proposal.contracts << " contract(s) (" << proposal.hypothesis_type << ", "
+                    << proposal.confluence << "), stop=" << proposal.stop << " target1=" << proposal.target1
+                    << " -- sc." << (proposal.direction == "long" ? "BuyEntry" : "SellEntry")
+                    << " returned " << result
+                    << (result > 0 ? " (submitted)" : " (FAILED -- check Sierra Chart's own Trade Service log for the reason)");
+                sc.AddMessageToLog(msg.str().c_str(), result > 0 ? 0 : 1);
+            }
+        }
+    }
+
+    // --- 2. Throttle bridge-file reads/writes to Input_RefreshIntervalSeconds --
+    double& LastRefreshUnixTime = sc.GetPersistentDouble(1);
     if (now - LastRefreshUnixTime < Input_RefreshIntervalSeconds.GetInt())
         return;
     LastRefreshUnixTime = now;

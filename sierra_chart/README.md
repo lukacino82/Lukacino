@@ -56,6 +56,13 @@
    VAH/VAL/POC subgraph index inputs already default to the confirmed
    values (VAH=1, VAL=2, POC=0 — i.e. SG2/SG3/SG1), so leave them unless
    your Subgraphs tab shows a different order.
+8. **Only if you intend to place real orders (Step 4):** leave `Mode` at
+   `Hypothesis Only` until you've read "Manual order trigger (Step 4)"
+   below and are ready to test on a SIM/demo account. Sierra Chart's own
+   Trade → "Enable Trading" / AutoTrading switch must also be on for this
+   chart's Trade Service, and the chart's own Trade Account must be a real
+   (or SIM) account — none of that is something this study can turn on
+   for you.
 
 `Bridge Folder` is just a path typed into that Input — the study now
 creates it (and the `<Instrument>` subfolder under it) on disk itself the
@@ -93,6 +100,78 @@ resolve to real, already-calculated studies (same "array size 0" check as
 above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
+
+## Manual order trigger (Step 4) — NOT yet built/tested on real hardware
+
+Everything in this section is written against ACSIL documentation and
+example code only — it has never been compiled or run, unlike the rest of
+this file's "Fixed after a real test" entries above. Compile it first and
+check the log carefully before ever flipping the trigger on a real (even
+SIM) account; see the "VERIFICATION STATUS" comment directly above the
+manual-trigger block in `TradingHypothesisStudy.cpp` for exactly which
+field/return-value assumptions to double check against your installed SDK
+header if the build fails or behaves oddly.
+
+This reads `order_proposal.csv` (written every tick by `run_live.py` — see
+`trading_system/bridge/csv_bridge.py`'s `OrderProposalSnapshot`) and places
+a real bracket order (entry + attached stop + attached target) via
+`sc.BuyEntry`/`sc.SellEntry` — but only when you explicitly ask it to,
+never on its own. This is the first, deliberately manual stage of Step 4;
+a Manual/Auto switch that fires automatically comes later, only once this
+stage is proven reliable on a SIM account (the user's explicit staged
+choice over building full automation straight away).
+
+**How to fire an order:**
+1. Set `Mode` to `Semi Auto`.
+2. Check the drawn hypothesis text box (or `order_proposal.csv` directly)
+   for a real, actionable proposal — `direction` must be `long`/`short`,
+   not `none`.
+3. Flip `Trigger Order Now` to `Yes`. The study acts once on its next
+   recalculation and immediately flips the input back to `No` itself —
+   there's no native clickable-button Input type in ACSIL, so this
+   self-resetting toggle is the standard idiom for a one-shot manual
+   action instead.
+4. Check Sierra Chart's **Message Log** (Window → Message Log) for the
+   outcome — either a confirmation with the order details and
+   `sc.BuyEntry`/`sc.SellEntry`'s return value, or a specific reason it
+   refused to act (stale proposal, no position risk level, a position
+   already open, etc. — see the checks below).
+
+**Safety checks before any order is submitted** (in order, first failure
+wins — nothing after it is checked, and the order is never placed):
+- A data row must actually exist in `order_proposal.csv` yet.
+- `direction` must be `long` or `short` (not `none` — nothing tradeable).
+- `instrument` in the file must match this study's own `Instrument` input.
+- The proposal's `timestamp` must be newer than `Max Order Proposal Age`
+  seconds ago (default 30s) — refuses to act on a stale file left behind
+  by a crashed or stopped `run_live.py`.
+- `contracts` must be greater than 0 and no more than `Max Contracts
+  Safety Cap` (default 5, independent of whatever sizing `risk/sizing.py`
+  computed — a second, Sierra-Chart-side limit you control directly).
+- Both `stop` and `target_1` must be present.
+- `stop`/`target_1` must be on the correct side of each other for the
+  direction (long: stop below target; short: stop above target) — a
+  second, independent check in C++ of the same class of bug the backwards
+  A-day invalidation fix caught in Python (`hypothesis/generator.py`).
+  `run_live.py` already refuses to write a backwards proposal in the first
+  place, so this should never actually trigger; if it does, that's a bug
+  to fix, not something to work around here.
+- No position may already be open for this chart's symbol/account
+  (`sc.GetTradePosition`'s `PositionQuantity != 0`) — the one-trade-at-a-
+  time guard, matching the backtest harness's own model. Working (not yet
+  filled) orders aren't separately checked in this first version — a known
+  gap to verify carefully during SIM testing.
+
+The entry order type is a plain market order (`SCT_ORDERTYPE_MARKET`) —
+deliberately simple for this first manual-trigger stage, rather than a
+limit order at the proposal's stale `entry` price, which could sit unfilled
+indefinitely if price has already moved on by the time you click. The stop
+and target are attached as absolute prices (`Target1Price`/`Stop1Price`),
+not offsets, since the proposal already carries real price levels.
+
+`Fully Auto` mode is **not implemented** — selecting it only logs a warning
+once and places no orders; `Hypothesis Only` and `Semi Auto` behave exactly
+as before/as described above.
 
 **Fixed after an eleventh real test:** even with "Draw Developing Value Area
 Lines" switched to Yes (ruling out the tenth test's hypothesis), VAH/VAL/POC
