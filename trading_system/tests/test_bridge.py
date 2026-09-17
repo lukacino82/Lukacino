@@ -31,6 +31,27 @@ def test_daily_profiles_round_trip(tmp_path):
     assert result == profiles
 
 
+def test_daily_profiles_keeps_last_row_when_a_date_is_duplicated(tmp_path):
+    """Reproduces a real run: two conflicting rows for the same date ended
+    up in daily_profile_export.csv (see ARCHITECTURE.md). The last one
+    written should win, not the first -- otherwise a stale/degenerate
+    early export could permanently shadow a later, corrected one.
+    """
+    path = tmp_path / "daily_profile_export.csv"
+    path.write_text(
+        "date,instrument,val,vah,poc\n"
+        "2026-09-14,NQ,29432.2,29492,29460\n"
+        "2026-09-14,NQ,29331.5,29478.8,29451.8\n"
+        "2026-09-15,NQ,29286.8,29286.8,29286.8\n"
+        "2026-09-15,NQ,29227.2,29341.8,29275\n"
+        "2026-09-16,NQ,29281,29535,29466.8\n"
+    )
+    result = read_daily_profiles(path)
+    assert [p.session_date for p in result] == [date(2026, 9, 14), date(2026, 9, 15), date(2026, 9, 16)]
+    assert result[0] == DailyProfile("NQ", date(2026, 9, 14), val=29331.5, vah=29478.8, poc=29451.8)
+    assert result[1] == DailyProfile("NQ", date(2026, 9, 15), val=29227.2, vah=29341.8, poc=29275)
+
+
 def test_append_live_state_builds_a_history_read_back_in_order(tmp_path):
     path = tmp_path / "historical_intraday.csv"
     states = [

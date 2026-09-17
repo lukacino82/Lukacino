@@ -118,6 +118,29 @@ CSV/text files** on disk, in `trading_system/bridge/`'s format:
   arrays (confirmed against a real chart's Subgraphs tab and Sierra
   Chart's own support board). ACSIL does not compute VAL/VAH/POC itself
   either way.
+  **Duplicate/conflicting rows for the same date, root-caused and made
+  harmless:** a real run's file had two rows for both 2026-09-14 and
+  2026-09-15, one pair with noticeably different VAH/VAL/POC and one row
+  that was degenerate (val=vah=poc, the exact symptom of a study still
+  pointed at the wrong -- e.g. TPO -- chart). The Message Log confirmed the
+  cause directly: **two live "Trading Hypothesis Display" instances were
+  running at once**, one correctly configured, one left at its default
+  `Instrument` value from a remove/re-add (Sierra Chart resets all Inputs
+  to defaults when a study is removed and re-added, which is otherwise the
+  standard fix for an existing instance not picking up new Inputs after a
+  DLL rebuild -- see sierra_chart/README.md's "Manual order trigger" setup
+  notes) -- each instance independently detects the same day rollover and
+  appends its own row, with `std::ofstream(..., std::ios::app)` never
+  checking whether that date is already in the file. The real fix is
+  operational (run exactly one bridge-writing instance per instrument, per
+  the "Run only one bridge-writing instance per instrument" note in
+  README.md) -- but `read_daily_profiles()` was also made defensive
+  regardless of that: it now keeps only the **last** row for a given
+  `(instrument, date)` key instead of silently taking whichever happened
+  to come first. First-wins was the real bug here, not just untidiness --
+  it risked permanently locking in whichever row landed first, which in
+  the observed case would have been the degenerate one, not the corrected
+  later export.
 - `composites.csv` (Python writes, ACSIL reads) — one row per composite,
   refreshed after each new daily profile is ingested:
   `instrument,start_date,end_date,val,vah,day_count,tier,active,invalidated_on,remaining_ranges`

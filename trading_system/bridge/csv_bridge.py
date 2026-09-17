@@ -9,6 +9,7 @@ with the ACSIL side's parsing.
 from __future__ import annotations
 
 import csv
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -125,18 +126,38 @@ def write_daily_profiles(path: Path, profiles: Iterable[DailyProfile]) -> None:
 
 
 def read_daily_profiles(path: Path) -> List[DailyProfile]:
+    """Reads every row, keeping only the LAST one for each (instrument,
+    date) pair when the file has more than one.
+
+    ACSIL is expected to write exactly one row per closed trading day, but
+    a real run surfaced duplicate/conflicting rows for the same date (two
+    concurrent study instances briefly writing the same bridge file, one of
+    them misconfigured, is the leading suspect -- see ARCHITECTURE.md).
+    Silently keeping the FIRST row per date (a plain list comprehension's
+    natural behavior) risks permanently locking in a stale or degenerate
+    value if the bad export happened to land first in the file; keeping
+    the LAST one instead favors whichever export happened most recently,
+    which is the same "latest write wins" convention every other bridge
+    file here already uses (live_state.csv, order_proposal.csv,
+    hypothesis.txt are all overwritten in place, not appended to
+    ambiguously). This never changes anything for a well-formed file with
+    no duplicate dates.
+    """
     with open(path, newline="") as f:
         reader = csv.DictReader(f)
-        return [
-            DailyProfile(
+        by_key: "OrderedDict[Tuple[str, date], DailyProfile]" = OrderedDict()
+        for row in reader:
+            profile = DailyProfile(
                 instrument=row["instrument"],
                 session_date=date.fromisoformat(row["date"]),
                 val=float(row["val"]),
                 vah=float(row["vah"]),
                 poc=float(row["poc"]),
             )
-            for row in reader
-        ]
+            key = (profile.instrument, profile.session_date)
+            by_key.pop(key, None)  # drop any earlier row for this key so re-inserting moves it to the end
+            by_key[key] = profile
+    return list(by_key.values())
 
 
 def write_live_state(path: Path, state: LiveMarketState) -> None:
