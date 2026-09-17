@@ -175,6 +175,27 @@ bool ReadOrderProposalCSV(const std::string& path, OrderProposalRow& out) {
     return true;
 }
 
+// Returns the date column of daily_profile_export.csv's last data row (the
+// most recently exported trading day), or "" if the file doesn't exist or
+// has no data rows yet. Used to guard the day-close export below against
+// re-writing a duplicate row for a day it already exported -- see the
+// comment at that call site for why the persistent-int bookkeeping alone
+// isn't enough.
+std::string ReadLastDailyProfileDate(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open())
+        return "";
+    std::string line, lastDataLine;
+    std::getline(file, line); // header
+    while (std::getline(file, line))
+        if (!line.empty())
+            lastDataLine = line;
+    if (lastDataLine.empty())
+        return "";
+    const auto comma = lastDataLine.find(',');
+    return comma == std::string::npos ? "" : lastDataLine.substr(0, comma);
+}
+
 std::string ReadWholeFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())
@@ -681,6 +702,29 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             if (lastClosedYYYYMMDD != currentTradingDayYYYYMMDD
                 && lastClosedYYYYMMDD != LastExportedDateYYYYMMDD)
             {
+                // A real chart confirmed this actually happens: Sierra Chart
+                // periodically tags this chart for a full recalculation on
+                // its own (cross-chart dependencies from other studies/
+                // charts in the same chartbook), and a full recalculation
+                // resets persistent storage -- including
+                // LastExportedDateYYYYMMDD back to 0 -- even though nothing
+                // about the trading day actually changed. Without this
+                // check, every such recalculation looks exactly like a
+                // fresh, never-exported day rollover and appends another
+                // duplicate row for the same date (confirmed: the file
+                // gained a second real row for a date already present,
+                // immediately after a logged "Performing a full
+                // recalculation" message). The persistent int alone can't
+                // survive that reset, so check the file's own last row
+                // instead -- the one piece of state that's actually durable
+                // across a recalculation.
+                const std::string lastClosedDateStr = FormatISODateFromSCDateTime(sc.BaseDateTimeIn[lastClosedBar]);
+                if (ReadLastDailyProfileDate(dailyProfilePath) == lastClosedDateStr)
+                {
+                    LastExportedDateYYYYMMDD = lastClosedYYYYMMDD; // resync so we don't re-check the file every tick
+                }
+                else
+                {
                 std::stringstream diag;
                 diag << "Trading Hypothesis Display: daily export firing. lastClosedBar=" << lastClosedBar
                      << " date=" << FormatISODateFromSCDateTime(sc.BaseDateTimeIn[lastClosedBar])
@@ -752,6 +796,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                                      + std::strerror(errno) + " (errno " + std::to_string(errno) + ").";
                     sc.AddMessageToLog(msg.c_str(), 1);
                 }
+                } // end of "else" -- the file didn't already have this date
             }
         }
     }

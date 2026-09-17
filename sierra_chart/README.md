@@ -202,6 +202,30 @@ regular price/volume chart, not a TPO or Market/Volume Profile chart type --
 those have their own native value-area display that looks identical at a
 glance but is architecturally unrelated and unreadable from ACSIL.
 
+**Fixed after a twelfth real test:** `daily_profile_export.csv` gained
+duplicate rows for the same date days after the eleventh test's fix, even
+though only one study instance was confirmed running (checked via the
+`Trading Hypothesis Display config: thisChart=...` startup log line -- only
+one chart number ever appeared). The Message Log explained it directly:
+Sierra Chart periodically tags this chart for a **full recalculation** on
+its own (cross-chart dependencies from other studies/charts in the same
+chartbook -- `Chart #1 has tagged chart #5 for full recalculation`), and a
+full recalculation resets this study's persistent storage, including
+`LastExportedDateYYYYMMDD` back to 0 -- even though the trading day hasn't
+actually changed. Every such recalculation then looked exactly like a
+fresh, never-exported day rollover and re-appended a duplicate row for the
+same date (confirmed directly: a `daily export firing` log line, and a
+second real row for 2026-09-16, immediately after a logged "Performing a
+full recalculation" message). Fixed by checking the file's own last row
+before writing (`ReadLastDailyProfileDate`) -- the persistent int can't
+survive a recalculation reset, but the file on disk can, so a match there
+means this day was already exported and the write (and its diagnostic
+log/subgraph probe) is skipped, just resyncing the persistent int instead.
+`trading_system/bridge/csv_bridge.py`'s `read_daily_profiles()` also now
+defensively keeps the *last* row per date if a duplicate ever does slip
+through some other way, rather than silently trusting whichever came
+first -- belt and suspenders, not a substitute for this fix.
+
 **Diagnosing a tenth real test:** even with the ninth test's full backward
 scan in place, VAH/VAL/POC still exported as 0. A raw dump of the array at a
 spread of indices (`0, 300, 800, 1300, 1600, ..., 1799`) came back 0.0 at

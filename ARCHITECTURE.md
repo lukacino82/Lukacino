@@ -118,29 +118,37 @@ CSV/text files** on disk, in `trading_system/bridge/`'s format:
   arrays (confirmed against a real chart's Subgraphs tab and Sierra
   Chart's own support board). ACSIL does not compute VAL/VAH/POC itself
   either way.
-  **Duplicate/conflicting rows for the same date, root-caused and made
-  harmless:** a real run's file had two rows for both 2026-09-14 and
-  2026-09-15, one pair with noticeably different VAH/VAL/POC and one row
-  that was degenerate (val=vah=poc, the exact symptom of a study still
-  pointed at the wrong -- e.g. TPO -- chart). The Message Log confirmed the
-  cause directly: **two live "Trading Hypothesis Display" instances were
-  running at once**, one correctly configured, one left at its default
-  `Instrument` value from a remove/re-add (Sierra Chart resets all Inputs
-  to defaults when a study is removed and re-added, which is otherwise the
-  standard fix for an existing instance not picking up new Inputs after a
-  DLL rebuild -- see sierra_chart/README.md's "Manual order trigger" setup
-  notes) -- each instance independently detects the same day rollover and
-  appends its own row, with `std::ofstream(..., std::ios::app)` never
-  checking whether that date is already in the file. The real fix is
-  operational (run exactly one bridge-writing instance per instrument, per
-  the "Run only one bridge-writing instance per instrument" note in
-  README.md) -- but `read_daily_profiles()` was also made defensive
-  regardless of that: it now keeps only the **last** row for a given
-  `(instrument, date)` key instead of silently taking whichever happened
-  to come first. First-wins was the real bug here, not just untidiness --
-  it risked permanently locking in whichever row landed first, which in
-  the observed case would have been the degenerate one, not the corrected
-  later export.
+  **Duplicate/conflicting rows for the same date, root-caused and fixed:**
+  a real run's file had two rows for both 2026-09-14 and 2026-09-15, one
+  pair with noticeably different VAH/VAL/POC and one row that was
+  degenerate (val=vah=poc). First suspicion, from the Message Log alone,
+  was two concurrent "Trading Hypothesis Display" instances (one left at
+  its default `Instrument` after a remove/re-add) each independently
+  detecting the same day rollover -- but a follow-up check (searching the
+  log for every `Trading Hypothesis Display config: thisChart=...` startup
+  line) confirmed only **one** instance was ever actually running. The
+  real cause: Sierra Chart periodically tags this chart for a **full
+  recalculation** on its own (cross-chart dependencies from other studies/
+  charts in the same chartbook), and a full recalculation resets this
+  study's persistent storage -- including the persistent int tracking
+  "last exported trading day" -- back to 0, even though nothing about the
+  trading day changed. Every such recalculation then looked exactly like a
+  fresh, never-exported rollover and re-appended a duplicate row for a
+  date already in the file. Confirmed directly against a real chart: a
+  `daily export firing` log line, and a second real row for 2026-09-16,
+  fired again immediately after a logged "Performing a full
+  recalculation" message. Fixed in `TradingHypothesisStudy.cpp` by
+  checking the file's own last row (`ReadLastDailyProfileDate`) before
+  writing -- the persistent int can't survive a recalculation reset, but
+  the CSV on disk can, so a match there means the day was already
+  exported and the write (and its diagnostic log/subgraph probe) is
+  skipped, just resyncing the persistent int. `read_daily_profiles()` was
+  also made defensive independently of that C++ fix: it now keeps only
+  the **last** row for a given `(instrument, date)` key instead of
+  silently taking whichever happened to come first, in case a duplicate
+  ever slips through some other way -- belt and suspenders, not a
+  substitute for the real fix. See sierra_chart/README.md's "twelfth real
+  test" entry for the full story.
 - `composites.csv` (Python writes, ACSIL reads) — one row per composite,
   refreshed after each new daily profile is ingested:
   `instrument,start_date,end_date,val,vah,day_count,tier,active,invalidated_on,remaining_ranges`
