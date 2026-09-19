@@ -587,13 +587,25 @@ debugging.
      existing "no signal beats a wrong signal" design, so it's left as-is
      rather than adding a history-replay-on-startup mechanism for a cold
      start that self-resolves in minutes.
-   - **The Windows machine itself restarting:** nothing in this repo
-     currently auto-restarts `run_live.py` after a reboot — that's a
-     deployment/ops concern (e.g. a Windows Task Scheduler "at startup"
-     entry), not a gap in the trading logic. Until `run_live.py` is back
-     up, `order_proposal.csv` simply goes stale and the manual trigger's
-     existing `Max Order Proposal Age` check already refuses to act on it
-     — a safe failure mode, not a silent one.
+   - **The Windows machine itself restarting, now closed via
+     `run_live_supervisor.bat` (repo root) + a Task Scheduler "at logon"
+     entry** -- see the "Auto-start after a reboot" section of
+     `sierra_chart/README.md` for the exact `schtasks` command and the
+     user's real deployment paths (`C:\LukacinoGit`,
+     `C:\SierraChart\TradingHypothesisBridge`). The `.bat` is a supervisor
+     loop, not a replacement for `run_live.py`'s own resilience (its
+     `while True` already never exits on an ordinary tick error) -- it only
+     ever matters when something outside `run_live.py`'s control kills the
+     whole process (a stray Ctrl+C, the console window closing, a reboot).
+     Deliberately does not `git pull` automatically -- code updates stay a
+     manual, reviewed step; a `git pull` followed by one Ctrl+C on the
+     running window is enough, since each restart launches a fresh process
+     that re-reads `trading_system/` from disk. Until now, until
+     `run_live.py` was manually restarted after a reboot,
+     `order_proposal.csv` would simply go stale and the manual trigger's
+     existing `Max Order Proposal Age` check already refused to act on it
+     -- a safe failure mode even before this fix, just not a self-healing
+     one.
 
 ## Repo layout
 

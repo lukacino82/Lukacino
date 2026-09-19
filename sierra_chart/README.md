@@ -590,3 +590,62 @@ instance's refresh timer fires last wins — silently overwriting a
 correctly-configured write with a partially-configured one. Configure one
 instance fully (using the Chart Number inputs above to reach every tier)
 and disable or repurpose the others.
+
+## Auto-start run_live.py after a reboot
+
+`run_live_supervisor.bat` (repo root) plus a Task Scheduler "at logon"
+entry closes the one real gap found when investigating position/state
+recovery after a restart (see ARCHITECTURE.md's Step 4 notes): nothing
+previously restarted `run_live.py` itself after the Windows machine
+rebooted. Until it's running again, `order_proposal.csv` just goes stale
+and the manual trigger's existing `Max Order Proposal Age` check already
+refuses to act on it — a safe failure mode even before this, just not a
+self-healing one.
+
+**What the `.bat` does:** loops forever, launching
+`python -m trading_system.run_live --bridge-dir "C:\SierraChart\TradingHypothesisBridge" --instrument NQ --history-out "C:\SierraChart\TradingHypothesisBridge\NQ\historical_intraday.csv"`
+from `C:\LukacinoGit`, and relaunching it 10 seconds after it ever exits
+for any reason — a stray Ctrl+C, the console window closing, a crash.
+`run_live.py`'s own `while True` loop already never exits on an ordinary
+tick error (bad row, missing file — see its `except Exception` clause), so
+in practice this supervisor only ever matters for something outside
+`run_live.py`'s own control killing the whole process, reboot included.
+It deliberately does **not** run `git pull` itself — code updates stay a
+manual, reviewed step exactly as before. Since every restart launches a
+brand-new Python process that re-reads `trading_system/` from disk, a
+manual `git pull` followed by one Ctrl+C on the running window is enough
+to pick up a new build; the loop then relaunches it with the new code
+automatically. All output (the same lines you'd see in the console today,
+plus a start/restart timestamp line from the `.bat` itself) is appended to
+`C:\SierraChart\TradingHypothesisBridge\NQ\run_live_supervisor.log`.
+
+**One-time setup, in an ordinary (non-admin) cmd or PowerShell window:**
+```
+cd C:\LukacinoGit
+git pull
+schtasks /create /tn "Lukacino run_live" /tr "C:\LukacinoGit\run_live_supervisor.bat" /sc onlogon /rl limited /f
+```
+This registers a task that starts the supervisor the next time you log on
+to Windows — it does **not** start it immediately. To also start it right
+now, in the same window:
+```
+schtasks /run /tn "Lukacino run_live"
+```
+A console window titled after the `.bat` will open and stay open — that's
+the supervisor loop; leave it running, same as you'd leave `run_live.py`'s
+own window running today. If a `run_live.py` window from before this setup
+is still open, close it first (Ctrl+C, then close the window) so you don't
+end up with two instances writing the same bridge files.
+
+**Checking it's working:** open
+`C:\SierraChart\TradingHypothesisBridge\NQ\run_live_supervisor.log` — a
+fresh `[<date> <time>] Starting run_live.py` line confirms the supervisor
+fired, followed by the same `Watching ... (poll every 5s) ...` line
+`run_live.py` always prints on startup.
+
+**To stop it for good** (not just for one restart): close the supervisor's
+console window, then remove the scheduled task so it doesn't come back
+after your next logon:
+```
+schtasks /delete /tn "Lukacino run_live" /f
+```
