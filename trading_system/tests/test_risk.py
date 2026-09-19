@@ -102,3 +102,72 @@ def test_build_order_proposal_short_direction():
     proposal = build_order_proposal("NQ", hyp, config)
     assert proposal.direction == "short"
     assert proposal.contracts == 1
+
+
+def _hypothesis_with_targets(confluence, target_2, runner) -> Hypothesis:
+    return Hypothesis(
+        type=HypothesisType.A_LONG,
+        thesis="test",
+        entry=100.0,
+        target_1=105.0,
+        target_2=target_2,
+        runner=runner,
+        invalidation=99.0,
+        confluence=confluence,
+    )
+
+
+def test_scale_out_split_a_plus_three_legs_evenly():
+    # User's explicit decision: A+ scales out across target_1/target_2/
+    # runner, not a flat target_1-only fill.
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=3, half_risk_contracts=1)
+    hyp = _hypothesis_with_targets(Confluence.A_PLUS, target_2=110.0, runner=115.0)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (1, 1, 1)
+    assert proposal.contracts_target1 + proposal.contracts_target2 + proposal.contracts_runner == proposal.contracts
+
+
+def test_scale_out_split_a_plus_remainder_goes_to_target1():
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=4, half_risk_contracts=1)
+    hyp = _hypothesis_with_targets(Confluence.A_PLUS, target_2=110.0, runner=115.0)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (2, 1, 1)
+
+
+def test_scale_out_split_a_plus_too_few_contracts_drops_runner_leg():
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1)
+    hyp = _hypothesis_with_targets(Confluence.A_PLUS, target_2=110.0, runner=115.0)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (1, 1, 0)
+
+
+def test_scale_out_split_a_plus_single_contract_is_target1_only():
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=1, half_risk_contracts=1)
+    hyp = _hypothesis_with_targets(Confluence.A_PLUS, target_2=110.0, runner=115.0)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (1, 0, 0)
+
+
+def test_scale_out_split_a_plus_missing_target2_price_folds_into_two_legs():
+    # Hypothesis has no target_2 price at all -- confluence still says A+,
+    # but there's nothing to attach a target_2 leg's order to.
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=3, half_risk_contracts=1)
+    hyp = _hypothesis_with_targets(Confluence.A_PLUS, target_2=None, runner=115.0)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (2, 0, 1)
+
+
+def test_scale_out_split_clean_uses_target1_and_runner_only():
+    # User's explicit decision: Clean scales out across target_1/runner,
+    # deliberately no target_2 leg (unlike A+'s three-leg split).
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=3)
+    hyp = _hypothesis_with_targets(Confluence.CLEAN, target_2=110.0, runner=115.0)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (2, 0, 1)
+
+
+def test_scale_out_split_clean_no_runner_price_is_target1_only():
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=3)
+    hyp = _hypothesis_with_targets(Confluence.CLEAN, target_2=110.0, runner=None)
+    proposal = build_order_proposal("NQ", hyp, config)
+    assert (proposal.contracts_target1, proposal.contracts_target2, proposal.contracts_runner) == (3, 0, 0)

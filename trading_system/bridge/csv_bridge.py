@@ -62,6 +62,13 @@ class OrderProposalSnapshot:
     target_2: Optional[float]
     runner: Optional[float]
     contracts: int
+    # Scale-out split of `contracts` across target_1/target_2/runner,
+    # decided by risk.order._split_contracts_by_confluence -- always sums to
+    # `contracts`. 0/0/0 when direction == "none". ACSIL places one bracket
+    # order per nonzero leg.
+    contracts_target1: int
+    contracts_target2: int
+    contracts_runner: int
 
 
 ORDER_PROPOSAL_FIELDS = [
@@ -76,6 +83,9 @@ ORDER_PROPOSAL_FIELDS = [
     "target_2",
     "runner",
     "contracts",
+    "contracts_target1",
+    "contracts_target2",
+    "contracts_runner",
 ]
 
 DAILY_PROFILE_FIELDS = ["date", "instrument", "val", "vah", "poc"]
@@ -335,6 +345,9 @@ def write_order_proposal(path: Path, snapshot: OrderProposalSnapshot) -> None:
                 _opt(snapshot.target_2),
                 _opt(snapshot.runner),
                 snapshot.contracts,
+                snapshot.contracts_target1,
+                snapshot.contracts_target2,
+                snapshot.contracts_runner,
             ]
         )
 
@@ -360,4 +373,7 @@ def read_order_proposal(path: Path) -> Optional[OrderProposalSnapshot]:
         target_2=float(row["target_2"]) if row["target_2"] else None,
         runner=float(row["runner"]) if row["runner"] else None,
         contracts=int(row["contracts"]),
+        contracts_target1=int(row["contracts_target1"]),
+        contracts_target2=int(row["contracts_target2"]),
+        contracts_runner=int(row["contracts_runner"]),
     )

@@ -81,6 +81,9 @@ def test_order_proposal_round_trip_actionable(tmp_path):
         target_2=None,
         runner=None,
         contracts=1,
+        contracts_target1=1,
+        contracts_target2=0,
+        contracts_runner=0,
     )
     write_order_proposal(path, snapshot)
     assert read_order_proposal(path) == snapshot
@@ -104,6 +107,9 @@ def test_order_proposal_round_trip_none_actionable(tmp_path):
         target_2=None,
         runner=None,
         contracts=0,
+        contracts_target1=0,
+        contracts_target2=0,
+        contracts_runner=0,
     )
     write_order_proposal(path, snapshot)
     assert read_order_proposal(path) == snapshot
@@ -111,7 +117,10 @@ def test_order_proposal_round_trip_none_actionable(tmp_path):
 
 def test_read_order_proposal_returns_none_when_file_has_no_data_row(tmp_path):
     path = tmp_path / "order_proposal.csv"
-    path.write_text("timestamp,instrument,direction,hypothesis_type,confluence,entry,stop,target_1,target_2,runner,contracts\n")
+    path.write_text(
+        "timestamp,instrument,direction,hypothesis_type,confluence,entry,stop,target_1,target_2,runner,"
+        "contracts,contracts_target1,contracts_target2,contracts_runner\n"
+    )
     assert read_order_proposal(path) is None
 
 

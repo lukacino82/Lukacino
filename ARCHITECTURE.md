@@ -341,7 +341,9 @@ debugging.
      `hypothesis.txt` (free text meant for a human/the chart's drawn text
      box). `OrderProposalSnapshot` carries `direction`
      (`"long"`/`"short"`/`"none"`), `hypothesis_type`, `confluence`,
-     `entry`/`stop`/`target_1`/`target_2`/`runner`, and `contracts`. Always
+     `entry`/`stop`/`target_1`/`target_2`/`runner`, `contracts`, and (added
+     for the scale-out split below) `contracts_target1`/`contracts_target2`/
+     `contracts_runner`. Always
      written every tick by `run_live.py` -- even when nothing is
      tradeable, as a `direction="none"`/`contracts=0` row -- so ACSIL can
      tell "checked, nothing to do right now" apart from "stale/missing
@@ -431,6 +433,61 @@ debugging.
      kill-switch refusal, two successful trades, and a third refusal once
      the (default) 3-trade cap is reached, all logged with the expected
      message and `trigger_log.csv` row count.
+   - **target_2/runner scale-out, implemented.** Until now, `target_2` and
+     `runner` were computed by `hypothesis/generator.py` and carried through
+     `OrderProposal`/`order_proposal.csv` but never actually used -- the
+     manual trigger only ever placed one bracket order against `target_1`.
+     Asked the user how to split `contracts` across the three levels; the
+     answer was **by confluence, not a flat 1/3 split**: `A_PLUS` scales out
+     across all three (`target_1`/`target_2`/`runner`), `CLEAN` only across
+     two (`target_1`/`runner`, deliberately no `target_2` leg), matching how
+     the skill already treats A+ as the "full" setup and Clean as the
+     reduced one. Implemented as:
+     - `risk/order.py`'s `_split_contracts_by_confluence` decides which legs
+       a confluence tier uses (dropping a leg back into `target_1` whenever
+       its price is `None` or the total is too small to fund every desired
+       leg) and `_split_evenly` divides the total across them,
+       remainder-first to `target_1` (the closest, most-likely-to-fill
+       level, so it's never the one a too-small size drops). `OrderProposal`
+       now carries `contracts_target1`/`contracts_target2`/`contracts_runner`
+       (always summing to `contracts`), computed once in
+       `build_order_proposal` alongside the existing sizing call.
+     - `order_proposal.csv` gained three columns for these
+       (`bridge/csv_bridge.py`'s `ORDER_PROPOSAL_FIELDS`/
+       `OrderProposalSnapshot`) -- Python decides the split, ACSIL just
+       executes it, same division of responsibility as everywhere else in
+       this bridge.
+     - `TradingHypothesisStudy.cpp`'s manual trigger now submits **one
+       `sc.BuyEntry`/`sc.SellEntry` bracket order per nonzero leg** (up to
+       three), each with its own `Target1Price` but all sharing
+       `proposal.stop` -- `s_SCNewOrder` only carries a single target price,
+       so a multi-target scale-out needs one order submission per target,
+       not one order with several targets. There is deliberately no
+       per-leg stop management yet (moving the runner's stop to breakeven
+       once target_1 fills, trailing it further) -- that needs fill-event
+       tracking this bridge doesn't have, so it's deferred to FULLY_AUTO the
+       same way pyramiding/trailing already are. `trigger_log.csv`/`Max
+       Trades Per Day` still count the whole trigger as **one** trade
+       regardless of how many legs fired, since the cap is about how many
+       times the trader has clicked the trigger today, not how many bracket
+       orders exist on the account.
+     - Two new defensive checks, same principle as the existing backwards
+       stop/target_1 re-check: the leg quantities must sum back to
+       `contracts` (re-checking Python's own invariant, not trusting it
+       blindly), and a leg with contracts but no matching price (`target_2`/
+       `runner` empty) is refused rather than submitting an order at
+       `Target1Price=0.0`. The backwards-price check was also extended to
+       cover any active `target_2`/`runner` leg, not just `target_1`.
+     Older `order_proposal.csv` files (an 11-column file from a
+     `run_live.py` that hasn't been redeployed yet) are read with a
+     fallback: the whole size becomes a single `target_1`-only leg, matching
+     this study's pre-scale-out behavior, rather than indexing past the end
+     of the parsed row or refusing to trade. Verified against the local
+     stub: a 3-contract A+ proposal (target_2/runner both priced) fires
+     three separate `BuyEntry` calls (1/1/1) and logs one `trigger_log.csv`
+     row with `contracts=3`; a mismatched-sum proposal and a
+     price-missing-for-a-funded-leg proposal are both refused with the
+     expected message.
    - **Also fixed along the way (a real hardware finding, not part of the
      original order-trigger design):** `daily_profile_export.csv` was
      gaining duplicate rows for the same date because Sierra Chart

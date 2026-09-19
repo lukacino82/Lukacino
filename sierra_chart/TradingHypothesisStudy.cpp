@@ -136,6 +136,13 @@ struct OrderProposalRow {
     bool hasRunner = false;
     double runner = 0.0;
     int contracts = 0;
+    // Scale-out split of `contracts` across target_1/target_2/runner,
+    // decided by the Python side's confluence-based split (risk/order.py) --
+    // always sums to `contracts`. See the ReadOrderProposalCSV column-count
+    // fallback below for why these can't just be read unconditionally.
+    int contractsTarget1 = 0;
+    int contractsTarget2 = 0;
+    int contractsRunner = 0;
 };
 
 void ParseOptionalDouble(const std::string& field, bool& hasValue, double& value) {
@@ -172,6 +179,23 @@ bool ReadOrderProposalCSV(const std::string& path, OrderProposalRow& out) {
     ParseOptionalDouble(f[8], out.hasTarget2, out.target2);
     ParseOptionalDouble(f[9], out.hasRunner, out.runner);
     out.contracts = std::stoi(f[10]);
+    // Older order_proposal.csv files (written by a run_live.py from before
+    // the scale-out split existed) only have 11 columns -- fall back to a
+    // single target_1-only leg, matching this study's pre-scale-out
+    // behavior, rather than indexing past the end of `f` or refusing to
+    // trade just because the two sides were redeployed a moment apart.
+    if (f.size() >= 14)
+    {
+        out.contractsTarget1 = std::stoi(f[11]);
+        out.contractsTarget2 = std::stoi(f[12]);
+        out.contractsRunner = std::stoi(f[13]);
+    }
+    else
+    {
+        out.contractsTarget1 = out.contracts;
+        out.contractsTarget2 = 0;
+        out.contractsRunner = 0;
+    }
     return true;
 }
 
@@ -986,19 +1010,52 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                 "Trading Hypothesis Display: manual trigger fired but the proposal is missing a stop "
                 "or target_1 -- refusing to place an order with no risk level.", 1);
         }
+        else if (proposal.contractsTarget1 + proposal.contractsTarget2 + proposal.contractsRunner != proposal.contracts)
+        {
+            // Defensive re-check of the same invariant the Python side
+            // guarantees (risk/order.py's _split_contracts_by_confluence
+            // always sums back to contracts) -- same principle as the
+            // backwards stop/target_1 check just below: a broken split is a
+            // bug to fix, not something to silently work around by trading
+            // a smaller size than intended.
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but the scale-out leg quantities in "
+                "order_proposal.csv don't sum to the total contracts -- refusing to act on an "
+                "inconsistent proposal.", 1);
+        }
+        else if ((proposal.contractsTarget2 > 0 && !proposal.hasTarget2)
+               || (proposal.contractsRunner > 0 && !proposal.hasRunner))
+        {
+            // A leg with contracts but no price would otherwise submit a
+            // bracket order with Target1Price=0.0 -- a catastrophically
+            // wrong level, not a safe default.
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but the scale-out split calls for a "
+                "target_2 or runner leg with no corresponding price in order_proposal.csv -- refusing "
+                "to act on an inconsistent proposal.", 1);
+        }
         else if ((proposal.direction == "long" && proposal.stop >= proposal.target1)
-               || (proposal.direction == "short" && proposal.stop <= proposal.target1))
+               || (proposal.direction == "short" && proposal.stop <= proposal.target1)
+               || (proposal.contractsTarget2 > 0
+                   && ((proposal.direction == "long" && proposal.stop >= proposal.target2)
+                    || (proposal.direction == "short" && proposal.stop <= proposal.target2)))
+               || (proposal.contractsRunner > 0
+                   && ((proposal.direction == "long" && proposal.stop >= proposal.runner)
+                    || (proposal.direction == "short" && proposal.stop <= proposal.runner))))
         {
             // Second, independent safety net -- the same class of bug the
             // backwards A-day invalidation fix caught in Python
-            // (hypothesis/generator.py's _a_day_hypothesis). run_live.py's
-            // engine already refuses to write a backwards hypothesis to
-            // order_proposal.csv in the first place, so this should never
-            // actually trigger -- if it does, treat it as a bug to fix, not
-            // something to override or work around here.
+            // (hypothesis/generator.py's _a_day_hypothesis), now also
+            // covering the target_2/runner legs the scale-out split can
+            // fire on. run_live.py's engine already refuses to write a
+            // backwards hypothesis to order_proposal.csv in the first
+            // place, so this should never actually trigger -- if it does,
+            // treat it as a bug to fix, not something to override or work
+            // around here.
             sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but stop/target_1 are on the wrong "
-                "side of each other for this direction -- refusing to place a backwards bracket order.", 1);
+                "Trading Hypothesis Display: manual trigger fired but stop is on the wrong side of "
+                "target_1 (or an active target_2/runner leg) for this direction -- refusing to place a "
+                "backwards bracket order.", 1);
         }
         else
         {
@@ -1028,30 +1085,59 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             }
             else
             {
-                s_SCNewOrder NewOrder;
-                NewOrder.OrderQuantity = proposal.contracts;
-                NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
-                NewOrder.TimeInForce = SCT_TIF_DAY;
-                NewOrder.Target1Price = proposal.target1;
-                NewOrder.Stop1Price = proposal.stop;
-                NewOrder.AttachedOrderTarget1Type = SCT_ORDERTYPE_LIMIT;
-                NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
+                // Up to three separate bracket orders, one per nonzero
+                // scale-out leg -- s_SCNewOrder only carries a single
+                // Target1Price, so a real multi-target scale-out needs one
+                // order submission per target, not one order with several
+                // targets. All legs share proposal.stop; there is
+                // deliberately no per-leg stop management (breakeven-on-
+                // fill, trailing the runner) yet -- that's FULLY_AUTO-era
+                // work, deferred the same way pyramiding/trailing already
+                // are (see ARCHITECTURE.md's Step 4 notes).
+                struct Leg { const char* name; int quantity; double targetPrice; };
+                const Leg legs[] = {
+                    {"target_1", proposal.contractsTarget1, proposal.target1},
+                    {"target_2", proposal.contractsTarget2, proposal.target2},
+                    {"runner",   proposal.contractsRunner,  proposal.runner},
+                };
 
-                const int result = (proposal.direction == "long") ? sc.BuyEntry(NewOrder) : sc.SellEntry(NewOrder);
-                std::stringstream msg;
-                msg << "Trading Hypothesis Display: manual trigger -> " << proposal.direction << " "
-                    << proposal.contracts << " contract(s) (" << proposal.hypothesis_type << ", "
-                    << proposal.confluence << "), stop=" << proposal.stop << " target1=" << proposal.target1
-                    << " -- sc." << (proposal.direction == "long" ? "BuyEntry" : "SellEntry")
-                    << " returned " << result
-                    << (result > 0 ? " (submitted)" : " (FAILED -- check Sierra Chart's own Trade Service log for the reason)");
-                sc.AddMessageToLog(msg.str().c_str(), result > 0 ? 0 : 1);
+                int totalSubmitted = 0;
+                for (const Leg& leg : legs)
+                {
+                    if (leg.quantity <= 0)
+                        continue;
 
-                // Only log this trigger toward the daily cap once the order
-                // actually went out -- a failed submission shouldn't burn a
-                // slot the trader could otherwise retry after fixing whatever
-                // caused the failure.
-                if (result > 0)
+                    s_SCNewOrder NewOrder;
+                    NewOrder.OrderQuantity = leg.quantity;
+                    NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
+                    NewOrder.TimeInForce = SCT_TIF_DAY;
+                    NewOrder.Target1Price = leg.targetPrice;
+                    NewOrder.Stop1Price = proposal.stop;
+                    NewOrder.AttachedOrderTarget1Type = SCT_ORDERTYPE_LIMIT;
+                    NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
+
+                    const int result = (proposal.direction == "long") ? sc.BuyEntry(NewOrder) : sc.SellEntry(NewOrder);
+                    std::stringstream msg;
+                    msg << "Trading Hypothesis Display: manual trigger -> " << proposal.direction << " "
+                        << leg.quantity << " contract(s) [" << leg.name << " leg] (" << proposal.hypothesis_type
+                        << ", " << proposal.confluence << "), stop=" << proposal.stop << " target=" << leg.targetPrice
+                        << " -- sc." << (proposal.direction == "long" ? "BuyEntry" : "SellEntry")
+                        << " returned " << result
+                        << (result > 0 ? " (submitted)" : " (FAILED -- check Sierra Chart's own Trade Service log for the reason)");
+                    sc.AddMessageToLog(msg.str().c_str(), result > 0 ? 0 : 1);
+
+                    if (result > 0)
+                        totalSubmitted += leg.quantity;
+                }
+
+                // Only log this trigger toward the daily cap once at least
+                // one leg actually went out -- a fully-failed submission
+                // shouldn't burn a slot the trader could otherwise retry
+                // after fixing whatever caused the failure. Counts as one
+                // trade regardless of how many legs succeeded -- the cap is
+                // about how many times you've fired the trigger today, not
+                // how many individual bracket orders exist on the account.
+                if (totalSubmitted > 0)
                 {
                     const std::string todayStr = TodayDateString(nowTimeT);
                     const bool needsHeader = !std::ifstream(triggerLogPath).good();
@@ -1061,7 +1147,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                         if (needsHeader)
                             logOut << "date,timestamp,direction,contracts\n";
                         logOut << todayStr << "," << FormatISODateTime(nowTimeT) << ","
-                               << proposal.direction << "," << proposal.contracts << "\n";
+                               << proposal.direction << "," << totalSubmitted << "\n";
                     }
                     else
                     {

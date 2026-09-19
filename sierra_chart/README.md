@@ -116,12 +116,28 @@ to build or behaves oddly.
 
 This reads `order_proposal.csv` (written every tick by `run_live.py` — see
 `trading_system/bridge/csv_bridge.py`'s `OrderProposalSnapshot`) and places
-a real bracket order (entry + attached stop + attached target) via
-`sc.BuyEntry`/`sc.SellEntry` — but only when you explicitly ask it to,
+one or more real bracket orders (entry + attached stop + attached target)
+via `sc.BuyEntry`/`sc.SellEntry` — but only when you explicitly ask it to,
 never on its own. This is the first, deliberately manual stage of Step 4;
 a Manual/Auto switch that fires automatically comes later, only once this
 stage is proven reliable on a SIM account (the user's explicit staged
 choice over building full automation straight away).
+
+**Scale-out across target_1/target_2/runner:** `contracts` splits across
+up to three separate bracket orders depending on confluence —
+`A+` scales out across all three (`target_1`/`target_2`/`runner`), `Clean`
+only across two (`target_1`/`runner`, no `target_2` leg), decided in
+`risk/order.py`'s `_split_contracts_by_confluence` (Python decides the
+split; this study just executes it, reading the leg sizes straight from
+`order_proposal.csv`'s `contracts_target1`/`contracts_target2`/
+`contracts_runner` columns). Each leg is its own `sc.BuyEntry`/`sc.SellEntry`
+call — `s_SCNewOrder` only has one target price, so there's no single-order
+way to attach three different targets — but all legs share the same
+`stop`; there's no per-leg stop management yet (moving the runner's stop to
+breakeven once `target_1` fills, trailing it further), since that needs
+fill-event tracking this bridge doesn't have. A leg with zero contracts
+(e.g. `Clean` never funds a `target_2` leg, or the total was too small to
+fund every leg the confluence tier calls for) is simply skipped.
 
 **How to fire an order:**
 1. Set `Mode` to `Semi Auto`.
@@ -154,13 +170,22 @@ wins — nothing after it is checked, and the order is never placed):
   Safety Cap` (default 5, independent of whatever sizing `risk/sizing.py`
   computed — a second, Sierra-Chart-side limit you control directly).
 - Both `stop` and `target_1` must be present.
-- `stop`/`target_1` must be on the correct side of each other for the
-  direction (long: stop below target; short: stop above target) — a
-  second, independent check in C++ of the same class of bug the backwards
-  A-day invalidation fix caught in Python (`hypothesis/generator.py`).
-  `run_live.py` already refuses to write a backwards proposal in the first
-  place, so this should never actually trigger; if it does, that's a bug
-  to fix, not something to work around here.
+- `contracts_target1 + contracts_target2 + contracts_runner` must equal
+  `contracts` — a defensive re-check of the same invariant
+  `_split_contracts_by_confluence` guarantees on the Python side, not
+  trusted blindly.
+- A leg with contracts assigned (`contracts_target2`/`contracts_runner` > 0)
+  must have a matching price (`target_2`/`runner` not empty) — otherwise
+  that leg would submit a bracket order at `Target1Price=0.0`, refused
+  instead.
+- `stop` must be on the correct side of `target_1`, and of `target_2`/
+  `runner` too whenever their leg is funded (long: stop below target;
+  short: stop above target) — a second, independent check in C++ of the
+  same class of bug the backwards A-day invalidation fix caught in Python
+  (`hypothesis/generator.py`). `run_live.py` already refuses to write a
+  backwards proposal in the first place, so this should never actually
+  trigger; if it does, that's a bug to fix, not something to work around
+  here.
 - No position may already be open for this chart's symbol/account
   (`sc.GetTradePosition`'s `PositionQuantity != 0`) — the one-trade-at-a-
   time guard, matching the backtest harness's own model.
@@ -184,7 +209,10 @@ wins — nothing after it is checked, and the order is never placed):
   error. There is deliberately no automated dollar-based daily loss limit
   yet (no confirmed ACSIL realized-P&L field, no fills bridge) — watch your
   own Sierra Chart Trade Activity/Account Balance window for that, and use
-  `Trading Enabled` above to act on it.
+  `Trading Enabled` above to act on it. One trigger counts as **one** trade
+  here no matter how many scale-out legs it places — the cap is about how
+  many times you've clicked the trigger today, not how many bracket orders
+  exist on the account.
 
 The entry order type is a plain market order (`SCT_ORDERTYPE_MARKET`) —
 deliberately simple for this first manual-trigger stage, rather than a

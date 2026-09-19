@@ -28,6 +28,9 @@ def _proposal(contracts=2, direction="long") -> OrderProposal:
         runner=110.0,
         contracts=contracts,
         confluence=Confluence.A_PLUS,
+        contracts_target1=contracts,
+        contracts_target2=0,
+        contracts_runner=0,
     )
 
 

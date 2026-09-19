@@ -117,6 +117,9 @@ def _order_proposal_snapshot(state, result) -> OrderProposalSnapshot:
             target_2=None,
             runner=None,
             contracts=0,
+            contracts_target1=0,
+            contracts_target2=0,
+            contracts_runner=0,
         )
     return OrderProposalSnapshot(
         timestamp=state.timestamp,
@@ -130,6 +133,9 @@ def _order_proposal_snapshot(state, result) -> OrderProposalSnapshot:
         target_2=proposal.target_2,
         runner=proposal.runner,
         contracts=proposal.contracts,
+        contracts_target1=proposal.contracts_target1,
+        contracts_target2=proposal.contracts_target2,
+        contracts_runner=proposal.contracts_runner,
     )
 
 
