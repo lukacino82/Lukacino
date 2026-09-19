@@ -1,7 +1,6 @@
-from datetime import date, datetime
+from datetime import datetime
 
 from trading_system.bridge.csv_bridge import LiveMarketState
-from trading_system.composite.models import DailyProfile
 from trading_system.hypothesis.delta import (
     DeltaHistory,
     DeltaSample,
@@ -108,28 +107,36 @@ def test_delta_history_tracks_oldest_and_newest_within_maxlen():
     assert signal == DeltaSignal.CONFIRMING
 
 
-_YESTERDAY = DailyProfile("NQ", date(2026, 9, 9), val=100.0, vah=110.0, poc=105.0)
 _NEUTRAL_TIERS = TierReport(monthly=Position.ABOVE, weekly=Position.BELOW, intraday=Position.AT)
 _BULLISH_TIERS = TierReport(monthly=Position.ABOVE, weekly=Position.ABOVE, intraday=Position.ABOVE)
+_BEARISH_TIERS = TierReport(monthly=Position.BELOW, weekly=Position.BELOW, intraday=Position.BELOW)
 
 
-def test_classify_regime_a_day_when_all_three_signs_agree():
-    inputs = RegimeInputs(session_open=105.0, yesterday=_YESTERDAY, tier_report=_NEUTRAL_TIERS, cum_delta=200.0)
-    assert classify_regime(inputs, gap_threshold_fraction=0.25, delta_imbalance=1000.0) == Regime.A_DAY
+def test_classify_regime_a_day_when_delta_balanced_and_bias_neutral():
+    inputs = RegimeInputs(tier_report=_NEUTRAL_TIERS, cum_delta=200.0)
+    assert classify_regime(inputs, delta_imbalance=1000.0) == Regime.A_DAY
 
 
-def test_classify_regime_b_day_when_all_three_signs_agree():
-    inputs = RegimeInputs(session_open=130.0, yesterday=_YESTERDAY, tier_report=_BULLISH_TIERS, cum_delta=2000.0)
-    assert classify_regime(inputs, gap_threshold_fraction=0.25, delta_imbalance=1000.0) == Regime.B_DAY
+def test_classify_regime_b_day_when_one_sided_delta_matches_bullish_bias():
+    inputs = RegimeInputs(tier_report=_BULLISH_TIERS, cum_delta=2000.0)
+    assert classify_regime(inputs, delta_imbalance=1000.0) == Regime.B_DAY
+
+
+def test_classify_regime_b_day_when_one_sided_delta_matches_bearish_bias():
+    inputs = RegimeInputs(tier_report=_BEARISH_TIERS, cum_delta=-2000.0)
+    assert classify_regime(inputs, delta_imbalance=1000.0) == Regime.B_DAY
 
 
 def test_classify_regime_unclear_when_signs_are_mixed():
-    # Small gap and balanced delta (A-day signs), but price accepted above
-    # all tiers (a B-day sign) -- a genuinely mixed read.
-    inputs = RegimeInputs(session_open=105.0, yesterday=_YESTERDAY, tier_report=_BULLISH_TIERS, cum_delta=200.0)
-    assert classify_regime(inputs, gap_threshold_fraction=0.25, delta_imbalance=1000.0) == Regime.UNCLEAR
+    # Balanced delta (an A-day sign), but price accepted above all tiers (a
+    # B-day sign) -- a genuinely mixed read.
+    inputs = RegimeInputs(tier_report=_BULLISH_TIERS, cum_delta=200.0)
+    assert classify_regime(inputs, delta_imbalance=1000.0) == Regime.UNCLEAR
 
 
-def test_classify_regime_open_inside_value_area_has_zero_gap():
-    inputs = RegimeInputs(session_open=100.0, yesterday=_YESTERDAY, tier_report=_NEUTRAL_TIERS, cum_delta=0.0)
-    assert classify_regime(inputs) == Regime.A_DAY
+def test_classify_regime_unclear_when_one_sided_delta_fights_the_bias():
+    # Bullish structural bias but delta one-sided SELLING -- a divergence,
+    # not a confirmed trend, so this must not be forced into B_DAY just
+    # because both signs happen to be non-neutral.
+    inputs = RegimeInputs(tier_report=_BULLISH_TIERS, cum_delta=-2000.0)
+    assert classify_regime(inputs, delta_imbalance=1000.0) == Regime.UNCLEAR

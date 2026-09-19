@@ -261,6 +261,36 @@ debugging.
      (they just never asserted on `invalidation`, so the bug was invisible
      to them) and needed fixing alongside two new tests reproducing the
      real failure directly.
+   - **Gap requirement dropped, revisiting the earlier "keep it strict" call
+     above** -- reversed after a real Sierra Chart Replay-mode test on live
+     NQ data: a multi-hour, clearly one-directional session (VAH climbing
+     from ~29500 to ~30200+ continuously) stayed `UNCLEAR` the entire time,
+     because `session_open` never produced a large-enough gap even though
+     tier bias and delta were one-sided the whole way -- precisely the
+     "intraday trend without an opening gap" case asked about earlier, now
+     backed by a concrete failure instead of a hypothetical. The user's
+     reasoning for reversing course: reading VWAP/delta continuously through
+     the session (this system's actual advantage over the skill's
+     screenshot-only view) should be able to recognize a trend day without
+     needing the gap proxy a static morning screenshot relies on -- still
+     faithful to the skill's underlying intent (MM/HF/intraday VWAP bias +
+     delta), just no longer gated on one sign that can only ever be set once,
+     at the open. `classify_regime` now takes only `RegimeInputs(tier_report,
+     cum_delta)` -- `session_open`/`yesterday`/`gap_threshold_fraction` are
+     gone entirely, and a genuine correctness gap the old code never checked
+     was fixed alongside it: one-sided delta pushing the *opposite* direction
+     from a non-neutral tier bias (a real divergence) no longer gets forced
+     into `B_DAY` just because both signs happen to be non-neutral -- delta's
+     sign must now agree with the bias's direction. A side effect, also
+     intentional: regime classification (and therefore a hypothesis) no
+     longer needs any closed-day `DailyProfile` at all, so it can fire from
+     the very first live tick of a fresh instrument/session, before
+     `daily_profile_export.csv` has ever gained a row -- `LiveEngine.tick()`,
+     `run_live.py`, and `backtest/replay.py` all dropped their `yesterday`
+     plumbing accordingly (composites still respect the same no-lookahead
+     guard as before -- that part was never about regime). All 101 tests
+     (100 existing + 1 new, covering the delta-vs-bias divergence case)
+     pass.
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads

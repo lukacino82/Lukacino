@@ -49,8 +49,8 @@ def _print_report(instrument: str, report: BacktestReport) -> None:
     resolved = report.resolved
     if not report.trades:
         print("  no trades at all -- if UNCLEAR dominates above, "
-              "regime.py's thresholds (gap_threshold_fraction/delta_imbalance in "
-              "run_live.py's INSTRUMENT_CONFIGS) are too strict for this data, not broken")
+              "regime.py's threshold (delta_imbalance in run_live.py's "
+              "INSTRUMENT_CONFIGS) is too strict for this data, not broken")
         return
     if not resolved:
         print("  no resolved trades -- nothing to score yet")
@@ -86,7 +86,6 @@ def run(instrument: str, daily_profiles_path: Path, intraday_history_path: Path)
         sizing=live_config.sizing,
         price_move_threshold=live_config.price_move_threshold,
         delta_move_threshold=live_config.delta_move_threshold,
-        gap_threshold_fraction=live_config.gap_threshold_fraction,
         delta_imbalance=live_config.delta_imbalance,
     )
 

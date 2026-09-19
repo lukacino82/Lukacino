@@ -8,12 +8,13 @@ before anything trades on a real account, per ARCHITECTURE.md's backtest step.
 
 Lookahead avoidance is the whole point of doing this as a replay rather than
 just calling generate_hypothesis() against the full history at once:
-- A day's DailyProfile only becomes visible to CompositeEngine, and only
-  becomes "yesterday" for regime classification, once the intraday clock has
-  actually passed that day -- exactly the constraint production's
-  run_live.py gets for free (ACSIL never writes a day's row until that day
-  has actually closed), which a replay fed the whole history upfront has to
-  enforce explicitly instead.
+- A day's DailyProfile only becomes visible to CompositeEngine once the
+  intraday clock has actually passed that day -- exactly the constraint
+  production's run_live.py gets for free (ACSIL never writes a day's row
+  until that day has actually closed), which a replay fed the whole history
+  upfront has to enforce explicitly instead. Regime classification itself no
+  longer needs any closed-day profile at all (see hypothesis/regime.py), so
+  this lookahead guard now only matters for composite-driven targets.
 - Only one trade is tracked open at a time, matching the SEMI_AUTO mental
   model of one trader watching one instrument, not a portfolio backtester
   running independent parallel positions. A new signal while one is already
@@ -122,9 +123,9 @@ class BacktestReport:
     skipped_no_target: int = 0  # actionable hypotheses with no target_1 to judge a win against
     regime_counts: Dict[Regime, int] = field(default_factory=dict)
     """How many ticks classified into each Regime -- the direct answer to
-    "why zero trades": if UNCLEAR dominates, classify_regime's thresholds
-    (gap_threshold_fraction / delta_imbalance) are too strict for this
-    instrument/period rather than anything being broken. Only counts ticks
+    "why zero trades": if UNCLEAR dominates, classify_regime's threshold
+    (delta_imbalance) is too strict for this instrument/period rather than
+    anything being broken. Only counts ticks
     that actually reached engine.tick() -- a tick spent updating an already-
     open trade (see run_backtest's "one trade at a time" rule) isn't
     re-classified and so isn't counted here.
@@ -178,7 +179,6 @@ class BacktestConfig:
     sizing: SizingConfig
     price_move_threshold: float
     delta_move_threshold: float
-    gap_threshold_fraction: float = 0.25
     delta_imbalance: float = 1000.0
     delta_window: int = 20
 
@@ -274,7 +274,6 @@ def run_backtest(
     report = BacktestReport()
 
     profile_idx = 0
-    yesterday: Optional[DailyProfile] = None
     open_trade: Optional[_OpenTrade] = None
 
     for state in states:
@@ -283,7 +282,6 @@ def run_backtest(
         # everything in `profiles` up front.
         while profile_idx < len(profiles) and profiles[profile_idx].session_date < state.timestamp.date():
             composite_engine.ingest_day(profiles[profile_idx])
-            yesterday = profiles[profile_idx]
             profile_idx += 1
 
         if open_trade is not None:
@@ -299,12 +297,10 @@ def run_backtest(
 
         result = engine.tick(
             state,
-            yesterday,
             composite_engine.composites,
             config.sizing,
             config.price_move_threshold,
             config.delta_move_threshold,
-            config.gap_threshold_fraction,
             config.delta_imbalance,
         )
         report.regime_counts[result.regime] = report.regime_counts.get(result.regime, 0) + 1

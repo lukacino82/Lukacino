@@ -31,15 +31,16 @@ YESTERDAY = DailyProfile(instrument=INSTRUMENT, session_date=date(2024, 1, 1), v
 
 
 def _a_day_state(when: datetime, last_price: float) -> LiveMarketState:
-    """A_DAY regime: small gap (session_open inside yesterday's value area),
-    balanced delta, and a neutral tier bias (monthly/weekly above price,
-    intraday below) -- see hypothesis/regime.py's classify_regime.
+    """A_DAY regime: balanced delta and a neutral tier bias (monthly/weekly
+    above price, intraday below) -- see hypothesis/regime.py's
+    classify_regime. session_open no longer feeds regime classification at
+    all, but is still part of LiveMarketState/the invalidation fallback.
     """
     return LiveMarketState(
         instrument=INSTRUMENT,
         timestamp=when,
         last_price=last_price,
-        session_open=100.5,  # inside [100, 110] -> gap == 0.0
+        session_open=100.5,
         vwap_monthly=95.0,  # price above -> ABOVE
         vwap_weekly=95.0,  # price above -> ABOVE
         vwap_intraday=103.0,  # price below -> BELOW -> mixed -> NEUTRAL bias
@@ -156,19 +157,22 @@ def test_report_groups_by_hypothesis_type_and_confluence() -> None:
     assert by_confluence[Confluence.CLEAN] == stats  # same two trades, same numbers
 
 
-def test_same_day_profile_is_not_usable_as_yesterday_no_lookahead() -> None:
+def test_same_day_profile_is_not_visible_to_composite_engine_no_lookahead() -> None:
     """A DailyProfile dated the same day as a snapshot represents that day's
-    close, which hasn't happened yet intraday -- it must stay invisible
-    (regime UNCLEAR, no hypothesis) until a later day's snapshot arrives.
+    close, which hasn't happened yet intraday -- CompositeEngine must not
+    ingest it until a later day's snapshot arrives. (Regime classification
+    itself no longer depends on any daily profile at all -- see
+    hypothesis/regime.py -- so this now only exercises the composite-side
+    lookahead guard: the state below still resolves to an A_DAY hypothesis
+    from tier bias/delta alone.)
     """
     same_day_profile = DailyProfile(instrument=INSTRUMENT, session_date=date(2024, 1, 2), val=100.0, vah=110.0, poc=105.0)
     states = [_a_day_state(datetime(2024, 1, 2, 9, 30), last_price=101.0)]
 
     report = run_backtest(INSTRUMENT, [same_day_profile], states, CONFIG)
 
-    assert report.trades == []
-    assert report.skipped_no_target == 0  # never even reached a proposal -- regime was UNCLEAR
-    assert report.regime_counts == {Regime.UNCLEAR: 1}
+    assert report.trades == [] or report.trades[0].status == TradeStatus.OPEN
+    assert report.regime_counts == {Regime.A_DAY: 1}
 
 
 def test_b_day_hypothesis_with_no_composite_target_is_counted_not_dropped() -> None:
@@ -180,11 +184,11 @@ def test_b_day_hypothesis_with_no_composite_target_is_counted_not_dropped() -> N
         instrument=INSTRUMENT,
         timestamp=datetime(2024, 1, 2, 9, 30),
         last_price=130.0,
-        session_open=130.0,  # far outside yesterday's [100, 110] value area -- a real gap
+        session_open=130.0,
         vwap_monthly=90.0,  # price above all three tiers -> BULLISH structural bias
         vwap_weekly=90.0,
         vwap_intraday=90.0,
-        cum_delta=2000.0,  # one-sided (beyond delta_imbalance default of 1000)
+        cum_delta=2000.0,  # one-sided, same direction as the bullish bias
     )
 
     report = run_backtest(INSTRUMENT, [YESTERDAY], [state], CONFIG)

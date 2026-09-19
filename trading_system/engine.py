@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 from .bridge.csv_bridge import LiveMarketState
-from .composite.models import Composite, DailyProfile
+from .composite.models import Composite
 from .hypothesis.delta import DeltaHistory, DeltaSignal
 from .hypothesis.formatter import format_hypothesis_text
 from .hypothesis.generator import Hypothesis, generate_hypothesis
@@ -49,30 +49,21 @@ class LiveEngine:
     def tick(
         self,
         state: LiveMarketState,
-        yesterday: Optional[DailyProfile],
         composites: Sequence[Composite],
         sizing_config: SizingConfig,
         price_move_threshold: float,
         delta_move_threshold: float,
-        gap_threshold_fraction: float = 0.25,
         delta_imbalance: float = 1000.0,
     ) -> EngineResult:
         self._delta_history.add(state)
         report = tier_report(state)
         delta_signal = self._delta_history.classify(price_move_threshold, delta_move_threshold)
 
-        if yesterday is not None:
-            regime_inputs = RegimeInputs(
-                session_open=state.session_open,
-                yesterday=yesterday,
-                tier_report=report,
-                cum_delta=state.cum_delta,
-            )
-            regime = classify_regime(regime_inputs, gap_threshold_fraction, delta_imbalance)
-        else:
-            # No closed-day profile yet (e.g. very first session) -- the
-            # gap-vs-value-area test has nothing to compare against.
-            regime = Regime.UNCLEAR
+        # No closed-day profile is needed for this any more -- see
+        # hypothesis/regime.py's module docstring -- so a hypothesis can fire
+        # from the very first live tick of a fresh instrument.
+        regime_inputs = RegimeInputs(tier_report=report, cum_delta=state.cum_delta)
+        regime = classify_regime(regime_inputs, delta_imbalance)
 
         hypothesis = generate_hypothesis(state, regime, report, delta_signal, composites)
         proposal = build_order_proposal(self.instrument, hypothesis, sizing_config)

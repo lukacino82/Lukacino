@@ -33,7 +33,6 @@ from .bridge.csv_bridge import (
     write_order_proposal,
 )
 from .composite.engine import CompositeEngine
-from .composite.models import DailyProfile
 from .engine import LiveEngine
 from .risk.sizing import SizingConfig, SizingMode
 
@@ -43,7 +42,6 @@ class InstrumentConfig:
     sizing: SizingConfig
     price_move_threshold: float
     delta_move_threshold: float
-    gap_threshold_fraction: float
     delta_imbalance: float
 
 
@@ -52,7 +50,6 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
         sizing=SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1),
         price_move_threshold=5.0,  # NQ points -- placeholder, not calibrated
         delta_move_threshold=500.0,  # placeholder, not calibrated
-        gap_threshold_fraction=0.25,  # placeholder, not calibrated
         # Bumped from the original 1000.0 placeholder after a real
         # --history-out sample (2026-09-15, 19:17-19:24 ET) showed NQ's
         # cum_delta already sitting at 4600-4800 within that single 7-minute
@@ -71,21 +68,14 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
 POLL_INTERVAL_SECONDS = 5
 
 
-def _most_recent_profile(daily_profile_path: Path) -> Optional[DailyProfile]:
-    profiles = read_daily_profiles(daily_profile_path)
-    return max(profiles, key=lambda p: p.session_date) if profiles else None
-
-
 def _append_new_history_row(history_path: Optional[Path], state) -> None:
     """No-op unless ``--history-out`` was passed. Dedupes on timestamp so
     polling faster than ACSIL's own refresh interval doesn't write the same
     snapshot twice -- this is the historical_intraday.csv the backtest
     harness (trading_system/backtest/replay.py) reads via
     read_live_state_history, so duplicate rows would double-count that tick.
-    Re-reads the whole file each call to find the last row, same tradeoff
-    _most_recent_profile already makes for daily_profile_export.csv --
-    fine at 5s polling, would need revisiting for a very long-running
-    history file.
+    Re-reads the whole file each call to find the last row -- fine at 5s
+    polling, would need revisiting for a very long-running history file.
     """
     if history_path is None:
         return
@@ -165,16 +155,12 @@ def _tick(
                 ingested_dates.add(profile.session_date)
         write_composites(composites_path, composite_engine.composites)
 
-    yesterday = _most_recent_profile(daily_profile_path) if daily_profile_path.exists() else None
-
     result = engine.tick(
         state,
-        yesterday,
         composite_engine.composites,
         config.sizing,
         config.price_move_threshold,
         config.delta_move_threshold,
-        config.gap_threshold_fraction,
         config.delta_imbalance,
     )
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
