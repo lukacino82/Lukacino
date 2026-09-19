@@ -400,6 +400,37 @@ debugging.
      right after the `PositionQuantity != 0` check, with no separate order
      -enumeration loop needed at all. This closes the gap the earlier
      revert left open.
+   - **Risk limits, hardened before the first real order ever went out.**
+     Discussed with the user which gap to close first while waiting for the
+     market to reopen -- chose risk limits over target_2/runner scale-out,
+     since no live order had fired yet on Semi Auto. Two limits, both
+     enforceable with zero new/unconfirmed ACSIL API:
+     - `Trading Enabled` (Yes/No, default Yes) -- a manual kill switch,
+       checked first inside the fired-trigger branch, before even reading
+       `order_proposal.csv`. Flip to No to hard-block every trigger
+       immediately, independent of `Mode`.
+     - `Max Trades Per Day` (int, default 3) -- checked last, right before
+       order placement, alongside the position/working-order checks. A
+       genuine dollar-based daily loss limit is deliberately NOT
+       implemented: it would need either a confirmed ACSIL realized-P&L
+       field or a new fills bridge, neither of which exists, and guessing
+       either risks a repeat of the `sc.GetOrders()` failure. Until that's
+       designed, the trader's own Sierra Chart Trade Activity/Account
+       Balance window remains the real daily-loss backstop, with `Trading
+       Enabled` as the one-click way to act on it.
+     The trade count is read from a new append-only `trigger_log.csv`
+     (`date,timestamp,direction,contracts`, one row per order this study has
+     actually placed, written only after `sc.BuyEntry`/`sc.SellEntry`
+     returns success) rather than a persistent int -- deliberately, since a
+     persistent int is exactly what the full-recalculation reset above
+     already proved unreliable across restarts/recalculations. Counting is
+     done by a plain `"YYYY-MM-DD,"` line-prefix match against today's wall-
+     clock date (`TodayDateString`), not `sc.GetTradingDayDate()`'s opaque
+     comparison value, since a real calendar date is what's needed to
+     persist and re-derive from disk. Verified against the local stub: a
+     kill-switch refusal, two successful trades, and a third refusal once
+     the (default) 3-trade cap is reached, all logged with the expected
+     message and `trigger_log.csv` row count.
    - **Also fixed along the way (a real hardware finding, not part of the
      original order-trigger design):** `daily_profile_export.csv` was
      gaining duplicate rows for the same date because Sierra Chart

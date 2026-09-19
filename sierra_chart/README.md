@@ -101,16 +101,18 @@ above); until then it's simply not written yet, with no error, since
 nothing is actually broken — you just haven't pointed all four inputs at
 real studies yet.
 
-## Manual order trigger (Step 4) — NOT yet built/tested on real hardware
+## Manual order trigger (Step 4) — confirmed building and running on real hardware
 
-Everything in this section is written against ACSIL documentation and
-example code only — it has never been compiled or run, unlike the rest of
-this file's "Fixed after a real test" entries above. Compile it first and
-check the log carefully before ever flipping the trigger on a real (even
-SIM) account; see the "VERIFICATION STATUS" comment directly above the
-manual-trigger block in `TradingHypothesisStudy.cpp` for exactly which
-field/return-value assumptions to double check against your installed SDK
-header if the build fails or behaves oddly.
+The core trigger (reading `order_proposal.csv`, placing a bracket order,
+the position/working-order/kill-switch/trade-count checks below) has
+compiled successfully on the user's real Sierra Chart remote build server
+and run against a live NQ chart. Some field/return-value assumptions in
+`s_SCNewOrder`/`sc.BuyEntry`/`sc.SellEntry` are still only checked against
+the local g++ stub, not the real SDK header directly — see the
+"VERIFICATION STATUS" comment directly above the manual-trigger block in
+`TradingHypothesisStudy.cpp` for exactly which ones, and double-check them
+against your installed SDK header if a future change to this block fails
+to build or behaves oddly.
 
 This reads `order_proposal.csv` (written every tick by `run_live.py` — see
 `trading_system/bridge/csv_bridge.py`'s `OrderProposalSnapshot`) and places
@@ -139,6 +141,9 @@ choice over building full automation straight away).
 
 **Safety checks before any order is submitted** (in order, first failure
 wins — nothing after it is checked, and the order is never placed):
+- `Trading Enabled` must be `Yes` — the manual kill switch, checked before
+  anything else. Flip it to `No` to instantly block every trigger
+  regardless of `Mode` or how valid the current proposal is.
 - A data row must actually exist in `order_proposal.csv` yet.
 - `direction` must be `long` or `short` (not `none` — nothing tradeable).
 - `instrument` in the file must match this study's own `Instrument` input.
@@ -168,6 +173,18 @@ wins — nothing after it is checked, and the order is never placed):
   confirm on the same `s_SCPositionData` struct already fetched for the
   position check above, with no separate order-enumeration loop needed —
   see ARCHITECTURE.md's Step 4 notes.
+- Today's trade count (from `trigger_log.csv`, this study's own append-only
+  record of every order it has actually placed) must be below `Max Trades
+  Per Day` (default 3) — a hard cap on worst-case daily exposure, checked
+  last, right before the order actually goes out. Counted from the log
+  file itself rather than a persistent int, since a persistent int is
+  exactly what a Sierra Chart full recalculation was already found to
+  silently reset (see the `daily_profile_export.csv` duplicate-row story
+  above) — that reset would otherwise defeat this cap without any visible
+  error. There is deliberately no automated dollar-based daily loss limit
+  yet (no confirmed ACSIL realized-P&L field, no fills bridge) — watch your
+  own Sierra Chart Trade Activity/Account Balance window for that, and use
+  `Trading Enabled` above to act on it.
 
 The entry order type is a plain market order (`SCT_ORDERTYPE_MARKET`) —
 deliberately simple for this first manual-trigger stage, rather than a

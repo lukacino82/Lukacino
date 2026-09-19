@@ -271,6 +271,40 @@ std::string FormatISODateTime(time_t t) {
     return std::string(buf);
 }
 
+// Calendar-date portion ("YYYY-MM-DD") of a naive local timestamp, used as
+// the day boundary for the Max Trades Per Day safety cap below. Deliberately
+// NOT sc.GetTradingDayDate()'s opaque comparison value (see
+// FormatISODateFromSCDateTime's comment on why that can't be trusted as a
+// real calendar date) -- a plain wall-clock date is trivial to persist to
+// disk and compare across restarts/recalculations, which is exactly what a
+// trade-count cap needs to survive.
+std::string TodayDateString(time_t now) {
+    return FormatISODateTime(now).substr(0, 10);
+}
+
+// Counts how many rows of trigger_log.csv (this study's own append-only
+// record of every order it has actually placed) already belong to
+// `dateStr`. Matches by a plain "dateStr," line prefix rather than a
+// header-aware CSV parse -- deliberately robust to the file starting with or
+// without a header line, since a header row never matches a date prefix.
+// Reading the log itself (not a persistent int) is what makes this cap
+// survive a Sierra Chart restart or the full-recalculation persistent-
+// storage reset documented above for the daily profile export -- a persistent
+// int alone would silently reset the count to 0 and defeat the cap exactly
+// the way it caused duplicate profile rows.
+int CountTriggersForDate(const std::string& path, const std::string& dateStr) {
+    std::ifstream file(path);
+    if (!file.is_open())
+        return 0;
+    const std::string prefix = dateStr + ",";
+    int count = 0;
+    std::string line;
+    while (std::getline(file, line))
+        if (line.rfind(prefix, 0) == 0)
+            ++count;
+    return count;
+}
+
 // Inverse of FormatISODateTime -- parses the same naive local
 // "YYYY-MM-DDTHH:MM:SS" string order_proposal.csv/live_state.csv carry,
 // so a manual order trigger can check the proposal's freshness against
@@ -355,6 +389,17 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     SCInputRef Input_ManualTriggerOrder = sc.Input[++InputIdx];
     SCInputRef Input_MaxProposalAgeSeconds = sc.Input[++InputIdx];
     SCInputRef Input_MaxContractsSafetyCap = sc.Input[++InputIdx];
+    // Risk limits (Step 4 hardening, decided before the first real order
+    // ever went out): a manual kill switch and a hard per-day trade count
+    // cap. A real dollar-based daily loss limit is deliberately NOT
+    // implemented yet -- it would need either a confirmed ACSIL realized-P&L
+    // field or a fills bridge neither of which exists today, and guessing
+    // either risks another failed build the way sc.GetOrders did. Until
+    // that's designed, the trader's own Sierra Chart Trade Activity /
+    // Account Balance window is the real daily-loss backstop; flipping
+    // Trading Enabled to No here is the one-click way to act on it.
+    SCInputRef Input_TradingEnabled = sc.Input[++InputIdx];
+    SCInputRef Input_MaxTradesPerDay = sc.Input[++InputIdx];
 
     SCInputRef Input_VP_StudyID = sc.Input[++InputIdx];
     SCInputRef Input_VP_ChartNumber = sc.Input[++InputIdx];
@@ -444,6 +489,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_MaxContractsSafetyCap.Name = "Max Contracts Safety Cap (independent of Python sizing -- refuses to trigger above this)";
         Input_MaxContractsSafetyCap.SetInt(5);
         Input_MaxContractsSafetyCap.SetIntLimits(1, 100);
+
+        Input_TradingEnabled.Name = "Trading Enabled (kill switch -- flip to No to block every trigger immediately)";
+        Input_TradingEnabled.SetYesNo(1);
+
+        Input_MaxTradesPerDay.Name = "Max Trades Per Day (hard cap, counted from this study's own trigger_log.csv)";
+        Input_MaxTradesPerDay.SetInt(3);
+        Input_MaxTradesPerDay.SetIntLimits(1, 50);
 
         // Point this at a "Volume Value Area Lines" study (Time Period Type
         // = Days, Length = 1, Draw Developing Value Area Lines = No), NOT
@@ -579,6 +631,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     const std::string hypothesisPath = bridgeDir + "\\hypothesis.txt";
     const std::string liveStatePath = bridgeDir + "\\live_state.csv";
     const std::string orderProposalPath = bridgeDir + "\\order_proposal.csv";
+    const std::string triggerLogPath = bridgeDir + "\\trigger_log.csv";
 
     SCFloatArray VAHArray, VALArray, POCArray;
     GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_VAHSubgraph.GetInt(), VAHArray);
@@ -620,7 +673,9 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             << " VWAPIntradayArraySize=" << VWAPIntradayArray.GetArraySize()
             << " DeltaStudyID=" << Input_Delta_StudyID.GetInt()
             << " DeltaChart=" << Input_Delta_ChartNumber.GetInt()
-            << " DeltaArraySize=" << DeltaArray.GetArraySize();
+            << " DeltaArraySize=" << DeltaArray.GetArraySize()
+            << " TradingEnabled=" << Input_TradingEnabled.GetYesNo()
+            << " MaxTradesPerDay=" << Input_MaxTradesPerDay.GetInt();
         sc.AddMessageToLog(cfg.str().c_str(), 0);
         HasLoggedStartupConfig = 1;
     }
@@ -886,7 +941,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_ManualTriggerOrder.SetYesNo(0);
 
         OrderProposalRow proposal;
-        if (!ReadOrderProposalCSV(orderProposalPath, proposal))
+        if (!Input_TradingEnabled.GetYesNo())
+        {
+            sc.AddMessageToLog(
+                "Trading Hypothesis Display: manual trigger fired but Trading Enabled is No (kill "
+                "switch) -- refusing to act. Flip it back to Yes to resume.", 1);
+        }
+        else if (!ReadOrderProposalCSV(orderProposalPath, proposal))
         {
             sc.AddMessageToLog(
                 "Trading Hypothesis Display: manual trigger fired but order_proposal.csv has no "
@@ -957,6 +1018,14 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                     "order already exists for this account/symbol -- refusing to place a second one. "
                     "Cancel it first if this is intentional.", 1);
             }
+            else if (CountTriggersForDate(triggerLogPath, TodayDateString(nowTimeT)) >= Input_MaxTradesPerDay.GetInt())
+            {
+                sc.AddMessageToLog(
+                    ("Trading Hypothesis Display: manual trigger fired but Max Trades Per Day ("
+                     + std::to_string(Input_MaxTradesPerDay.GetInt()) + ") is already reached for today "
+                     "(see trigger_log.csv) -- refusing to place another. Raise the input if this is "
+                     "intentional.").c_str(), 1);
+            }
             else
             {
                 s_SCNewOrder NewOrder;
@@ -977,6 +1046,31 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                     << " returned " << result
                     << (result > 0 ? " (submitted)" : " (FAILED -- check Sierra Chart's own Trade Service log for the reason)");
                 sc.AddMessageToLog(msg.str().c_str(), result > 0 ? 0 : 1);
+
+                // Only log this trigger toward the daily cap once the order
+                // actually went out -- a failed submission shouldn't burn a
+                // slot the trader could otherwise retry after fixing whatever
+                // caused the failure.
+                if (result > 0)
+                {
+                    const std::string todayStr = TodayDateString(nowTimeT);
+                    const bool needsHeader = !std::ifstream(triggerLogPath).good();
+                    std::ofstream logOut(triggerLogPath, std::ios::app);
+                    if (logOut.is_open())
+                    {
+                        if (needsHeader)
+                            logOut << "date,timestamp,direction,contracts\n";
+                        logOut << todayStr << "," << FormatISODateTime(nowTimeT) << ","
+                               << proposal.direction << "," << proposal.contracts << "\n";
+                    }
+                    else
+                    {
+                        sc.AddMessageToLog(
+                            ("Trading Hypothesis Display: order placed but could not open "
+                             + triggerLogPath + " for writing: " + std::strerror(errno) + " (errno "
+                             + std::to_string(errno) + "). Max Trades Per Day will under-count today.").c_str(), 1);
+                    }
+                }
             }
         }
     }
