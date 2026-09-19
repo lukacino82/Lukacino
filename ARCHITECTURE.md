@@ -471,6 +471,36 @@ debugging.
      local stub (no regressions across all 18 existing passes); not yet
      compiled on the user's real Sierra Chart remote build server -- pending,
      same as every other change in this file until confirmed.
+   - **Real hardware bug found (and fixed) during the same Replay test:
+     `daily_profile_export.csv` never wrote a header row, ever.** Surfaced
+     once the isolated backtest bridge folder let the file be created fresh
+     by ACSIL with no manual intervention -- `composites.csv` stayed
+     header-only even after two days with a near-100% price-range overlap
+     (well over the 60% merge threshold) had accumulated in
+     `daily_profile_export.csv`, and the backtest `run_live.py` console
+     showed `tick failed: 'instrument'` repeating on every single poll.
+     Root cause: unlike `trigger_log.csv` (which already writes its header
+     once, gated on `!std::ifstream(path).good()`), the day-close export
+     block's `std::ofstream out(dailyProfilePath, std::ios::app)` never had
+     equivalent header-writing logic at all -- confirmed by grepping the
+     whole file for the literal header string and finding no match. Python's
+     `read_daily_profiles()` uses `csv.DictReader`, which silently treats
+     whatever the first line is as the column names; on a header-less file
+     that's the first *data* row, so `row["instrument"]` throws a bare
+     `KeyError('instrument')` on every subsequent row, caught by
+     `run_live.py`'s per-tick exception handler and printed with no further
+     context. This had been silently true since Step 2 -- it never surfaced
+     on the live deployment only because that file already had a header
+     line from early manual debugging (deleting bad rows by hand, per this
+     file's and `sierra_chart/README.md`'s "fifth real test" notes), which
+     masked the missing auto-write ever since. Fixed the same way
+     `trigger_log.csv` already does it: write the header once, gated on the
+     file not already existing, before the first data row. The user's
+     existing (header-less) backtest file was fixed by hand in the meantime
+     (prepending the header line) to unblock the in-progress Replay test
+     without waiting for a rebuild. Verified against the local stub (no
+     regressions); not yet compiled on the user's real Sierra Chart remote
+     build server.
    - **Second guard against working (not yet filled) orders, now
      implemented.** A first attempt added a `HasWorkingOrder()` check
      looping a guessed `sc.GetOrders(index, order)` -- this compiled

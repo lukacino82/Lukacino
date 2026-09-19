@@ -1082,9 +1082,25 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                     sc.AddMessageToLog(dump.str().c_str(), 0);
                 }
 
+                // A real Replay-mode test on a brand-new bridge folder (never
+                // touched by hand) surfaced this file NEVER writing a header
+                // row -- unlike trigger_log.csv, which already gets this
+                // right below. That went unnoticed on the live deployment
+                // because its file had a header line from early manual
+                // debugging, but a genuinely fresh file has none, and
+                // Python's csv.DictReader then silently treats the FIRST
+                // DATA ROW as the column names -- every later row then fails
+                // to parse with a bare `KeyError: 'instrument'`, caught by
+                // run_live.py's per-tick exception handler and printed as
+                // `tick failed: 'instrument'` with no further detail. Fixed
+                // the same way trigger_log.csv already handles it: write the
+                // header once, before the first data row ever goes in.
+                const bool dailyProfileNeedsHeader = !std::ifstream(dailyProfilePath).good();
                 std::ofstream out(dailyProfilePath, std::ios::app);
                 if (out.is_open())
                 {
+                    if (dailyProfileNeedsHeader)
+                        out << "date,instrument,val,vah,poc\n";
                     out << FormatISODateFromSCDateTime(sc.BaseDateTimeIn[lastClosedBar]) << "," << instrument << ","
                         << LastClosedProfileValue(VALArray) << "," << LastClosedProfileValue(VAHArray) << ","
                         << LastClosedProfileValue(POCArray) << "\n";
