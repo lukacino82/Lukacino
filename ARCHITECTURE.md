@@ -351,19 +351,48 @@ debugging.
      `--order-proposal-out`); no opt-in flag like `--history-out`, since
      this file needs to exist continuously once ACSIL's order-placement
      side reads it.
-   - Not yet built (the concrete "acute" next step): the **ACSIL C++ side**
-     that reads `order_proposal.csv` and actually places a bracket order
-     (`sc.BuyEntry`/`sc.SellEntry` + attached stop + attached target) —
-     needs a manual-trigger input (most likely a boolean toggle Input the
-     trader flips to Yes, ACSIL acts once and resets it to No, since there
-     is no native clickable-button Input type), a one-trade-at-a-time
-     guard mirroring the backtest's model, and a second, defensive
-     re-check in C++ that stop/target land on the correct side of entry
-     before submitting (the same class of bug the backwards-invalidation
-     fix above caught in Python — cheap insurance against a real order).
-     Requires a new build/test cycle against the user's SIM/DTC account.
+   - ~~ACSIL manual order trigger~~ (done, deployed and running on the
+     user's real Sierra Chart against a live NQ chart): `Mode` now
+     genuinely switches between `Hypothesis Only`/`Semi Auto`/`Fully Auto`
+     (the latter logs a warning and stays inert -- not implemented, per the
+     staged rollout). In `Semi Auto`, a self-resetting `Trigger Order Now`
+     Yes/No input (flips back to No itself after acting -- ACSIL has no
+     native clickable-button Input type) reads `order_proposal.csv` and, if
+     every safety check passes, places a market entry with an attached
+     stop/target via `sc.BuyEntry`/`sc.SellEntry`. Checks, in order: a data
+     row exists; direction is long/short (not none); instrument matches;
+     the proposal isn't older than `Max Order Proposal Age`; contracts are
+     within a Sierra-Chart-side `Max Contracts Safety Cap` independent of
+     Python's own sizing; stop/target_1 are present and on the correct side
+     of each other (a second, C++-side check of the same bug class the
+     backwards A-day invalidation fix caught in Python); no position is
+     already open (`sc.GetTradePosition`); and, added after a from-the-
+     start review of that check, no **working** (not yet filled) order
+     already exists either (`sc.GetOrders`, comparing `OrderQuantity` to
+     `FilledQuantity`) -- a stale unfilled limit/stop entry wouldn't show
+     up in `PositionQuantity`, so without this a second trigger could still
+     fire on top of it. Verified end to end (SetDefaults, a plain tick, a
+     fired trigger placing a real `BuyEntry` call, confirmation the trigger
+     auto-resets and doesn't re-fire, and confirmation a working order
+     blocks a new one) against a stand-in ACSIL header stub compiled with
+     g++ -- no real Sierra Chart SDK is available in this environment, so
+     this proves the C++ is internally consistent, not that these are the
+     real SDK's exact field names; the real Sierra Chart build remains the
+     authoritative check, and it did succeed on the user's machine.
      FULLY_AUTO (pyramiding, trailing, kill switch) stays explicitly
-     deferred until manual triggering is proven reliable on SIM.
+     deferred until manual triggering is proven reliable on SIM -- not yet
+     started, waiting on the user's first real actionable proposal to test
+     the manual trigger against.
+   - **Also fixed along the way (a real hardware finding, not part of the
+     original order-trigger design):** `daily_profile_export.csv` was
+     gaining duplicate rows for the same date because Sierra Chart
+     periodically tags this chart for a full recalculation on its own
+     (cross-chart dependencies elsewhere in the chartbook), which resets
+     this study's persistent storage -- including the "last exported
+     trading day" tracker -- even though the day hasn't changed. Fixed by
+     checking the file's own last row before writing instead of trusting
+     the persistent int alone; see sierra_chart/README.md's "twelfth real
+     test" entry for the full story.
 5. Notion sync module (Step 5, in progress) -- reuses the
    `trading-vwap-hypotezy` skill's schema and property names so both paths
    write to the same database ("Trading denik -- hypotezy",

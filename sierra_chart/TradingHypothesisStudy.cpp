@@ -332,6 +332,26 @@ float LastClosedProfileValue(SCFloatArray& array) {
     return 0.0f;
 }
 
+// Second one-trade-at-a-time guard, alongside the open-position check in
+// the manual-trigger block: a stale limit/stop entry order sitting
+// unfilled wouldn't show up as an open position yet, but firing a second
+// entry on top of it risks both eventually filling and doubling the
+// intended size. Loops sc.GetOrders(index, order) from 0 until it returns
+// false/0 (the standard ACSIL "enumerate this account's orders" idiom) and
+// treats any order with quantity remaining to fill as still working.
+//
+// VERIFICATION STATUS: sc.GetOrders's loop-until-false return convention
+// and s_SCTradeOrder's OrderQuantity/FilledQuantity field names are my
+// best-effort reading of ACSIL documentation, not yet compiled against the
+// real SDK -- check this first if the build fails.
+bool HasWorkingOrder(SCStudyInterfaceRef sc) {
+    s_SCTradeOrder TradeOrder;
+    for (int index = 0; sc.GetOrders(index, TradeOrder); ++index)
+        if (TradeOrder.OrderQuantity > TradeOrder.FilledQuantity)
+            return true;
+    return false;
+}
+
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
 const int LINE_NUMBER_HYPOTHESIS_TEXT = 999001;
 
@@ -945,6 +965,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                     ("Trading Hypothesis Display: manual trigger fired but a position is already open ("
                      + std::to_string(PositionData.PositionQuantity) + " contracts) -- refusing to open "
                      "a second one. Flatten first if this is intentional.").c_str(), 1);
+            }
+            else if (HasWorkingOrder(sc))
+            {
+                sc.AddMessageToLog(
+                    "Trading Hypothesis Display: manual trigger fired but a working (not yet filled) "
+                    "order already exists for this account/symbol -- refusing to place a second one. "
+                    "Cancel it first if this is intentional.", 1);
             }
             else
             {

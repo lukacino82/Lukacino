@@ -158,9 +158,14 @@ wins — nothing after it is checked, and the order is never placed):
   to fix, not something to work around here.
 - No position may already be open for this chart's symbol/account
   (`sc.GetTradePosition`'s `PositionQuantity != 0`) — the one-trade-at-a-
-  time guard, matching the backtest harness's own model. Working (not yet
-  filled) orders aren't separately checked in this first version — a known
-  gap to verify carefully during SIM testing.
+  time guard, matching the backtest harness's own model.
+- No **working** (not yet filled) order may already exist for this
+  account/symbol either (`sc.GetOrders`, checking each order's
+  `OrderQuantity` against its `FilledQuantity`) — closes the gap the first
+  version of this list had: a stale limit/stop entry sitting unfilled
+  wouldn't show up in `PositionQuantity` yet, so without this check a
+  second trigger could still fire on top of it and double the intended
+  size once both eventually fill.
 
 The entry order type is a plain market order (`SCT_ORDERTYPE_MARKET`) —
 deliberately simple for this first manual-trigger stage, rather than a
