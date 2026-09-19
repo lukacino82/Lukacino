@@ -159,19 +159,15 @@ wins — nothing after it is checked, and the order is never placed):
 - No position may already be open for this chart's symbol/account
   (`sc.GetTradePosition`'s `PositionQuantity != 0`) — the one-trade-at-a-
   time guard, matching the backtest harness's own model.
-- **Working (not yet filled) orders are NOT currently checked** — a real
-  build failed on `sc.GetOrders` (that function doesn't exist on the real
-  SDK; it was a guess, not confirmed against actual ACSIL docs before
-  trying it). `HasWorkingOrder()` is temporarily stubbed to always return
-  `false` so the study keeps compiling and the rest of the trigger works,
-  but this means a stale limit/stop entry sitting unfilled would NOT be
-  caught — only an already-filled, open position is (`PositionQuantity !=
-  0`). The real function is very likely `sc.GetOrderForSymbolAndAccountByIndex`
-  (referenced on Sierra Chart's own support board), but its exact
-  parameter order/types need confirming against the real `sierrachart.h`
-  that ships with your Sierra Chart install (usually under
-  `ACS_Source\sierrachart.h`) before wiring it back up — see
-  ARCHITECTURE.md's Step 4 notes.
+- No working (not yet filled) order may already exist for this chart's
+  symbol/account either (`sc.GetTradePosition`'s `WorkingOrdersExist != 0`)
+  — so a stale limit/stop entry sitting unfilled is caught too, not just an
+  already-filled open position. An earlier attempt guessed a nonexistent
+  `sc.GetOrders` function and failed a real build; the fix uses the
+  `WorkingOrdersExist` field Sierra Chart's own `ACSILTrading.html` docs
+  confirm on the same `s_SCPositionData` struct already fetched for the
+  position check above, with no separate order-enumeration loop needed —
+  see ARCHITECTURE.md's Step 4 notes.
 
 The entry order type is a plain market order (`SCT_ORDERTYPE_MARKET`) —
 deliberately simple for this first manual-trigger stage, rather than a

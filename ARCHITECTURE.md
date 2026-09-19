@@ -366,9 +366,11 @@ debugging.
      Python's own sizing; stop/target_1 are present and on the correct side
      of each other (a second, C++-side check of the same bug class the
      backwards A-day invalidation fix caught in Python); no position is
-     already open (`sc.GetTradePosition`). Verified end to end (SetDefaults,
-     a plain tick, a fired trigger placing a real `BuyEntry` call, and
-     confirmation the trigger auto-resets and doesn't re-fire) against a
+     already open AND no working (not yet filled) order exists
+     (`sc.GetTradePosition`'s `PositionQuantity`/`WorkingOrdersExist`
+     fields -- see below). Verified end to end (SetDefaults, a plain tick, a
+     fired trigger placing a real `BuyEntry` call, confirmation the trigger
+     auto-resets and doesn't re-fire, and a working-order refusal) against a
      stand-in ACSIL header stub compiled with g++ -- no real Sierra Chart
      SDK is available in this environment, so this proves the C++ is
      internally consistent, not that these are the real SDK's exact field
@@ -378,30 +380,26 @@ debugging.
      deferred until manual triggering is proven reliable on SIM -- not yet
      started, waiting on the user's first real actionable proposal to test
      the manual trigger against.
-   - **Attempted and reverted: a second guard against working (not yet
-     filled) orders.** Added a `HasWorkingOrder()` check (alongside the
-     position check above) looping `sc.GetOrders(index, order)` and
-     comparing `OrderQuantity`/`FilledQuantity` -- this compiled cleanly
-     against the stub (which is exactly the risk of a stub not matching
-     the real SDK: it can't catch a function that doesn't exist at all),
-     but the real Sierra Chart build failed outright: `'struct s_sc' has
-     no member named 'GetOrders'`. Web research (Sierra Chart's own
-     support board) strongly suggests the real function is
-     `sc.GetOrderForSymbolAndAccountByIndex`, and confirmed real
-     `s_SCTradeOrder` fields include `OrderQuantity`, `FilledQuantity`,
-     `InternalOrderID`, `OrderStatusCode` (checked via the free function
-     `IsWorkingOrderStatus(OrderStatusCode)`, not a method on `sc`) -- but
-     the exact parameter order/types for
-     `GetOrderForSymbolAndAccountByIndex` weren't confirmed from public
-     sources, and a second wrong guess costs another real build cycle.
-     `HasWorkingOrder()` is temporarily stubbed to always return `false`
-     (compiles, keeps the rest of the trigger working, just doesn't add
-     this particular protection yet) until the real declaration is
-     confirmed directly against the `sierrachart.h` that ships with the
-     user's own Sierra Chart install (typically
-     `<Sierra Chart install dir>\ACS_Source\sierrachart.h` -- searching
-     that file directly for `GetOrderForSymbolAndAccountByIndex` and
-     `s_SCTradeOrder` is more reliable than guessing from search results).
+   - **Second guard against working (not yet filled) orders, now
+     implemented.** A first attempt added a `HasWorkingOrder()` check
+     looping a guessed `sc.GetOrders(index, order)` -- this compiled
+     cleanly against the local stub (which is exactly the risk of a stub
+     not matching the real SDK: it can't catch a function that doesn't
+     exist at all), but the real Sierra Chart build failed outright:
+     `'struct s_sc' has no member named 'GetOrders'`. Rather than guess
+     again, the user pasted the relevant sections of Sierra Chart's own
+     `ACSILTrading.html` documentation directly, which confirmed the real
+     API: `sc.GetOrderByIndex`/`sc.GetOrderForSymbolAndAccountByIndex` plus
+     the free function `IsWorkingOrderStatus(OrderStatusCode)` (not a
+     method on `sc`) would work, but the same documentation also revealed a
+     much simpler answer -- `s_SCPositionData` (already fetched via the
+     existing `sc.GetTradePosition(PositionData)` call for the position
+     check) has a `WorkingOrdersExist` member: "set to a nonzero value when
+     there are working orders. Otherwise, it will be 0." The manual-trigger
+     block now checks `PositionData.WorkingOrdersExist != 0` directly,
+     right after the `PositionQuantity != 0` check, with no separate order
+     -enumeration loop needed at all. This closes the gap the earlier
+     revert left open.
    - **Also fixed along the way (a real hardware finding, not part of the
      original order-trigger design):** `daily_profile_export.csv` was
      gaining duplicate rows for the same date because Sierra Chart

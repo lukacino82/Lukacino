@@ -332,24 +332,6 @@ float LastClosedProfileValue(SCFloatArray& array) {
     return 0.0f;
 }
 
-// Second one-trade-at-a-time guard, alongside the open-position check in
-// the manual-trigger block: a stale limit/stop entry order sitting
-// unfilled wouldn't show up as an open position yet, but firing a second
-// entry on top of it risks both eventually filling and doubling the
-// intended size.
-//
-// TEMPORARILY DISABLED: a real build confirmed sc.GetOrders() does not
-// exist on the real SDK ("struct s_sc has no member named 'GetOrders'").
-// The real function is very likely sc.GetOrderForSymbolAndAccountByIndex
-// (confirmed to exist via Sierra Chart's own support board), but its exact
-// parameter order/types weren't confirmed from public search results
-// alone, and guessing again risks another failed build. Re-enable this
-// once the real declaration is confirmed against the installed
-// sierrachart.h -- see ARCHITECTURE.md's Step 4 notes.
-bool HasWorkingOrder(SCStudyInterfaceRef /*sc*/) {
-    return false;
-}
-
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
 const int LINE_NUMBER_HYPOTHESIS_TEXT = 999001;
 
@@ -872,12 +854,16 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // VERIFICATION STATUS: this block's use of s_SCNewOrder's field names
     // (Target1Price/Stop1Price/AttachedOrderTarget1Type/
     // AttachedOrderStop1Type), sc.BuyEntry/sc.SellEntry's return-value
-    // convention (>0 = submitted), s_SCPositionData's PositionQuantity
-    // field, and Input_Mode.GetIndex() are my best-effort reading of ACSIL
-    // documentation and example code, NOT yet compiled against the real
-    // Sierra Chart SDK header -- check this block first if it fails to
-    // compile, and confirm the exact field/return-value semantics against
-    // sierrachart.h before ever flipping the trigger on a real SIM account.
+    // convention (>0 = submitted), and Input_Mode.GetIndex() are my
+    // best-effort reading of ACSIL documentation and example code, NOT yet
+    // compiled against the real Sierra Chart SDK header -- check this block
+    // first if it fails to compile, and confirm the exact field/return-value
+    // semantics against sierrachart.h before ever flipping the trigger on a
+    // real SIM account. s_SCPositionData's PositionQuantity and
+    // WorkingOrdersExist fields, by contrast, ARE confirmed against Sierra
+    // Chart's own ACSILTrading.html documentation (pasted in by the user
+    // after an earlier sc.GetOrders() guess failed a real build -- see
+    // ARCHITECTURE.md's Step 4 notes).
     const int modeIndex = Input_Mode.GetIndex(); // 0=Hypothesis Only, 1=Semi Auto, 2=Fully Auto
     if (modeIndex == 2)
     {
@@ -964,7 +950,7 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
                      + std::to_string(PositionData.PositionQuantity) + " contracts) -- refusing to open "
                      "a second one. Flatten first if this is intentional.").c_str(), 1);
             }
-            else if (HasWorkingOrder(sc))
+            else if (PositionData.WorkingOrdersExist != 0)
             {
                 sc.AddMessageToLog(
                     "Trading Hypothesis Display: manual trigger fired but a working (not yet filled) "
