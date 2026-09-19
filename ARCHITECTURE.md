@@ -487,7 +487,8 @@ debugging.
      three separate `BuyEntry` calls (1/1/1) and logs one `trigger_log.csv`
      row with `contracts=3`; a mismatched-sum proposal and a
      price-missing-for-a-funded-leg proposal are both refused with the
-     expected message.
+     expected message. Also confirmed compiling on the user's real Sierra
+     Chart remote build server.
    - **Also fixed along the way (a real hardware finding, not part of the
      original order-trigger design):** `daily_profile_export.csv` was
      gaining duplicate rows for the same date because Sierra Chart
