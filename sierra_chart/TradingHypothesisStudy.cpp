@@ -35,6 +35,7 @@
 #include <vector>
 #include <ctime>
 #include <cstdio>
+#include <cmath>
 #include <direct.h> // _mkdir
 #include <cerrno>
 #include <cstring>
@@ -675,6 +676,26 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     SCInputRef Input_Transparency_Tier_4 = sc.Input[++InputIdx];
     SCInputRef Input_Transparency_Tier_5Plus = sc.Input[++InputIdx];
 
+    // Deliberately appended at the very END of the input list, not grouped
+    // with the other Intraday VWAP inputs above -- every input's index
+    // here is a position in Sierra Chart's per-chart saved settings, so
+    // inserting a new one in the *middle* would shift every input after it
+    // and silently scramble everyone's already-configured Delta/display/
+    // color settings on the next recompile. Appending here means only this
+    // one new input needs to be set after rebuilding; everything else
+    // keeps its saved value. Same Study ID/Chart Number as the Intraday
+    // VWAP inputs above (Input_VWAP_IntradayStudyID/ChartNumber), just a
+    // different subgraph -- that study's own +1 standard deviation band,
+    // for a live, per-tick stop-loss distance (see Python side:
+    // LiveMarketState.vwap_intraday_sd1 / run_live.py's use_vwap_sd1_as_
+    // risk_distance). On Sierra Chart's stock "Volume Weighted Average
+    // Price" study this is normally one of "Top/Bottom Band N" -- check
+    // that study's own "Band N Std Deviation Multiplier/Fixed Offset"
+    // input (Band 1 defaults to 0.5, so it's usually Band 2 that's the
+    // *actual* +1 SD, not Band 1) before trusting the default below on a
+    // chart configured differently.
+    SCInputRef Input_VWAP_IntradaySD1Subgraph = sc.Input[++InputIdx];
+
     if (sc.SetDefaults)
     {
         sc.GraphName = "Trading Hypothesis Display";
@@ -858,6 +879,10 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_Transparency_Tier_5Plus.SetInt(20);
         Input_Transparency_Tier_5Plus.SetIntLimits(0, 100);
 
+        Input_VWAP_IntradaySD1Subgraph.Name = "VWAP Intraday +1 SD Band Subgraph Index "
+            "(check the VWAP study's own Band N multiplier -- the band whose multiplier is 1.0 is the real +1 SD)";
+        Input_VWAP_IntradaySD1Subgraph.SetInt(3);  // user's own chart: DAY-VWAP ID:5, Top Band 2 (SG4) = index 3
+
         return;
     }
 
@@ -875,11 +900,21 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_VALSubgraph.GetInt(), VALArray);
     GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_POCSubgraph.GetInt(), POCArray);
 
-    SCFloatArray VWAPMonthlyArray, VWAPWeeklyArray, VWAPIntradayArray, DeltaArray;
+    SCFloatArray VWAPMonthlyArray, VWAPWeeklyArray, VWAPIntradayArray, VWAPIntradaySD1Array, DeltaArray;
     GetStudyArrayAnyChart(sc, Input_VWAP_MonthlyChartNumber.GetInt(), Input_VWAP_MonthlyStudyID.GetInt(), Input_VWAP_MonthlySubgraph.GetInt(), VWAPMonthlyArray);
     GetStudyArrayAnyChart(sc, Input_VWAP_WeeklyChartNumber.GetInt(), Input_VWAP_WeeklyStudyID.GetInt(), Input_VWAP_WeeklySubgraph.GetInt(), VWAPWeeklyArray);
     GetStudyArrayAnyChart(sc, Input_VWAP_IntradayChartNumber.GetInt(), Input_VWAP_IntradayStudyID.GetInt(), Input_VWAP_IntradaySubgraph.GetInt(), VWAPIntradayArray);
+    GetStudyArrayAnyChart(sc, Input_VWAP_IntradayChartNumber.GetInt(), Input_VWAP_IntradayStudyID.GetInt(), Input_VWAP_IntradaySD1Subgraph.GetInt(), VWAPIntradaySD1Array);
     GetStudyArrayAnyChart(sc, Input_Delta_ChartNumber.GetInt(), Input_Delta_StudyID.GetInt(), Input_Delta_Subgraph.GetInt(), DeltaArray);
+
+    // 0.0 ("not available", same convention live_state.csv's other optional
+    // fields use) unless the SD1 array actually resolved to real data --
+    // an unconfigured/wrong subgraph index would otherwise make
+    // LastArrayValue's 0.0-for-empty-array fallback silently subtract
+    // against a real VWAP value and produce a bogus non-zero "distance".
+    const float vwapIntradaySD1Distance = VWAPIntradaySD1Array.GetArraySize() > 0
+        ? static_cast<float>(std::fabs(LastArrayValue(VWAPIntradaySD1Array) - LastArrayValue(VWAPIntradayArray)))
+        : 0.0f;
 
     // Log the resolved config once so you can verify it immediately instead
     // of waiting for end-of-day rollover to find out something's wrong.
@@ -908,6 +943,8 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             << " VWAPIntradayStudyID=" << Input_VWAP_IntradayStudyID.GetInt()
             << " VWAPIntradayChart=" << Input_VWAP_IntradayChartNumber.GetInt()
             << " VWAPIntradayArraySize=" << VWAPIntradayArray.GetArraySize()
+            << " VWAPIntradaySD1Subgraph=" << Input_VWAP_IntradaySD1Subgraph.GetInt()
+            << " VWAPIntradaySD1ArraySize=" << VWAPIntradaySD1Array.GetArraySize()
             << " DeltaStudyID=" << Input_Delta_StudyID.GetInt()
             << " DeltaChart=" << Input_Delta_ChartNumber.GetInt()
             << " DeltaArraySize=" << DeltaArray.GetArraySize()
@@ -1318,12 +1355,12 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         std::ofstream liveOut(liveStatePath, std::ios::trunc);
         if (liveOut.is_open())
         {
-            liveOut << "timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n";
+            liveOut << "timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta,vwap_intraday_sd1\n";
             liveOut << FormatISODateTime(nowTimeT) << "," << instrument << ","
                     << sc.Close[lastBar] << "," << SessionOpenPrice << ","
                     << LastArrayValue(VWAPMonthlyArray) << ","
                     << LastArrayValue(VWAPWeeklyArray) << "," << LastArrayValue(VWAPIntradayArray) << ","
-                    << LastArrayValue(DeltaArray) << "\n";
+                    << LastArrayValue(DeltaArray) << "," << vwapIntradaySD1Distance << "\n";
         }
         else
         {

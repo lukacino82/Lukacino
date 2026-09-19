@@ -35,6 +35,16 @@
    Each has a `VWAP` subgraph (SG1, index 0 by default) — leave the
    defaults unless you've customized the study (e.g. reordered subgraphs
    by adding standard-deviation bands ahead of it).
+   - **If you want the fixed-risk stop to use a live "1 SD VWAP envelope"
+     distance instead of a flat point/dollar number** (see
+     `use_vwap_sd1_as_risk_distance` in `run_live.py`'s `InstrumentConfig`),
+     the *intraday* tier's VWAP study needs standard-deviation bands
+     enabled and you need to know which band is the real +1 SD one: open
+     that study's own Settings, check each `Band N Std Deviation
+     Multiplier/Fixed Offset` input — the band whose multiplier is `1.0` is
+     the actual +1 SD (commonly Band 2, not Band 1, whose multiplier
+     usually defaults to `0.5`), then note its subgraph index from the
+     Subgraphs tab (e.g. `Top Band 2 (SG4)` → index 3).
 5. Add whichever **cumulative-delta study** you already use on this chart
    (e.g. a "Numbers Bars - Bid vs Ask Volume Difference" or a Cumulative
    Delta Bars study). Check its Subgraphs tab for the right index — this
@@ -55,7 +65,14 @@
    chart, which breaks as soon as a tier lives on a different chart. The
    VAH/VAL/POC subgraph index inputs already default to the confirmed
    values (VAH=1, VAL=2, POC=0 — i.e. SG2/SG3/SG1), so leave them unless
-   your Subgraphs tab shows a different order.
+   your Subgraphs tab shows a different order. `VWAP Intraday +1 SD Band
+   Subgraph Index` defaults to `3` (matching a `DAY-VWAP` study whose Band 2
+   multiplier is `1.0`, i.e. `Top Band 2` / `SG4`) — check your own
+   intraday VWAP study's Band multipliers/Subgraphs tab (see step 4 above)
+   and change this if your setup differs. This one is read even when you
+   don't intend to use the SD1-based stop at all (`use_vwap_sd1_as_risk_
+   distance=False` in `run_live.py`) — it's exported to `live_state.csv`
+   unconditionally, just not acted on unless that flag is set.
 8. **Only if you intend to place real orders (Step 4):** leave `Mode` at
    `Hypothesis Only` until you've read "Manual order trigger (Step 4)"
    below and are ready to test on a SIM/demo account. Sierra Chart's own

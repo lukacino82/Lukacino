@@ -193,6 +193,37 @@ def test_read_live_state_returns_none_when_only_header_written(tmp_path):
     assert read_live_state(path) is None
 
 
+def test_live_state_round_trip_includes_vwap_intraday_sd1(tmp_path):
+    path = tmp_path / "live_state.csv"
+    state = LiveMarketState(
+        instrument="ES",
+        timestamp=datetime(2024, 1, 2, 14, 30, 5),
+        last_price=4801.25,
+        session_open=4790.0,
+        vwap_monthly=4795.5,
+        vwap_weekly=4802.75,
+        vwap_intraday=4799.0,
+        cum_delta=-1250.0,
+        vwap_intraday_sd1=12.5,
+    )
+    write_live_state(path, state)
+    assert read_live_state(path) == state
+
+
+def test_read_live_state_defaults_vwap_intraday_sd1_when_column_missing(tmp_path):
+    """A historical_intraday.csv row logged before this field existed --
+    read_live_state must fill in 0.0 ("not available"), not raise.
+    """
+    path = tmp_path / "live_state.csv"
+    path.write_text(
+        "timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta\n"
+        "2024-01-02T14:30:05,ES,4801.25,4790.0,4795.5,4802.75,4799.0,-1250.0\n"
+    )
+    state = read_live_state(path)
+    assert state is not None
+    assert state.vwap_intraday_sd1 == 0.0
+
+
 def test_hypothesis_round_trip(tmp_path):
     path = tmp_path / "hypothesis.txt"
     generated_at = datetime(2024, 1, 2, 7, 30)

@@ -89,6 +89,7 @@ def run(instrument: str, daily_profiles_path: Path, intraday_history_path: Path)
         delta_imbalance=live_config.delta_imbalance,
         rrr=live_config.rrr,
         fixed_risk_distance=resolve_fixed_risk_distance(live_config),
+        use_vwap_sd1_as_risk_distance=live_config.use_vwap_sd1_as_risk_distance,
     )
 
     daily_profiles = read_daily_profiles(daily_profiles_path)

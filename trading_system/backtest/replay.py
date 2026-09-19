@@ -183,6 +183,13 @@ class BacktestConfig:
     delta_window: int = 20
     rrr: Optional[float] = None
     fixed_risk_distance: Optional[float] = None
+    # When True, prefer each snapshot's own LiveMarketState.vwap_intraday_sd1
+    # (when > 0) over the static fixed_risk_distance above -- mirrors
+    # run_live.InstrumentConfig.use_vwap_sd1_as_risk_distance /
+    # resolve_effective_fixed_risk_distance so a backtest run against real
+    # --history-out data (which carries this column once ACSIL exports it)
+    # sees the same per-tick behavior production would.
+    use_vwap_sd1_as_risk_distance: bool = False
 
 
 @dataclass
@@ -297,6 +304,11 @@ def run_backtest(
             # closing it and opening a fresh one in the same tick.
             continue
 
+        fixed_risk_distance = (
+            state.vwap_intraday_sd1
+            if config.use_vwap_sd1_as_risk_distance and state.vwap_intraday_sd1 > 0
+            else config.fixed_risk_distance
+        )
         result = engine.tick(
             state,
             composite_engine.composites,
@@ -305,7 +317,7 @@ def run_backtest(
             config.delta_move_threshold,
             config.delta_imbalance,
             config.rrr,
-            config.fixed_risk_distance,
+            fixed_risk_distance,
         )
         report.regime_counts[result.regime] = report.regime_counts.get(result.regime, 0) + 1
         if result.proposal is None:

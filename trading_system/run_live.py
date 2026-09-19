@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, Optional, Set
 
 from .bridge.csv_bridge import (
+    LiveMarketState,
     OrderProposalSnapshot,
     append_live_state,
     read_daily_profiles,
@@ -69,6 +70,19 @@ class InstrumentConfig:
     # behavior. Applies to both Semi Auto and Fully Auto, same as rrr.
     fixed_risk_points: Optional[float] = None
     fixed_risk_usd: Optional[float] = None
+    # When True, prefer the live, per-tick distance from LiveMarketState.
+    # vwap_intraday_sd1 (ACSIL's intraday VWAP study's own +1 standard
+    # deviation band, exported fresh every tick) over the static
+    # fixed_risk_points/fixed_risk_usd above -- added at the user's
+    # request to use "1 SD of the VWAP envelope" as the stop distance
+    # instead of one fixed number, since that band's width itself changes
+    # with the session's actual volatility. Falls back to
+    # fixed_risk_points/fixed_risk_usd (see resolve_effective_fixed_risk_
+    # distance) whenever vwap_intraday_sd1 isn't available yet (0.0 --
+    # e.g. ACSIL hasn't been rebuilt with the new subgraph input, or the
+    # VWAP study hasn't accumulated enough of the session to compute a
+    # band), so a trade is never sized off a plain zero distance.
+    use_vwap_sd1_as_risk_distance: bool = False
 
 
 def resolve_fixed_risk_distance(config: "InstrumentConfig") -> Optional[float]:
@@ -87,6 +101,18 @@ def resolve_fixed_risk_distance(config: "InstrumentConfig") -> Optional[float]:
             raise ValueError("fixed_risk_usd needs sizing.tick_size/tick_value to convert to a price distance.")
         return config.fixed_risk_usd / config.sizing.tick_value * config.sizing.tick_size
     return None
+
+
+def resolve_effective_fixed_risk_distance(config: "InstrumentConfig", state: LiveMarketState) -> Optional[float]:
+    """The distance actually used for this tick: state.vwap_intraday_sd1
+    when use_vwap_sd1_as_risk_distance is on and ACSIL actually supplied
+    one (> 0), else whatever resolve_fixed_risk_distance's static config
+    gives (which is itself None when neither fixed_risk_points/usd is set,
+    keeping the original structural-stop behavior).
+    """
+    if config.use_vwap_sd1_as_risk_distance and state.vwap_intraday_sd1 > 0:
+        return state.vwap_intraday_sd1
+    return resolve_fixed_risk_distance(config)
 
 
 INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
@@ -127,7 +153,18 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
         # history accumulates.
         delta_imbalance=5000.0,
         rrr=1.5,
-        fixed_risk_points=25.0,  # PLACEHOLDER -- see sizing comment above
+        fixed_risk_points=25.0,  # PLACEHOLDER fallback -- see use_vwap_sd1_as_risk_distance below
+        # Prefer the live 1-SD VWAP envelope width over the flat 25-point
+        # fallback above, per the user's request -- requires ACSIL to be
+        # rebuilt with the new "VWAP Intraday +1 SD Band" input (Study
+        # Settings: DAY-VWAP, ID:5 in the user's real chart -- Top Band 2 /
+        # SG4, since that study's Band 2 Std Deviation Multiplier is 1.0,
+        # i.e. the actual +1 SD band, NOT Band 1 whose multiplier is 0.5).
+        # Falls back to fixed_risk_points automatically (see
+        # resolve_effective_fixed_risk_distance) whenever live_state.csv's
+        # vwap_intraday_sd1 is still 0.0 -- e.g. before that ACSIL rebuild
+        # is deployed.
+        use_vwap_sd1_as_risk_distance=True,
     ),
 }
 
@@ -229,7 +266,7 @@ def _tick(
         config.delta_move_threshold,
         config.delta_imbalance,
         config.rrr,
-        resolve_fixed_risk_distance(config),
+        resolve_effective_fixed_risk_distance(config, state),
     )
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
     if order_proposal_path is not None:

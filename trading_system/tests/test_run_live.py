@@ -15,7 +15,14 @@ from trading_system.composite.engine import CompositeEngine
 from trading_system.composite.models import DailyProfile
 from trading_system.engine import LiveEngine
 from trading_system.risk.sizing import SizingConfig, SizingMode
-from trading_system.run_live import INSTRUMENT_CONFIGS, InstrumentConfig, _tick, resolve_fixed_risk_distance, run
+from trading_system.run_live import (
+    INSTRUMENT_CONFIGS,
+    InstrumentConfig,
+    _tick,
+    resolve_effective_fixed_risk_distance,
+    resolve_fixed_risk_distance,
+    run,
+)
 
 
 def test_tick_writes_hypothesis_end_to_end(tmp_path):
@@ -233,7 +240,9 @@ def test_run_raises_a_clear_error_for_an_unconfigured_instrument(tmp_path):
         run(tmp_path, "ES")
 
 
-def _config(fixed_risk_points=None, fixed_risk_usd=None, tick_size=0.0, tick_value=0.0) -> InstrumentConfig:
+def _config(
+    fixed_risk_points=None, fixed_risk_usd=None, tick_size=0.0, tick_value=0.0, use_vwap_sd1_as_risk_distance=False,
+) -> InstrumentConfig:
     return InstrumentConfig(
         sizing=SizingConfig(mode=SizingMode.FIXED_CONTRACTS, tick_size=tick_size, tick_value=tick_value),
         price_move_threshold=5.0,
@@ -241,6 +250,21 @@ def _config(fixed_risk_points=None, fixed_risk_usd=None, tick_size=0.0, tick_val
         delta_imbalance=1000.0,
         fixed_risk_points=fixed_risk_points,
         fixed_risk_usd=fixed_risk_usd,
+        use_vwap_sd1_as_risk_distance=use_vwap_sd1_as_risk_distance,
+    )
+
+
+def _state_with_sd1(vwap_intraday_sd1: float) -> LiveMarketState:
+    return LiveMarketState(
+        instrument="NQ",
+        timestamp=datetime(2026, 9, 10, 14, 0, 0),
+        last_price=100.0,
+        session_open=100.0,
+        vwap_monthly=100.0,
+        vwap_weekly=100.0,
+        vwap_intraday=100.0,
+        cum_delta=0.0,
+        vwap_intraday_sd1=vwap_intraday_sd1,
     )
 
 
@@ -267,3 +291,25 @@ def test_resolve_fixed_risk_distance_raises_when_both_are_set():
 def test_resolve_fixed_risk_distance_raises_when_usd_set_without_tick_specs():
     with pytest.raises(ValueError, match="tick_size/tick_value"):
         resolve_fixed_risk_distance(_config(fixed_risk_usd=500.0))
+
+
+def test_resolve_effective_prefers_live_sd1_when_enabled_and_present():
+    config = _config(fixed_risk_points=25.0, use_vwap_sd1_as_risk_distance=True)
+    assert resolve_effective_fixed_risk_distance(config, _state_with_sd1(12.5)) == 12.5
+
+
+def test_resolve_effective_falls_back_to_static_when_sd1_is_zero():
+    # ACSIL not yet supplying a real value (e.g. before the rebuild that
+    # adds the SD-band input, or too early in the session) -- must not
+    # size/stop off a literal 0.0 distance.
+    config = _config(fixed_risk_points=25.0, use_vwap_sd1_as_risk_distance=True)
+    assert resolve_effective_fixed_risk_distance(config, _state_with_sd1(0.0)) == 25.0
+
+
+def test_resolve_effective_ignores_sd1_when_flag_is_off():
+    config = _config(fixed_risk_points=25.0, use_vwap_sd1_as_risk_distance=False)
+    assert resolve_effective_fixed_risk_distance(config, _state_with_sd1(12.5)) == 25.0
+
+
+def test_resolve_effective_is_none_when_nothing_is_configured():
+    assert resolve_effective_fixed_risk_distance(_config(), _state_with_sd1(0.0)) is None

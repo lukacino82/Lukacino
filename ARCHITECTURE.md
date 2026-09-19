@@ -373,6 +373,59 @@ debugging.
      sizing x3, `resolve_fixed_risk_distance` unit conversion/validation
      x5, and the fixed-distance override itself for A-day/B-day/composed-
      with-RRR x3) pass.
+   - **Live "1 SD VWAP envelope" as the stop distance, replacing the static
+     placeholder above -- the one feature in this file that needed an
+     ACSIL/C++ change, not just Python.** Asked to make `fixed_risk_points`
+     a real number, the user instead wanted the stop distance itself to be
+     the intraday VWAP study's own +1 standard deviation band width --
+     inherently a *live, per-tick* quantity (it widens/narrows with actual
+     realized volatility through the session), not something a single
+     static config number could represent. ACSIL previously only ever read
+     each VWAP study's plain VWAP line (subgraph 0 by convention) -- no
+     standard-deviation band data crossed the bridge at all. Added
+     `Input_VWAP_IntradaySD1Subgraph` (same Study ID/Chart Number as the
+     existing Intraday VWAP inputs, just a different subgraph), computes
+     `|band - vwap|` as the distance (0.0, the existing "not available"
+     convention, when that subgraph never resolved to real data -- guards
+     against `LastArrayValue`'s 0.0-for-empty-array fallback silently
+     producing a bogus non-zero distance), and exports it as
+     `live_state.csv`'s new `vwap_intraday_sd1` column every tick.
+     **Deliberately appended at the very end of the whole input list**
+     rather than grouped with the other Intraday VWAP inputs where it
+     conceptually belongs -- Sierra Chart's per-chart saved settings are
+     positional, so inserting it in the middle would have shifted every
+     input after it (Delta Study ID/Chart/Subgraph, all the composite
+     zone display/color inputs) and scrambled everyone's already-
+     configured values on the next recompile, on top of the new input
+     itself needing to be set. Confirmed against the user's real chart
+     (Study Settings: `DAY-VWAP`, ID:5): its Subgraphs tab lists `VWAP
+     (SG1)`, `Top/Bottom Band 1-4 (SG2-SG9)`, but the "+1 SD" band is
+     **Top Band 2 (SG4, index 3)**, not Band 1 -- Band 1's own "Std
+     Deviation Multiplier/Fixed Offset" input defaults to `0.5`, only
+     Band 2's is `1.0`, the actual +1 SD; this is exactly the kind of
+     per-chart detail that can't be assumed and is called out in both the
+     input's own name and the README, not just defaulted silently. Python
+     side: `LiveMarketState.vwap_intraday_sd1` (0.0 default, so a
+     `historical_intraday.csv` row logged before this field existed still
+     parses instead of raising `KeyError`) and new
+     `InstrumentConfig.use_vwap_sd1_as_risk_distance` /
+     `run_live.resolve_effective_fixed_risk_distance`, which prefers the
+     live value when the flag is on and ACSIL actually supplied one (> 0),
+     else falls back to the existing static `fixed_risk_points`/`usd`
+     (kept configured on NQ specifically as that fallback, e.g. before the
+     ACSIL rebuild is deployed or early in a session). `backtest/replay.py`
+     got the equivalent per-tick preference (`BacktestConfig.use_vwap_
+     sd1_as_risk_distance`) so a backtest run against real `--history-out`
+     data -- which will carry this column once the rebuilt ACSIL is
+     running live -- sees the same behavior production would, not a frozen
+     snapshot of whatever the distance was at config-build time. 123 tests
+     (116 existing + 7 new: bridge round-trip/backward-compat for the new
+     column, `resolve_effective_fixed_risk_distance`'s precedence x4, and
+     one backtest-level test proving the live value wins over a
+     configured static one) pass. **Still needs, on the user's side:**
+     rebuild the ACSIL DLL, then re-open Study Settings and set the new
+     "VWAP Intraday +1 SD Band Subgraph Index" input (every other input
+     keeps its saved value, per the append-at-the-end choice above).
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads

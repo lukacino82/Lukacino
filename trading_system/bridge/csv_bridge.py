@@ -35,6 +35,16 @@ class LiveMarketState:
     vwap_weekly: float
     vwap_intraday: float
     cum_delta: float
+    # Distance from vwap_intraday to its +1 standard deviation band (ACSIL
+    # computes this from the intraday VWAP study's own SD band subgraph,
+    # not recomputed here) -- 0.0 (the default) means "not available", the
+    # same convention InstrumentConfig.fixed_risk_points/usd already use
+    # for "not configured". See hypothesis/generator.py's module docstring
+    # and run_live.py's resolve_fixed_risk_distance for how this feeds a
+    # live, per-tick alternative to a flat fixed_risk_points/usd number --
+    # added at the user's request to use "1 SD VWAP envelope" as the stop
+    # distance instead of a static one.
+    vwap_intraday_sd1: float = 0.0
 
 @dataclass(frozen=True)
 class OrderProposalSnapshot:
@@ -98,6 +108,7 @@ LIVE_STATE_FIELDS = [
     "vwap_weekly",
     "vwap_intraday",
     "cum_delta",
+    "vwap_intraday_sd1",
 ]
 COMPOSITE_FIELDS = [
     "instrument",
@@ -184,6 +195,7 @@ def write_live_state(path: Path, state: LiveMarketState) -> None:
                 state.vwap_weekly,
                 state.vwap_intraday,
                 state.cum_delta,
+                state.vwap_intraday_sd1,
             ]
         )
 
@@ -198,6 +210,10 @@ def _live_state_from_row(row: dict) -> LiveMarketState:
         vwap_weekly=float(row["vwap_weekly"]),
         vwap_intraday=float(row["vwap_intraday"]),
         cum_delta=float(row["cum_delta"]),
+        # .get, not row["..."] -- a historical_intraday.csv row logged
+        # before this field existed won't have this column at all; treat
+        # that the same as "not available" (0.0) rather than raising.
+        vwap_intraday_sd1=float(row.get("vwap_intraday_sd1") or 0.0),
     )
 
 
@@ -241,6 +257,7 @@ def append_live_state(path: Path, state: LiveMarketState) -> None:
                 state.vwap_weekly,
                 state.vwap_intraday,
                 state.cum_delta,
+                state.vwap_intraday_sd1,
             ]
         )
 

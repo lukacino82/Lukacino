@@ -10,6 +10,7 @@ contract count without needing multiple warm-up ticks first.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 
 from trading_system.backtest.replay import BacktestConfig, TradeStatus, run_backtest
@@ -87,6 +88,33 @@ def test_a_day_long_hits_stop_is_a_loss() -> None:
     assert trade.r_multiple == -1.0
     assert report.win_rate == 0.0
     assert report.total_r == -1.0
+
+
+def test_a_day_long_uses_live_vwap_intraday_sd1_over_fixed_risk_distance() -> None:
+    """Mirrors run_live.resolve_effective_fixed_risk_distance's precedence:
+    with use_vwap_sd1_as_risk_distance on, each snapshot's own
+    vwap_intraday_sd1 (2.0 here) wins over the static fixed_risk_distance
+    (10.0) that would otherwise apply -- stop must land at entry - 2.0, not
+    entry - 10.0 or the session_open/composite fallback.
+    """
+    config = BacktestConfig(
+        sizing=SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1),
+        price_move_threshold=5.0,
+        delta_move_threshold=500.0,
+        fixed_risk_distance=10.0,
+        use_vwap_sd1_as_risk_distance=True,
+    )
+    states = [
+        replace(_a_day_state(datetime(2024, 1, 2, 9, 30), last_price=101.0), vwap_intraday_sd1=2.0),
+        replace(_a_day_state(datetime(2024, 1, 2, 9, 31), last_price=98.9), vwap_intraday_sd1=2.0),  # crosses 99.0
+    ]
+
+    report = run_backtest(INSTRUMENT, [YESTERDAY], states, config)
+
+    assert len(report.trades) == 1
+    trade = report.trades[0]
+    assert trade.stop == 99.0  # 101.0 - 2.0, not 91.0 (fixed_risk_distance) or 100.5 (session_open)
+    assert trade.status == TradeStatus.LOSS
 
 
 def test_trade_left_open_at_end_of_data_is_not_a_resolved_win_or_loss() -> None:
