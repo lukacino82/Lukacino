@@ -924,19 +924,38 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // whose bar data doesn't span a rollover yet). Creating the directory
     // here means it's verifiable on disk immediately, and any permission
     // problem is surfaced right away instead of silently waiting for the
-    // first export attempt. Only marked done once creation actually
-    // succeeds, so a transient failure (e.g. a locked drive) retries on the
-    // next recalculation instead of being permanently skipped.
-    int& HasCreatedBridgeDir = sc.GetPersistentInt(3);
-    if (!HasCreatedBridgeDir)
+    // first export attempt.
+    //
+    // Attempted every single recalculation, NOT gated by an all-time
+    // "already created" flag -- a real test found that gate was wrong:
+    // EnsureDirectoryExists's own _mkdir+EEXIST check already makes this
+    // idempotent and cheap on an existing directory, but the old code only
+    // ever called it once per chart instance, ever. That meant changing the
+    // `Bridge Folder` input after this instance had already succeeded once
+    // for its OLD value (e.g. pointing a backtest chart at an isolated
+    // bridge dir after it had been running against the shared live one)
+    // never created the new path at all -- confirmed directly: the parent
+    // folder existed (created by hand while diagnosing) but its `<Instrument>`
+    // subfolder never appeared, and nothing was ever written there, with no
+    // error logged either, since the gate skipped the whole block silently.
+    // `BridgeDirErrorLogged` now only dedupes the LOG line (so a persistent
+    // real failure, e.g. bad permissions, still reports once and goes quiet
+    // rather than spamming every recalculation) -- it no longer gates
+    // whether creation is attempted.
+    int& BridgeDirErrorLogged = sc.GetPersistentInt(3);
     {
         std::string dirErr = EnsureDirectoryExists(Input_BridgeFolder.GetString());
         if (dirErr.empty())
             dirErr = EnsureDirectoryExists(bridgeDir);
         if (dirErr.empty())
-            HasCreatedBridgeDir = 1;
-        else
+        {
+            BridgeDirErrorLogged = 0; // clears so a later, different failure gets its own fresh log line
+        }
+        else if (!BridgeDirErrorLogged)
+        {
             sc.AddMessageToLog(("Trading Hypothesis Display: " + dirErr).c_str(), 1);
+            BridgeDirErrorLogged = 1;
+        }
     }
 
     // --- 1. Export the just-closed trading day's volume profile ---------

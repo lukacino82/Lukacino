@@ -438,6 +438,39 @@ debugging.
      ability to verify anything relying on that behavior. Fixed by renaming
      the struct to `s_sc` and making `SCStudyInterfaceRef` a true reference
      alias over it, matching the real SDK's own design.
+   - **Real hardware bug found and fixed while setting up a Replay-mode test:
+     changing `Bridge Folder` after the study had already run once never
+     actually moved its writes to the new path.** The user set up a separate
+     "NQ BACKTEST 2026" chartbook for Replay testing, initially pointed its
+     Trading Hypothesis Display instance at the *same* `Bridge Folder`/
+     `Instrument` as the live chart (a real, confirmed risk on its own --
+     replay data landed in the shared `daily_profile_export.csv`, including
+     a garbage `2025-10-01,NQ,0,0,0` row, cleaned up by hand). After
+     repointing that instance's `Bridge Folder` input to an isolated
+     `..._Backtest` directory to fix that, the new directory's `<Instrument>`
+     subfolder never appeared and nothing was ever written there -- with no
+     error logged either. Root cause: `HasCreatedBridgeDir`, a persistent int
+     meant to avoid retrying `EnsureDirectoryExists` forever, was gated on
+     "has this study instance EVER successfully created a bridge directory,
+     for any `Bridge Folder` value" rather than "does the *current*
+     `Bridge Folder` value's directory exist" -- since this instance had
+     already flipped that flag to 1 while still pointed at the original,
+     shared live path, the directory-creation block was permanently skipped
+     from then on, including after the input changed to a brand-new path
+     that had never actually been created. Fixed by no longer gating the
+     `EnsureDirectoryExists` calls on that flag at all -- they run every
+     recalculation now (cheap and idempotent, since `EnsureDirectoryExists`
+     already treats `EEXIST` as success), and the persistent int
+     (`BridgeDirErrorLogged`) is repurposed to only dedupe the *log message*
+     for a real, still-unresolved failure, clearing the moment creation next
+     succeeds so a later, different failure still gets its own fresh line.
+     Immediate workaround given to the user to unblock the in-progress test
+     without waiting for a rebuild: manually create the missing
+     `<Bridge Folder>\<Instrument>` subfolder by hand once; the fix itself
+     only matters for *future* `Bridge Folder` changes. Verified against the
+     local stub (no regressions across all 18 existing passes); not yet
+     compiled on the user's real Sierra Chart remote build server -- pending,
+     same as every other change in this file until confirmed.
    - **Second guard against working (not yet filled) orders, now
      implemented.** A first attempt added a `HasWorkingOrder()` check
      looping a guessed `sc.GetOrders(index, order)` -- this compiled
