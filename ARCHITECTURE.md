@@ -549,8 +549,51 @@ debugging.
    needs to actually calibrate `regime.py`'s thresholds against real NQ
    history — until then this remains proven only against the harness's own
    synthetic-data tests.
-7. News filter, position recovery after Sierra Chart restart, multi-timeframe
-   chart sync — tracked so they aren't forgotten, not blocking Step 1–3
+7. News filter, multi-timeframe chart sync — tracked so they aren't
+   forgotten, not blocking Step 1–3.
+   **Position/state recovery after a restart, investigated and found
+   already robust — no code change needed:**
+   - **Sierra Chart restart (the DLL/study reloading):** every check the
+     manual trigger relies on for correctness is either a live broker query
+     or re-derived from disk, never trusted from a persistent int alone.
+     `sc.GetTradePosition`'s `PositionQuantity`/`WorkingOrdersExist` come
+     straight from Sierra Chart's own Trade Service, which doesn't forget a
+     real position or working order just because this study's DLL reloaded.
+     `Max Trades Per Day` is counted from `trigger_log.csv` on disk, not a
+     persistent int, precisely because persistent ints were already proven
+     unreliable across a restart/full-recalculation (the
+     `daily_profile_export.csv` duplicate-row story). Even
+     `SessionOpenTradingDayYYYYMMDD`/`SessionOpenPrice` (persistent ints/
+     doubles) self-heal correctly if reset: the re-scan walks real historical
+     bars (`sc.BaseDateTimeIn`) backward to the actual first bar of the
+     current trading day and re-reads its real `Open` value, so it
+     reconstructs the true session open regardless of when the reset
+     happens, not something time- or "now"-dependent that a reset could
+     corrupt.
+   - **`run_live.py` (the Python process) restart:** `CompositeEngine`
+     starts empty and `ingested_dates` starts as an empty set on every
+     process start, but every trading day in `daily_profile_export.csv` is
+     "not yet ingested" from a fresh process's point of view, so `_tick`
+     re-ingests the *entire* history file back into a fresh
+     `CompositeEngine` on the very first tick after a restart — full
+     composite state rebuilds itself from disk every time, nothing is lost.
+     The one real (and deliberately accepted) soft spot: `LiveEngine`'s
+     `DeltaHistory` rolling window is in-memory only and starts empty after
+     a restart, so `delta.py`'s absorption/divergence read has nothing to
+     compare against for the first few polls until the window refills from
+     fresh `live_state.csv` snapshots. This degrades gracefully (more
+     `UNCLEAR` regime reads for a few minutes, never a wrong-but-confident
+     one) rather than failing unsafely, consistent with `regime.py`'s
+     existing "no signal beats a wrong signal" design, so it's left as-is
+     rather than adding a history-replay-on-startup mechanism for a cold
+     start that self-resolves in minutes.
+   - **The Windows machine itself restarting:** nothing in this repo
+     currently auto-restarts `run_live.py` after a reboot — that's a
+     deployment/ops concern (e.g. a Windows Task Scheduler "at startup"
+     entry), not a gap in the trading logic. Until `run_live.py` is back
+     up, `order_proposal.csv` simply goes stale and the manual trigger's
+     existing `Max Order Proposal Age` check already refuses to act on it
+     — a safe failure mode, not a silent one.
 
 ## Repo layout
 
