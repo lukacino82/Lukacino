@@ -336,19 +336,17 @@ float LastClosedProfileValue(SCFloatArray& array) {
 // the manual-trigger block: a stale limit/stop entry order sitting
 // unfilled wouldn't show up as an open position yet, but firing a second
 // entry on top of it risks both eventually filling and doubling the
-// intended size. Loops sc.GetOrders(index, order) from 0 until it returns
-// false/0 (the standard ACSIL "enumerate this account's orders" idiom) and
-// treats any order with quantity remaining to fill as still working.
+// intended size.
 //
-// VERIFICATION STATUS: sc.GetOrders's loop-until-false return convention
-// and s_SCTradeOrder's OrderQuantity/FilledQuantity field names are my
-// best-effort reading of ACSIL documentation, not yet compiled against the
-// real SDK -- check this first if the build fails.
-bool HasWorkingOrder(SCStudyInterfaceRef sc) {
-    s_SCTradeOrder TradeOrder;
-    for (int index = 0; sc.GetOrders(index, TradeOrder); ++index)
-        if (TradeOrder.OrderQuantity > TradeOrder.FilledQuantity)
-            return true;
+// TEMPORARILY DISABLED: a real build confirmed sc.GetOrders() does not
+// exist on the real SDK ("struct s_sc has no member named 'GetOrders'").
+// The real function is very likely sc.GetOrderForSymbolAndAccountByIndex
+// (confirmed to exist via Sierra Chart's own support board), but its exact
+// parameter order/types weren't confirmed from public search results
+// alone, and guessing again risks another failed build. Re-enable this
+// once the real declaration is confirmed against the installed
+// sierrachart.h -- see ARCHITECTURE.md's Step 4 notes.
+bool HasWorkingOrder(SCStudyInterfaceRef /*sc*/) {
     return false;
 }
 

@@ -366,23 +366,42 @@ debugging.
      Python's own sizing; stop/target_1 are present and on the correct side
      of each other (a second, C++-side check of the same bug class the
      backwards A-day invalidation fix caught in Python); no position is
-     already open (`sc.GetTradePosition`); and, added after a from-the-
-     start review of that check, no **working** (not yet filled) order
-     already exists either (`sc.GetOrders`, comparing `OrderQuantity` to
-     `FilledQuantity`) -- a stale unfilled limit/stop entry wouldn't show
-     up in `PositionQuantity`, so without this a second trigger could still
-     fire on top of it. Verified end to end (SetDefaults, a plain tick, a
-     fired trigger placing a real `BuyEntry` call, confirmation the trigger
-     auto-resets and doesn't re-fire, and confirmation a working order
-     blocks a new one) against a stand-in ACSIL header stub compiled with
-     g++ -- no real Sierra Chart SDK is available in this environment, so
-     this proves the C++ is internally consistent, not that these are the
-     real SDK's exact field names; the real Sierra Chart build remains the
-     authoritative check, and it did succeed on the user's machine.
+     already open (`sc.GetTradePosition`). Verified end to end (SetDefaults,
+     a plain tick, a fired trigger placing a real `BuyEntry` call, and
+     confirmation the trigger auto-resets and doesn't re-fire) against a
+     stand-in ACSIL header stub compiled with g++ -- no real Sierra Chart
+     SDK is available in this environment, so this proves the C++ is
+     internally consistent, not that these are the real SDK's exact field
+     names; the real Sierra Chart build is the authoritative check, and it
+     did succeed on the user's machine for everything above.
      FULLY_AUTO (pyramiding, trailing, kill switch) stays explicitly
      deferred until manual triggering is proven reliable on SIM -- not yet
      started, waiting on the user's first real actionable proposal to test
      the manual trigger against.
+   - **Attempted and reverted: a second guard against working (not yet
+     filled) orders.** Added a `HasWorkingOrder()` check (alongside the
+     position check above) looping `sc.GetOrders(index, order)` and
+     comparing `OrderQuantity`/`FilledQuantity` -- this compiled cleanly
+     against the stub (which is exactly the risk of a stub not matching
+     the real SDK: it can't catch a function that doesn't exist at all),
+     but the real Sierra Chart build failed outright: `'struct s_sc' has
+     no member named 'GetOrders'`. Web research (Sierra Chart's own
+     support board) strongly suggests the real function is
+     `sc.GetOrderForSymbolAndAccountByIndex`, and confirmed real
+     `s_SCTradeOrder` fields include `OrderQuantity`, `FilledQuantity`,
+     `InternalOrderID`, `OrderStatusCode` (checked via the free function
+     `IsWorkingOrderStatus(OrderStatusCode)`, not a method on `sc`) -- but
+     the exact parameter order/types for
+     `GetOrderForSymbolAndAccountByIndex` weren't confirmed from public
+     sources, and a second wrong guess costs another real build cycle.
+     `HasWorkingOrder()` is temporarily stubbed to always return `false`
+     (compiles, keeps the rest of the trigger working, just doesn't add
+     this particular protection yet) until the real declaration is
+     confirmed directly against the `sierrachart.h` that ships with the
+     user's own Sierra Chart install (typically
+     `<Sierra Chart install dir>\ACS_Source\sierrachart.h` -- searching
+     that file directly for `GetOrderForSymbolAndAccountByIndex` and
+     `s_SCTradeOrder` is more reliable than guessing from search results).
    - **Also fixed along the way (a real hardware finding, not part of the
      original order-trigger design):** `daily_profile_export.csv` was
      gaining duplicate rows for the same date because Sierra Chart
