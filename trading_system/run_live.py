@@ -48,15 +48,70 @@ class InstrumentConfig:
     # composite/POC level, or the existing VWAP fallback), matching
     # behavior before this existed. See hypothesis/generator.py's module
     # docstring for exactly what this changes and what it leaves alone
-    # (the stop, target_2, and runner are never RRR-derived). Applies to
-    # both Semi Auto and Fully Auto identically -- it's applied here in
-    # Python, before anything reaches order_proposal.csv.
+    # (target_2 and runner are never RRR-derived). Applies to both Semi
+    # Auto and Fully Auto identically -- it's applied here in Python,
+    # before anything reaches order_proposal.csv.
     rrr: Optional[float] = None
+    # Optional fixed stop-loss distance, replacing the structural
+    # (composite/VWAP-derived) invalidation entirely when set -- added
+    # after a real Replay-mode run picked an ancient composite edge
+    # thousands of points from price as the stop (nothing ever invalidates
+    # a composite just because price ran away from it, only a newer
+    # composite overlapping it -- see hypothesis/generator.py's module
+    # docstring). Set exactly one of these two, not both:
+    #   fixed_risk_points -- distance in this instrument's own price units
+    #     (e.g. 50.0 = 50 NQ points).
+    #   fixed_risk_usd -- distance expressed as the dollar risk *per
+    #     contract* it should work out to; converted to a price distance
+    #     via sizing.tick_size/tick_value (see resolve_fixed_risk_distance
+    #     below). Only meaningful when sizing.tick_size/tick_value are set.
+    # Leaving both None (the default) keeps the original structural-stop
+    # behavior. Applies to both Semi Auto and Fully Auto, same as rrr.
+    fixed_risk_points: Optional[float] = None
+    fixed_risk_usd: Optional[float] = None
+
+
+def resolve_fixed_risk_distance(config: "InstrumentConfig") -> Optional[float]:
+    """Converts InstrumentConfig's fixed_risk_points/fixed_risk_usd (at most
+    one set) into the single price-distance float generator.py needs --
+    kept here rather than in generator.py since it's the only place that
+    knows this instrument's tick_size/tick_value are for converting units,
+    not for anything about the hypothesis itself.
+    """
+    if config.fixed_risk_points is not None and config.fixed_risk_usd is not None:
+        raise ValueError("Set only one of fixed_risk_points/fixed_risk_usd, not both.")
+    if config.fixed_risk_points is not None:
+        return config.fixed_risk_points
+    if config.fixed_risk_usd is not None:
+        if config.sizing.tick_size <= 0 or config.sizing.tick_value <= 0:
+            raise ValueError("fixed_risk_usd needs sizing.tick_size/tick_value to convert to a price distance.")
+        return config.fixed_risk_usd / config.sizing.tick_value * config.sizing.tick_size
+    return None
 
 
 INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
     "NQ": InstrumentConfig(
-        sizing=SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1),
+        # FIXED_RISK_USD + fixed_risk_points below (instead of the previous
+        # FIXED_CONTRACTS/no-fixed-stop setup) at the user's request, so
+        # contracts scale off a real dollar-risk budget instead of a flat
+        # count, and the stop can never again land on an ancient,
+        # price-irrelevant composite edge the way it did in a real Replay
+        # run (see hypothesis/generator.py's module docstring). NQ's
+        # tick_size/tick_value are its real CME contract specs; every dollar
+        # figure below (full/half_risk_usd, fixed_risk_points) is a
+        # PLACEHOLDER -- replace with your actual per-trade risk tolerance
+        # before trusting this live. As configured: a fixed 25-point stop
+        # ($500/contract, since 25/0.25*5=500) with a $1000 budget on A+
+        # (-> 2 contracts) and $500 on clean (-> 1 contract) -- the same
+        # 2/1 split the old FIXED_CONTRACTS numbers gave, just now risk-
+        # budget-driven instead of a flat count.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD,
+            full_risk_usd=1000.0,
+            half_risk_usd=500.0,
+            tick_size=0.25,
+            tick_value=5.0,
+        ),
         price_move_threshold=5.0,  # NQ points -- placeholder, not calibrated
         delta_move_threshold=500.0,  # placeholder, not calibrated
         # Bumped from the original 1000.0 placeholder after a real
@@ -72,6 +127,7 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
         # history accumulates.
         delta_imbalance=5000.0,
         rrr=1.5,
+        fixed_risk_points=25.0,  # PLACEHOLDER -- see sizing comment above
     ),
 }
 
@@ -173,6 +229,7 @@ def _tick(
         config.delta_move_threshold,
         config.delta_imbalance,
         config.rrr,
+        resolve_fixed_risk_distance(config),
     )
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
     if order_proposal_path is not None:

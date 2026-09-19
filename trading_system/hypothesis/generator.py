@@ -31,14 +31,32 @@ the skill's "biggest zone is the stretch target" reading.
 override for target_1 only, added at the user's request so target_1 can be
 a plain multiple of the stop distance instead of always depending on
 composite/POC structure existing at all: ``target_1 = entry +/- rrr *
-abs(entry - invalidation)``. Stop/invalidation is never derived from RRR --
-it's still the structural level (nearest opposing composite edge, or the
-existing VWAP fallback). When RRR is set, target_2 becomes the nearest
+abs(entry - invalidation)``. When RRR is set, target_2 becomes the nearest
 structural candidate that sits *beyond* the RRR-derived target_1 in the
 trade's direction (so it's still a real second level to scale into, not one
 already passed). ``runner`` is unaffected either way. Applies identically
 to SEMI_AUTO and FULLY_AUTO, since both read whatever this writes to
 order_proposal.csv -- no ACSIL-side change needed for this.
+
+``fixed_risk_distance`` (optional, a price distance already converted from
+whatever unit the user configured it in -- points/ticks or a USD amount --
+by run_live.py/run_backtest.py's InstrumentConfig, since only they know the
+instrument's tick_size/tick_value) is a second, independent override: when
+set, ``invalidation`` is always ``entry -/+ fixed_risk_distance`` instead of
+the structural composite/VWAP-derived stop. Added after a real Replay-mode
+run picked an ancient, price-irrelevant composite edge as a stop (price had
+moved thousands of points away from it without a newer composite ever
+overlapping and invalidating it) -- composites only expire via that ≥10%
+overlap rule, never just because price ran away from them, so a structural
+stop can silently become nonsense. A fixed distance is immune to that: it's
+always a sane, predictable distance from entry, at the cost of no longer
+reacting to real structure. It composes with ``rrr`` for free -- RRR's
+``abs(entry - invalidation)`` risk figure is whatever this override made
+``invalidation`` -- and with sizing.calculate_contracts' PERCENT_RISK/
+FIXED_RISK_USD modes the same way, since both already work off
+``abs(entry - invalidation)`` too. Leaving it ``None`` (the default) keeps
+the original structural-stop behavior, including the wrong-side safety
+check below.
 
 The regime classification feeding this still needs the calibration flagged
 in regime.py/ARCHITECTURE.md.
@@ -202,6 +220,10 @@ def _pick_targets(
     return target_1, target_2
 
 
+def _fixed_invalidation(entry: float, long: bool, fixed_risk_distance: float) -> float:
+    return entry - fixed_risk_distance if long else entry + fixed_risk_distance
+
+
 def generate_hypothesis(
     state: LiveMarketState,
     regime: Regime,
@@ -209,11 +231,12 @@ def generate_hypothesis(
     delta_signal: DeltaSignal,
     composites: Sequence[Composite] = (),
     rrr: Optional[float] = None,
+    fixed_risk_distance: Optional[float] = None,
 ) -> Optional[Hypothesis]:
     if regime == Regime.A_DAY:
-        return _a_day_hypothesis(state, tier_report, delta_signal, composites, rrr)
+        return _a_day_hypothesis(state, tier_report, delta_signal, composites, rrr, fixed_risk_distance)
     if regime == Regime.B_DAY:
-        return _b_day_hypothesis(state, tier_report, delta_signal, composites, rrr)
+        return _b_day_hypothesis(state, tier_report, delta_signal, composites, rrr, fixed_risk_distance)
     return None
 
 
@@ -223,6 +246,7 @@ def _a_day_hypothesis(
     delta_signal: DeltaSignal,
     composites: Sequence[Composite],
     rrr: Optional[float] = None,
+    fixed_risk_distance: Optional[float] = None,
 ) -> Optional[Hypothesis]:
     if tier_report.intraday == Position.AT:
         return None  # sitting at the mean already -- nothing to revert from
@@ -237,19 +261,25 @@ def _a_day_hypothesis(
 
     structural_targets = _structural_targets(composites, state.last_price, long)
     runner = _strongest_composite_target(composites, state.last_price, long)
-    invalidation = _opposing_invalidation(composites, state.last_price, long, fallback=state.session_open)
 
-    # The session_open fallback (only used when no composite gives a real
-    # invalidation level) is nothing but the day's opening print -- there's
-    # no guarantee it sits on the correct side of entry. A real live run
-    # showed it doesn't always: price can already have moved past the
-    # session open in either direction before this hypothesis fires,
-    # putting the "invalidation" on the WRONG side of both entry and the
-    # target (a short with its stop below the target it's aiming at).
-    # Proposing a trade with a backwards risk level is worse than proposing
-    # none -- same principle as B-day's missing-target_1 case below.
-    if (long and invalidation >= state.last_price) or (not long and invalidation <= state.last_price):
-        return None
+    if fixed_risk_distance is not None:
+        invalidation = _fixed_invalidation(state.last_price, long, fixed_risk_distance)
+    else:
+        invalidation = _opposing_invalidation(composites, state.last_price, long, fallback=state.session_open)
+
+        # The session_open fallback (only used when no composite gives a real
+        # invalidation level) is nothing but the day's opening print -- there's
+        # no guarantee it sits on the correct side of entry. A real live run
+        # showed it doesn't always: price can already have moved past the
+        # session open in either direction before this hypothesis fires,
+        # putting the "invalidation" on the WRONG side of both entry and the
+        # target (a short with its stop below the target it's aiming at).
+        # Proposing a trade with a backwards risk level is worse than proposing
+        # none -- same principle as B-day's missing-target_1 case below. Moot
+        # with a fixed_risk_distance, which is always on the correct side by
+        # construction.
+        if (long and invalidation >= state.last_price) or (not long and invalidation <= state.last_price):
+            return None
 
     target_1, target_2 = _pick_targets(
         structural_targets, state.last_price, invalidation, long, rrr,
@@ -279,6 +309,7 @@ def _b_day_hypothesis(
     delta_signal: DeltaSignal,
     composites: Sequence[Composite],
     rrr: Optional[float] = None,
+    fixed_risk_distance: Optional[float] = None,
 ) -> Optional[Hypothesis]:
     if tier_report.structural_bias == StructuralBias.NEUTRAL:
         return None  # defensive only -- regime.classify_regime already rules this out for B_DAY
@@ -290,8 +321,11 @@ def _b_day_hypothesis(
 
     structural_targets = _structural_targets(composites, state.last_price, long)
     runner = _strongest_composite_target(composites, state.last_price, long)
-    # The immediate level that would lose the acceptance-beyond-VWAP read.
-    invalidation = state.vwap_intraday
+    if fixed_risk_distance is not None:
+        invalidation = _fixed_invalidation(state.last_price, long, fixed_risk_distance)
+    else:
+        # The immediate level that would lose the acceptance-beyond-VWAP read.
+        invalidation = state.vwap_intraday
 
     # With no RRR configured and no active composite/POC, B-day has no
     # target_1 at all -- an unopposed continuation call, deliberately left

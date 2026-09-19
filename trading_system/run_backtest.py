@@ -25,7 +25,7 @@ from pathlib import Path
 
 from .backtest.replay import BacktestConfig, BacktestReport, GroupStats, run_backtest
 from .bridge.csv_bridge import read_daily_profiles, read_live_state_history
-from .run_live import INSTRUMENT_CONFIGS
+from .run_live import INSTRUMENT_CONFIGS, resolve_fixed_risk_distance
 
 
 def _print_group_line(label: str, stats: GroupStats) -> None:
@@ -88,6 +88,7 @@ def run(instrument: str, daily_profiles_path: Path, intraday_history_path: Path)
         delta_move_threshold=live_config.delta_move_threshold,
         delta_imbalance=live_config.delta_imbalance,
         rrr=live_config.rrr,
+        fixed_risk_distance=resolve_fixed_risk_distance(live_config),
     )
 
     daily_profiles = read_daily_profiles(daily_profiles_path)

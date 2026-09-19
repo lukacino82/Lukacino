@@ -72,6 +72,43 @@ def test_percent_risk_mode_zero_when_invalidation_equals_entry():
     assert calculate_contracts(Confluence.A_PLUS, 100.0, 100.0, config) == 0
 
 
+def test_fixed_risk_usd_mode_converts_dollar_budget_to_contracts():
+    # Same NQ-like specs/numbers as test_percent_risk_mode_converts_dollar_
+    # budget_to_contracts, but the dollar budget is given directly instead
+    # of as a fraction of account_equity.
+    config = SizingConfig(
+        mode=SizingMode.FIXED_RISK_USD,
+        full_risk_usd=500.0,
+        half_risk_usd=250.0,
+        tick_size=0.25,
+        tick_value=5.0,
+    )
+    assert calculate_contracts(Confluence.A_PLUS, 100.0, 99.0, config) == 25
+    assert calculate_contracts(Confluence.CLEAN, 100.0, 99.0, config) == 12  # $250 / $20 = 12.5 -> 12
+
+
+def test_fixed_risk_usd_mode_rounds_down_to_zero_when_budget_too_small():
+    config = SizingConfig(
+        mode=SizingMode.FIXED_RISK_USD,
+        full_risk_usd=10.0,
+        half_risk_usd=5.0,
+        tick_size=0.25,
+        tick_value=5.0,
+    )
+    assert calculate_contracts(Confluence.A_PLUS, 100.0, 99.0, config) == 0
+
+
+def test_fixed_risk_usd_mode_zero_when_invalidation_equals_entry():
+    config = SizingConfig(
+        mode=SizingMode.FIXED_RISK_USD,
+        full_risk_usd=500.0,
+        half_risk_usd=250.0,
+        tick_size=0.25,
+        tick_value=5.0,
+    )
+    assert calculate_contracts(Confluence.A_PLUS, 100.0, 100.0, config) == 0
+
+
 def test_build_order_proposal_none_when_no_hypothesis():
     config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1)
     assert build_order_proposal("NQ", None, config) is None

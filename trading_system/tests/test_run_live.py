@@ -14,7 +14,8 @@ from trading_system.bridge.csv_bridge import (
 from trading_system.composite.engine import CompositeEngine
 from trading_system.composite.models import DailyProfile
 from trading_system.engine import LiveEngine
-from trading_system.run_live import INSTRUMENT_CONFIGS, _tick, run
+from trading_system.risk.sizing import SizingConfig, SizingMode
+from trading_system.run_live import INSTRUMENT_CONFIGS, InstrumentConfig, _tick, resolve_fixed_risk_distance, run
 
 
 def test_tick_writes_hypothesis_end_to_end(tmp_path):
@@ -230,3 +231,39 @@ def test_tick_is_a_noop_when_live_state_missing(tmp_path):
 def test_run_raises_a_clear_error_for_an_unconfigured_instrument(tmp_path):
     with pytest.raises(ValueError, match="ES"):
         run(tmp_path, "ES")
+
+
+def _config(fixed_risk_points=None, fixed_risk_usd=None, tick_size=0.0, tick_value=0.0) -> InstrumentConfig:
+    return InstrumentConfig(
+        sizing=SizingConfig(mode=SizingMode.FIXED_CONTRACTS, tick_size=tick_size, tick_value=tick_value),
+        price_move_threshold=5.0,
+        delta_move_threshold=500.0,
+        delta_imbalance=1000.0,
+        fixed_risk_points=fixed_risk_points,
+        fixed_risk_usd=fixed_risk_usd,
+    )
+
+
+def test_resolve_fixed_risk_distance_is_none_when_neither_is_set():
+    assert resolve_fixed_risk_distance(_config()) is None
+
+
+def test_resolve_fixed_risk_distance_returns_points_directly():
+    assert resolve_fixed_risk_distance(_config(fixed_risk_points=25.0)) == 25.0
+
+
+def test_resolve_fixed_risk_distance_converts_usd_via_tick_size_and_value():
+    # NQ-like specs: tick_size=0.25, tick_value=5.0 -> $20/point.
+    # $500 / $20 = 25 points.
+    config = _config(fixed_risk_usd=500.0, tick_size=0.25, tick_value=5.0)
+    assert resolve_fixed_risk_distance(config) == 25.0
+
+
+def test_resolve_fixed_risk_distance_raises_when_both_are_set():
+    with pytest.raises(ValueError, match="only one"):
+        resolve_fixed_risk_distance(_config(fixed_risk_points=25.0, fixed_risk_usd=500.0))
+
+
+def test_resolve_fixed_risk_distance_raises_when_usd_set_without_tick_specs():
+    with pytest.raises(ValueError, match="tick_size/tick_value"):
+        resolve_fixed_risk_distance(_config(fixed_risk_usd=500.0))

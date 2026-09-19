@@ -182,6 +182,7 @@ class BacktestConfig:
     delta_imbalance: float = 1000.0
     delta_window: int = 20
     rrr: Optional[float] = None
+    fixed_risk_distance: Optional[float] = None
 
 
 @dataclass
@@ -304,6 +305,7 @@ def run_backtest(
             config.delta_move_threshold,
             config.delta_imbalance,
             config.rrr,
+            config.fixed_risk_distance,
         )
         report.regime_counts[result.regime] = report.regime_counts.get(result.regime, 0) + 1
         if result.proposal is None:

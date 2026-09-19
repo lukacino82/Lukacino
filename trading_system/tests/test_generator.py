@@ -202,6 +202,40 @@ def test_a_day_rrr_target_2_is_nearest_structural_level_beyond_it():
     assert result.runner == 102.0  # unaffected by rrr
 
 
+def test_a_day_fixed_risk_distance_overrides_structural_invalidation():
+    """Reproduces a real Replay-mode finding: a composite from long ago
+    (val=29025.8) sitting nowhere near current price should never be
+    usable as the stop again once fixed_risk_distance is configured --
+    invalidation must be a plain entry +/- distance, ignoring composites.
+    """
+    state = _state(price=95.0, intraday=100.0, session_open=90.0)
+    composites = [_composite(val=85.0, vah=88.0, day_count=4)]  # would otherwise set invalidation=88.0
+    result = generate_hypothesis(
+        state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.NEUTRAL, composites,
+        fixed_risk_distance=10.0,
+    )
+    assert result.invalidation == 85.0  # 95.0 - 10.0, not the composite's 88.0
+
+
+def test_a_day_fixed_risk_distance_composes_with_rrr():
+    state = _state(price=95.0, intraday=100.0, session_open=90.0)
+    result = generate_hypothesis(
+        state, Regime.A_DAY, _A_DAY_NEUTRAL_TIERS_BELOW, DeltaSignal.NEUTRAL,
+        rrr=1.5, fixed_risk_distance=10.0,
+    )
+    assert result.invalidation == 85.0
+    assert result.target_1 == 95.0 + 1.5 * 10.0  # == 110.0, off the fixed distance not a composite
+
+
+def test_b_day_fixed_risk_distance_overrides_vwap_invalidation():
+    state = _state(price=110.0)
+    result = generate_hypothesis(
+        state, Regime.B_DAY, _B_DAY_BULLISH_TIERS, DeltaSignal.CONFIRMING,
+        fixed_risk_distance=20.0,
+    )
+    assert result.invalidation == 90.0  # 110.0 - 20.0, not state.vwap_intraday (100.0)
+
+
 def test_b_day_rrr_gives_target_1_a_value_with_no_composite_at_all():
     """Without rrr this is exactly test_b_day_target_is_none_without_a_
     composite_in_trend_direction's case (target_1=None) -- setting rrr must

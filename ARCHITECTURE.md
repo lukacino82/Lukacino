@@ -330,6 +330,49 @@ debugging.
      farther composite edge, RRR with no structural targets at all, RRR's
      target_2 skipping a structural level that sits behind it, and RRR
      giving B-day a real target_1 where before there was none) pass.
+   - **Fixed stop-loss distance + `FIXED_RISK_USD` sizing, at the user's
+     request after a real Replay-mode failure** -- a live test fired an
+     `A short` with `invalidation` sitting on a composite edge (`val`)
+     from a two-day composite formed on 2025-10-01/02 (price then:
+     ~29000-29400), while replay had since moved to ~26150 -- a stop
+     nearly 2900 points / ~$57,000-per-contract away. Root cause: a
+     composite only ever gets marked `invalidated` by a *newer* composite
+     overlapping it ≥10% (see this file's Composite profile logic
+     section); nothing invalidates one just because price has run far
+     away from it without ever coming back, so an old, now-irrelevant
+     zone can keep being read as a live structural level indefinitely.
+     Rather than adding decay/expiry logic to composites themselves (a
+     bigger, separate design question), the user asked for stop-loss to
+     be settable as a fixed distance -- in this instrument's own price
+     points/ticks, or as a dollar amount per contract -- immune to this
+     failure mode by construction. Asked the user whether this should
+     fully replace the structural (composite/VWAP) stop whenever
+     configured, or only cap it; the user chose full replacement. New
+     `InstrumentConfig.fixed_risk_points`/`fixed_risk_usd` (exactly one,
+     resolved to a single price distance by `run_live.resolve_
+     fixed_risk_distance` using `sizing.tick_size`/`tick_value` for the
+     USD case) flow into `generate_hypothesis`'s new `fixed_risk_distance`
+     param: when set, `invalidation = entry -/+ fixed_risk_distance` for
+     both A-day and B-day, entirely bypassing `_opposing_invalidation`/
+     `vwap_intraday` and their wrong-side safety check (moot -- a fixed
+     distance is always on the correct side by construction). RRR composes
+     with this for free, since RRR's risk figure is just
+     `abs(entry - invalidation)`, whatever set it. Sizing got the matching
+     other half of the same request ("accepovat vše přepočítávat na počet
+     kontraktů" -- recalculate everything into a contract count): a new
+     `SizingMode.FIXED_RISK_USD` sizes off a flat dollar-risk budget per
+     confluence tier (e.g. $500 for A+, $250 for clean) instead of
+     `PERCENT_RISK`'s % of account equity -- same per-contract-dollar math
+     (`tick_size`/`tick_value`), just a different way to say how many
+     dollars the budget is. NQ's `InstrumentConfig` now uses
+     `FIXED_RISK_USD` + `fixed_risk_points` instead of `FIXED_CONTRACTS`
+     and no fixed stop; every number in it (25-point stop, $1000/$500
+     budgets) is a placeholder mirroring the old 2/1 contract split, not a
+     calibrated real risk tolerance. Pure Python again, same files as the
+     POC/RRR change above. 116 tests (105 existing + 11 new: FIXED_RISK_USD
+     sizing x3, `resolve_fixed_risk_distance` unit conversion/validation
+     x5, and the fixed-distance override itself for A-day/B-day/composed-
+     with-RRR x3) pass.
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads
