@@ -71,6 +71,7 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
         # near-term backtests have a chance to see A_DAY at all while more
         # history accumulates.
         delta_imbalance=5000.0,
+        rrr=1.5,
     ),
 }
 
