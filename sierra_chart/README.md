@@ -221,9 +221,114 @@ indefinitely if price has already moved on by the time you click. The stop
 and target are attached as absolute prices (`Target1Price`/`Stop1Price`),
 not offsets, since the proposal already carries real price levels.
 
-`Fully Auto` mode is **not implemented** — selecting it only logs a warning
-once and places no orders; `Hypothesis Only` and `Semi Auto` behave exactly
-as before/as described above.
+## Fully Auto mode — implemented, reuses the exact same checks
+
+`Fully Auto` now fires automatically instead of waiting for `Trigger Order
+Now` — it reuses the identical `TryFireOrderFromProposal` function Semi Auto's
+manual trigger calls (extracted into a shared helper specifically so Fully
+Auto couldn't drift into a second, divergent copy of the safety checks), so
+every check above (kill switch, staleness, contracts cap, stop/target
+sanity, leg-sum/leg-price checks, position/working-order guard, Max Trades
+Per Day) applies identically — the only difference is *when* it's evaluated:
+- **Semi Auto**: once, the instant you flip `Trigger Order Now` to `Yes`.
+- **Fully Auto**: on a timer, every `Bridge File Refresh Interval` input
+  (same cadence the bridge files themselves refresh on, since
+  `order_proposal.csv` only actually changes that often anyway) — not every
+  recalculation, which can fire many times a second via `sc.UpdateAlways`.
+
+**Message Log stays readable even when nothing changes for a while.** A
+real, successful order placement is always logged (the same per-leg lines
+Semi Auto produces). A *refusal* reason (no signal right now, already in a
+trade, today's cap reached, etc.) is logged once on the transition into it,
+then suppressed on every following attempt that hits the exact same reason —
+otherwise Fully Auto would print e.g. "a position is already open" every
+`Refresh Interval` seconds for as long as a trade stays open. The moment the
+reason changes (the trade closes and it goes back to "nothing tradeable", or
+a new signal appears), that gets its own fresh log line.
+
+**Entries and exits both come from Sierra Chart's own order management —
+no separate exit logic exists or is needed.** Fully Auto's only job is
+deciding *when to submit* a bracket order (entry + attached stop + attached
+target); once submitted, each leg's stop/target is a normal Sierra Chart
+order that the Trade Service manages and fills against replayed or live
+price action on its own, exactly as it would for an order you placed by
+hand. There is still no per-leg stop management (moving the runner's stop to
+breakeven once `target_1` fills, trailing it further) — deferred the same
+way pyramiding/trailing already are, since that needs fill-event tracking
+this bridge doesn't have yet.
+
+**Before switching to Fully Auto, even on a Replay/SIM session:** confirm
+Semi Auto has actually placed at least one real order successfully first
+(the staged rollout this was built around) — Fully Auto shares 100% of that
+code path, so anything wrong with the proposal, the chart's Trade Service
+setup, or the account would show up identically either way, just without
+you having clicked anything.
+
+## Testing in Sierra Chart's Replay mode
+
+Sierra Chart's Replay feature re-feeds historical bars through the chart as
+if they were arriving live — this study doesn't know or care whether its
+chart is live or replaying, so `Fully Auto` (or Semi Auto, clicked by hand)
+places real (SIM-account) bracket orders against replayed price action the
+same way it would against a live market. This is the intended way to watch
+the whole loop — hypothesis → order → entry → bracket exit → back to
+hypothesis — end to end in minutes instead of waiting for real setups to
+show up live.
+
+**Setup:**
+1. Make sure `run_live.py` is running (as normal, real-time — see "Auto-start
+   run_live.py after a reboot" below for the supervisor, or just run it
+   manually in a console) *before* you start the replay, watching the same
+   `--bridge-dir`/`--instrument` this chart's `Bridge Folder`/`Instrument`
+   inputs point at.
+2. Set this chart's Trade Account to a **Simulation account** (Sierra
+   Chart's Trade menu), and confirm Trading/AutoTrading is enabled for it —
+   Replay mode does not bypass or require anything different from this
+   study's own checks, it only changes where the price data comes from.
+3. Start Replay (Trade menu → Replay, or the Replay toolbar) at a **slow-ish
+   speed — 1x real-time or a bit faster, not "instant"/fast-forward** (see
+   why below), pointed at a past date range you want to test against.
+4. Temporarily raise `Max Trades Per Day` (e.g. to 20-50) for the test run —
+   the default of 3 is a real production safety limit and will cut a replay
+   test short almost immediately once a few setups fire in quick succession.
+   **Set it back to a sane real value before ever running this live.**
+5. Set `Mode` to `Fully Auto` (or `Semi Auto` if you'd rather click each
+   trigger by hand and just watch the bracket exits happen automatically —
+   either tests the exit side; only Fully Auto also tests the automatic
+   entry side).
+6. Watch Sierra Chart's Message Log for entry/refusal lines (see above) and
+   its Trade Activity / Orders / Positions windows for the actual fills,
+   P&L, and stop/target exits as replayed bars pass through those levels.
+
+**Why replay speed matters here, specifically:** `run_live.py` polls the
+bridge files on a **real wall-clock** timer (every 5 seconds, `--history-out`
+dedup and all), and this study's own bridge-file writes (`live_state.csv`,
+`order_proposal.csv`) are throttled by `Bridge File Refresh Interval`
+against **real wall-clock time** too (`time(nullptr)`, not the chart's
+simulated replay clock) — neither side has any notion of Sierra Chart's
+replay speed. At a fast/instant replay speed, hours of replayed bars can
+fly past between two real-world 5-second polls, so `run_live.py` only ever
+sees a coarse, aliased sample of what actually happened — most intraday
+structure the hypothesis engine would react to in real time simply never
+gets seen. Running the replay at roughly 1x (or a modest multiple) keeps
+enough real wall-clock time between bars for the bridge's 5-second sampling
+to actually track the session the way it would live. This is a real
+limitation of the file-polling bridge design (see ARCHITECTURE.md's "ACSIL
+<-> Python bridge" section on why plain files were chosen over a
+lower-latency protocol like DTC), not a bug to fix before testing — it's
+simply the same tradeoff live trading already accepts, carried over to
+replay.
+
+**What this test does and doesn't validate:** it proves the *mechanics* —
+does a valid proposal actually turn into a real bracket order, does that
+order actually fill and later exit via its stop or target, does the daily
+trade cap and kill switch actually stop new entries, does the scale-out
+split actually submit the right number of separate orders. It does **not**
+validate whether the underlying hypothesis/regime signals are *good* trades
+— `regime.py`'s thresholds are still explicitly uncalibrated (see
+ARCHITECTURE.md), so don't read a replay test's win/loss record as a
+verdict on the strategy, only as a check that the automation faithfully does
+what the proposal says.
 
 **Fixed after an eleventh real test:** even with "Draw Developing Value Area
 Lines" switched to Yes (ruling out the tenth test's hypothesis), VAH/VAL/POC

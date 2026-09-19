@@ -390,6 +390,214 @@ float LastClosedProfileValue(SCFloatArray& array) {
     return 0.0f;
 }
 
+// Every way this can end, in the exact order they're checked -- first
+// failure wins, nothing after it is evaluated. Success means at least one
+// scale-out leg was actually submitted (sc.BuyEntry/sc.SellEntry returned
+// > 0); a proposal that fails every leg's submission is NOT Success (see
+// TryFireOrderFromProposal's return at the very end).
+enum class TriggerOutcome {
+    Success,
+    KillSwitchOff,
+    NoProposalData,
+    NoSignal,
+    InstrumentMismatch,
+    StaleProposal,
+    BadContractCount,
+    MissingRiskLevel,
+    LegSumMismatch,
+    LegPriceMissing,
+    BackwardsStop,
+    PositionAlreadyOpen,
+    WorkingOrderExists,
+    TradeCapReached,
+    AllLegsFailed,
+};
+
+struct TriggerAttempt {
+    TriggerOutcome outcome;
+    // Empty when outcome == Success (the per-leg submission lines are
+    // logged directly inside TryFireOrderFromProposal instead, since
+    // there's one line per leg, not one summary line). Callers decide
+    // whether/when to actually log this -- see the Semi Auto vs. Fully
+    // Auto call sites below for why that differs between the two.
+    std::string refusalMessage;
+};
+
+// The shared core of Step 4's order placement, used by both the Semi Auto
+// manual trigger (one-shot, always logs) and Fully Auto (polled on a timer,
+// logs are deduplicated by the caller) -- extracted so Fully Auto reuses
+// the exact same, already real-hardware-verified checks and order-placement
+// code instead of a second, divergent copy. `triggerLabel` becomes the
+// leading phrase of every message this produces (e.g. "Trading Hypothesis
+// Display: manual trigger" or "Trading Hypothesis Display: Fully Auto"), so
+// the Message Log always shows which path actually fired.
+//
+// VERIFICATION STATUS: unchanged from before this was extracted into its
+// own function -- see the comment that used to sit directly above this
+// block (now above its two call sites) for exactly which parts are
+// confirmed against real ACSIL docs vs. only the local g++ stub.
+TriggerAttempt TryFireOrderFromProposal(
+    SCStudyInterfaceRef sc,
+    const std::string& orderProposalPath,
+    const std::string& triggerLogPath,
+    const std::string& instrument,
+    bool tradingEnabled,
+    int maxProposalAgeSeconds,
+    int maxContractsSafetyCap,
+    int maxTradesPerDay,
+    time_t nowTimeT,
+    double now,
+    const std::string& triggerLabel)
+{
+    OrderProposalRow proposal;
+    if (!tradingEnabled)
+        return { TriggerOutcome::KillSwitchOff, triggerLabel
+            + " fired but Trading Enabled is No (kill switch) -- refusing to act. Flip it back to Yes to resume." };
+    if (!ReadOrderProposalCSV(orderProposalPath, proposal))
+        return { TriggerOutcome::NoProposalData, triggerLabel
+            + " fired but order_proposal.csv has no data row yet -- nothing to act on." };
+    if (proposal.direction != "long" && proposal.direction != "short")
+        return { TriggerOutcome::NoSignal, triggerLabel
+            + " fired but the current proposal direction is '" + proposal.direction + "' -- nothing tradeable right now." };
+    if (proposal.instrument != instrument)
+        return { TriggerOutcome::InstrumentMismatch, triggerLabel
+            + " fired but order_proposal.csv's instrument ('" + proposal.instrument
+            + "') does not match this study's Instrument input ('" + instrument + "') -- refusing to act on a mismatched file." };
+    if ((now - static_cast<double>(ParseISODateTimeToUnix(proposal.timestamp))) > maxProposalAgeSeconds)
+        return { TriggerOutcome::StaleProposal, triggerLabel
+            + " fired but order_proposal.csv is stale (older than Max Order Proposal Age) -- refusing to act on it. "
+              "Check that run_live.py is still running." };
+    if (proposal.contracts <= 0 || proposal.contracts > maxContractsSafetyCap)
+        return { TriggerOutcome::BadContractCount, triggerLabel
+            + " fired but proposed contracts (" + std::to_string(proposal.contracts)
+            + ") is 0 or exceeds the Max Contracts Safety Cap -- refusing to act." };
+    if (!proposal.hasStop || !proposal.hasTarget1)
+        return { TriggerOutcome::MissingRiskLevel, triggerLabel
+            + " fired but the proposal is missing a stop or target_1 -- refusing to place an order with no risk level." };
+    if (proposal.contractsTarget1 + proposal.contractsTarget2 + proposal.contractsRunner != proposal.contracts)
+        return { TriggerOutcome::LegSumMismatch, triggerLabel
+            + " fired but the scale-out leg quantities in order_proposal.csv don't sum to the total contracts -- "
+              "refusing to act on an inconsistent proposal." };
+    if ((proposal.contractsTarget2 > 0 && !proposal.hasTarget2)
+        || (proposal.contractsRunner > 0 && !proposal.hasRunner))
+        return { TriggerOutcome::LegPriceMissing, triggerLabel
+            + " fired but the scale-out split calls for a target_2 or runner leg with no corresponding price in "
+              "order_proposal.csv -- refusing to act on an inconsistent proposal." };
+    if ((proposal.direction == "long" && proposal.stop >= proposal.target1)
+        || (proposal.direction == "short" && proposal.stop <= proposal.target1)
+        || (proposal.contractsTarget2 > 0
+            && ((proposal.direction == "long" && proposal.stop >= proposal.target2)
+             || (proposal.direction == "short" && proposal.stop <= proposal.target2)))
+        || (proposal.contractsRunner > 0
+            && ((proposal.direction == "long" && proposal.stop >= proposal.runner)
+             || (proposal.direction == "short" && proposal.stop <= proposal.runner))))
+        return { TriggerOutcome::BackwardsStop, triggerLabel
+            + " fired but stop is on the wrong side of target_1 (or an active target_2/runner leg) for this "
+              "direction -- refusing to place a backwards bracket order." };
+
+    s_SCPositionData PositionData;
+    sc.GetTradePosition(PositionData);
+    if (PositionData.PositionQuantity != 0)
+        return { TriggerOutcome::PositionAlreadyOpen, triggerLabel
+            + " fired but a position is already open (" + std::to_string(PositionData.PositionQuantity)
+            + " contracts) -- refusing to open a second one. Flatten first if this is intentional." };
+    if (PositionData.WorkingOrdersExist != 0)
+        return { TriggerOutcome::WorkingOrderExists, triggerLabel
+            + " fired but a working (not yet filled) order already exists for this account/symbol -- refusing to "
+              "place a second one. Cancel it first if this is intentional." };
+    if (CountTriggersForDate(triggerLogPath, TodayDateString(nowTimeT)) >= maxTradesPerDay)
+        return { TriggerOutcome::TradeCapReached, triggerLabel
+            + " fired but Max Trades Per Day (" + std::to_string(maxTradesPerDay)
+            + ") is already reached for today (see trigger_log.csv) -- refusing to place another. Raise the input "
+              "if this is intentional." };
+
+    // Up to three separate bracket orders, one per nonzero scale-out leg --
+    // s_SCNewOrder only carries a single Target1Price, so a real multi-target
+    // scale-out needs one order submission per target, not one order with
+    // several targets. All legs share proposal.stop; there is deliberately
+    // no per-leg stop management (breakeven-on-fill, trailing the runner)
+    // yet -- that needs fill-event tracking this bridge doesn't have, so
+    // it's deferred the same way pyramiding/trailing already are (see
+    // ARCHITECTURE.md's Step 4 notes). Each leg's own attached stop/target
+    // still exits it independently once submitted, which is what lets
+    // Fully Auto both enter AND exit purely from Sierra Chart's own order
+    // management -- no extra exit logic needed here.
+    struct Leg { const char* name; int quantity; double targetPrice; };
+    const Leg legs[] = {
+        {"target_1", proposal.contractsTarget1, proposal.target1},
+        {"target_2", proposal.contractsTarget2, proposal.target2},
+        {"runner",   proposal.contractsRunner,  proposal.runner},
+    };
+
+    int totalSubmitted = 0;
+    for (const Leg& leg : legs)
+    {
+        if (leg.quantity <= 0)
+            continue;
+
+        s_SCNewOrder NewOrder;
+        NewOrder.OrderQuantity = leg.quantity;
+        NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
+        NewOrder.TimeInForce = SCT_TIF_DAY;
+        NewOrder.Target1Price = leg.targetPrice;
+        NewOrder.Stop1Price = proposal.stop;
+        NewOrder.AttachedOrderTarget1Type = SCT_ORDERTYPE_LIMIT;
+        NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
+
+        const int result = (proposal.direction == "long") ? sc.BuyEntry(NewOrder) : sc.SellEntry(NewOrder);
+        std::stringstream msg;
+        msg << triggerLabel << " -> " << proposal.direction << " "
+            << leg.quantity << " contract(s) [" << leg.name << " leg] (" << proposal.hypothesis_type
+            << ", " << proposal.confluence << "), stop=" << proposal.stop << " target=" << leg.targetPrice
+            << " -- sc." << (proposal.direction == "long" ? "BuyEntry" : "SellEntry")
+            << " returned " << result
+            << (result > 0 ? " (submitted)" : " (FAILED -- check Sierra Chart's own Trade Service log for the reason)");
+        sc.AddMessageToLog(msg.str().c_str(), result > 0 ? 0 : 1);
+
+        if (result > 0)
+            totalSubmitted += leg.quantity;
+    }
+
+    // Only log this trigger toward the daily cap once at least one leg
+    // actually went out -- a fully-failed submission shouldn't burn a slot
+    // the trader (or Fully Auto) could otherwise retry after fixing
+    // whatever caused the failure. Counts as one trade regardless of how
+    // many legs succeeded -- the cap is about how many times this fired
+    // today, not how many individual bracket orders exist on the account.
+    if (totalSubmitted > 0)
+    {
+        const std::string todayStr = TodayDateString(nowTimeT);
+        const bool needsHeader = !std::ifstream(triggerLogPath).good();
+        std::ofstream logOut(triggerLogPath, std::ios::app);
+        if (logOut.is_open())
+        {
+            if (needsHeader)
+                logOut << "date,timestamp,direction,contracts\n";
+            logOut << todayStr << "," << FormatISODateTime(nowTimeT) << ","
+                   << proposal.direction << "," << totalSubmitted << "\n";
+        }
+        else
+        {
+            sc.AddMessageToLog(
+                (triggerLabel + ": order placed but could not open " + triggerLogPath + " for writing: "
+                 + std::strerror(errno) + " (errno " + std::to_string(errno) + "). Max Trades Per Day will "
+                 "under-count today.").c_str(), 1);
+        }
+    }
+
+    // A proposal that passed every check but whose every leg's
+    // sc.BuyEntry/sc.SellEntry call still failed (e.g. Sierra Chart's own
+    // Trade Service rejected it) is not a success -- Fully Auto's dedup
+    // below should keep retrying/logging it, not go quiet as if it had
+    // actually opened a trade. Each individual failure was already logged
+    // above per leg; this is just the summary outcome code for that dedup.
+    if (totalSubmitted > 0)
+        return { TriggerOutcome::Success, "" };
+    return { TriggerOutcome::AllLegsFailed, triggerLabel
+        + " fired but every scale-out leg's order submission failed -- see the per-leg lines above for the "
+          "reason Sierra Chart's own Trade Service gave." };
+}
+
 const int LINE_NUMBER_BASE_COMPOSITE = 500000;
 const int LINE_NUMBER_HYPOTHESIS_TEXT = 999001;
 
@@ -403,13 +611,14 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     SCInputRef Input_BridgeFolder = sc.Input[++InputIdx];
 
     SCInputRef Input_Mode = sc.Input[++InputIdx];
-    // Step 4, staged rollout: manual one-click trigger first (tested on the
-    // user's SIM/DTC account), a Manual/Auto mode switch reusing the same
-    // order-placement code only after that's proven reliable -- the user's
+    // Step 4, staged rollout: manual one-click trigger first (compiled and
+    // run against a live chart on the user's real Sierra Chart), then
+    // "Fully Auto" reusing that exact same, tested order-placement code
+    // (TryFireOrderFromProposal) on a timer instead of a click -- the user's
     // explicit choice over jumping straight to full automation. There is no
     // native clickable-button Input type in ACSIL, so a self-resetting
     // Yes/No toggle (flip to Yes, ACSIL acts once and flips it back to No)
-    // is the standard idiom for a one-shot manual action.
+    // is the standard idiom for Semi Auto's one-shot manual action.
     SCInputRef Input_ManualTriggerOrder = sc.Input[++InputIdx];
     SCInputRef Input_MaxProposalAgeSeconds = sc.Input[++InputIdx];
     SCInputRef Input_MaxContractsSafetyCap = sc.Input[++InputIdx];
@@ -497,9 +706,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_BridgeFolder.SetString("C:\\SierraChart\\TradingHypothesisBridge");
 
         // "Semi Auto" wires up the manual one-click trigger below.
-        // "Fully Auto" is NOT implemented -- selecting it only logs a
-        // warning and places no orders, per the staged rollout.
-        Input_Mode.Name = "Mode (Hypothesis Only / Semi Auto = manual trigger / Fully Auto = not implemented)";
+        // "Fully Auto" fires the exact same checks/order-placement
+        // automatically on a timer (Input_RefreshIntervalSeconds cadence) --
+        // no manual click needed, but every safety check (Trading Enabled,
+        // Max Trades Per Day, position/working-order guard, etc.) still
+        // applies identically. See "Fully Auto mode" in sierra_chart/
+        // README.md before switching to it, even on a Replay/SIM session.
+        Input_Mode.Name = "Mode (Hypothesis Only / Semi Auto = manual trigger / Fully Auto = automatic)";
         Input_Mode.SetCustomInputStrings("Hypothesis Only;Semi Auto;Fully Auto");
         Input_Mode.SetCustomInputIndex(0);
 
@@ -923,40 +1136,33 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     const time_t nowTimeT = time(nullptr);
     const double now = static_cast<double>(nowTimeT);
 
-    // --- 1b. Manual order trigger (Step 4: SEMI_AUTO manual-trigger stage) --
-    // Placed before the refresh-interval throttle below (section 2) so a
-    // trigger flip is honored immediately on the next recalculation rather
-    // than waiting up to Input_RefreshIntervalSeconds. Only acts in "Semi
-    // Auto" mode; "Fully Auto" is explicitly not implemented yet, per the
-    // staged rollout the user chose.
+    // --- 1b. Order trigger (Step 4: Semi Auto manual click, or Fully Auto's
+    // automatic timer) -- both share TryFireOrderFromProposal (defined near
+    // the top of this file) so Fully Auto reuses exactly the same,
+    // already-verified checks and order-placement code rather than a
+    // second, divergent copy. Placed before the refresh-interval throttle
+    // below (section 2) so a manual trigger flip is honored immediately on
+    // the next recalculation rather than waiting up to
+    // Input_RefreshIntervalSeconds; Fully Auto applies its own, separate
+    // throttle (see below) so it doesn't spam the Message Log or the CSV
+    // reads every recalculation.
     //
-    // VERIFICATION STATUS: this block's use of s_SCNewOrder's field names
-    // (Target1Price/Stop1Price/AttachedOrderTarget1Type/
+    // VERIFICATION STATUS: TryFireOrderFromProposal's use of s_SCNewOrder's
+    // field names (Target1Price/Stop1Price/AttachedOrderTarget1Type/
     // AttachedOrderStop1Type), sc.BuyEntry/sc.SellEntry's return-value
     // convention (>0 = submitted), and Input_Mode.GetIndex() are my
     // best-effort reading of ACSIL documentation and example code, NOT yet
-    // compiled against the real Sierra Chart SDK header -- check this block
-    // first if it fails to compile, and confirm the exact field/return-value
-    // semantics against sierrachart.h before ever flipping the trigger on a
-    // real SIM account. s_SCPositionData's PositionQuantity and
-    // WorkingOrdersExist fields, by contrast, ARE confirmed against Sierra
-    // Chart's own ACSILTrading.html documentation (pasted in by the user
-    // after an earlier sc.GetOrders() guess failed a real build -- see
+    // compiled against the real Sierra Chart SDK header -- check that
+    // function first if this fails to compile, and confirm the exact
+    // field/return-value semantics against sierrachart.h before ever
+    // flipping the trigger (or switching to Fully Auto) on a real SIM
+    // account. s_SCPositionData's PositionQuantity and WorkingOrdersExist
+    // fields, by contrast, ARE confirmed against Sierra Chart's own
+    // ACSILTrading.html documentation (pasted in by the user after an
+    // earlier sc.GetOrders() guess failed a real build -- see
     // ARCHITECTURE.md's Step 4 notes).
     const int modeIndex = Input_Mode.GetIndex(); // 0=Hypothesis Only, 1=Semi Auto, 2=Fully Auto
-    if (modeIndex == 2)
-    {
-        int& HasWarnedFullyAuto = sc.GetPersistentInt(6);
-        if (!HasWarnedFullyAuto)
-        {
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: 'Fully Auto' mode is selected but NOT implemented -- "
-                "no orders will ever be placed automatically. Only 'Semi Auto' (manual trigger) is "
-                "wired up so far, per the staged rollout in ARCHITECTURE.md.", 1);
-            HasWarnedFullyAuto = 1;
-        }
-    }
-    else if (modeIndex == 1 && Input_ManualTriggerOrder.GetYesNo())
+    if (modeIndex == 1 && Input_ManualTriggerOrder.GetYesNo())
     {
         // Reset the trigger immediately, before doing anything else -- so
         // this is always a one-shot action per click, never a standing
@@ -964,200 +1170,64 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // something below returns early in some future edit.
         Input_ManualTriggerOrder.SetYesNo(0);
 
-        OrderProposalRow proposal;
-        if (!Input_TradingEnabled.GetYesNo())
+        TriggerAttempt attempt = TryFireOrderFromProposal(
+            sc, orderProposalPath, triggerLogPath, instrument,
+            Input_TradingEnabled.GetYesNo() != 0,
+            Input_MaxProposalAgeSeconds.GetInt(),
+            Input_MaxContractsSafetyCap.GetInt(),
+            Input_MaxTradesPerDay.GetInt(),
+            nowTimeT, now,
+            std::string("Trading Hypothesis Display: manual trigger"));
+        // Always logged, exactly like before this was extracted into a
+        // shared function -- a manual click is a one-shot, deliberate
+        // action, so the trader should see the outcome (or refusal reason)
+        // every single time, not have it deduplicated away.
+        if (attempt.outcome != TriggerOutcome::Success)
+            sc.AddMessageToLog(attempt.refusalMessage.c_str(), 1);
+    }
+    else if (modeIndex == 2)
+    {
+        // Fully Auto: the same tested order-placement path as Semi Auto's
+        // manual trigger, fired automatically on a timer instead of waiting
+        // for a click -- the second, later stage of the staged rollout the
+        // user chose, reached now that manual triggering has compiled and
+        // run successfully on real hardware (see ARCHITECTURE.md's Step 4
+        // notes). Throttled to Input_RefreshIntervalSeconds -- the same
+        // cadence order_proposal.csv actually changes on (run_live.py's own
+        // poll interval) -- rather than every recalculation, which can fire
+        // many times a second via sc.UpdateAlways. Entries AND exits both
+        // come from this: entry via sc.BuyEntry/sc.SellEntry below, exit via
+        // each leg's own attached stop/target order that Sierra Chart's own
+        // Trade Service manages once submitted (including during a Replay
+        // session) -- no separate exit logic is needed here.
+        double& LastAutoFireAttempt = sc.GetPersistentDouble(4);
+        if (now - LastAutoFireAttempt >= Input_RefreshIntervalSeconds.GetInt())
         {
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but Trading Enabled is No (kill "
-                "switch) -- refusing to act. Flip it back to Yes to resume.", 1);
-        }
-        else if (!ReadOrderProposalCSV(orderProposalPath, proposal))
-        {
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but order_proposal.csv has no "
-                "data row yet -- nothing to act on.", 1);
-        }
-        else if (proposal.direction != "long" && proposal.direction != "short")
-        {
-            sc.AddMessageToLog(
-                ("Trading Hypothesis Display: manual trigger fired but the current proposal direction "
-                 "is '" + proposal.direction + "' -- nothing tradeable right now.").c_str(), 1);
-        }
-        else if (proposal.instrument != instrument)
-        {
-            sc.AddMessageToLog(
-                ("Trading Hypothesis Display: manual trigger fired but order_proposal.csv's instrument "
-                 "('" + proposal.instrument + "') does not match this study's Instrument input ('"
-                 + instrument + "') -- refusing to act on a mismatched file.").c_str(), 1);
-        }
-        else if ((now - static_cast<double>(ParseISODateTimeToUnix(proposal.timestamp))) > Input_MaxProposalAgeSeconds.GetInt())
-        {
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but order_proposal.csv is stale "
-                "(older than Max Order Proposal Age) -- refusing to act on it. Check that run_live.py "
-                "is still running.", 1);
-        }
-        else if (proposal.contracts <= 0 || proposal.contracts > Input_MaxContractsSafetyCap.GetInt())
-        {
-            sc.AddMessageToLog(
-                ("Trading Hypothesis Display: manual trigger fired but proposed contracts ("
-                 + std::to_string(proposal.contracts) + ") is 0 or exceeds the Max Contracts Safety "
-                 "Cap -- refusing to act.").c_str(), 1);
-        }
-        else if (!proposal.hasStop || !proposal.hasTarget1)
-        {
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but the proposal is missing a stop "
-                "or target_1 -- refusing to place an order with no risk level.", 1);
-        }
-        else if (proposal.contractsTarget1 + proposal.contractsTarget2 + proposal.contractsRunner != proposal.contracts)
-        {
-            // Defensive re-check of the same invariant the Python side
-            // guarantees (risk/order.py's _split_contracts_by_confluence
-            // always sums back to contracts) -- same principle as the
-            // backwards stop/target_1 check just below: a broken split is a
-            // bug to fix, not something to silently work around by trading
-            // a smaller size than intended.
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but the scale-out leg quantities in "
-                "order_proposal.csv don't sum to the total contracts -- refusing to act on an "
-                "inconsistent proposal.", 1);
-        }
-        else if ((proposal.contractsTarget2 > 0 && !proposal.hasTarget2)
-               || (proposal.contractsRunner > 0 && !proposal.hasRunner))
-        {
-            // A leg with contracts but no price would otherwise submit a
-            // bracket order with Target1Price=0.0 -- a catastrophically
-            // wrong level, not a safe default.
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but the scale-out split calls for a "
-                "target_2 or runner leg with no corresponding price in order_proposal.csv -- refusing "
-                "to act on an inconsistent proposal.", 1);
-        }
-        else if ((proposal.direction == "long" && proposal.stop >= proposal.target1)
-               || (proposal.direction == "short" && proposal.stop <= proposal.target1)
-               || (proposal.contractsTarget2 > 0
-                   && ((proposal.direction == "long" && proposal.stop >= proposal.target2)
-                    || (proposal.direction == "short" && proposal.stop <= proposal.target2)))
-               || (proposal.contractsRunner > 0
-                   && ((proposal.direction == "long" && proposal.stop >= proposal.runner)
-                    || (proposal.direction == "short" && proposal.stop <= proposal.runner))))
-        {
-            // Second, independent safety net -- the same class of bug the
-            // backwards A-day invalidation fix caught in Python
-            // (hypothesis/generator.py's _a_day_hypothesis), now also
-            // covering the target_2/runner legs the scale-out split can
-            // fire on. run_live.py's engine already refuses to write a
-            // backwards hypothesis to order_proposal.csv in the first
-            // place, so this should never actually trigger -- if it does,
-            // treat it as a bug to fix, not something to override or work
-            // around here.
-            sc.AddMessageToLog(
-                "Trading Hypothesis Display: manual trigger fired but stop is on the wrong side of "
-                "target_1 (or an active target_2/runner leg) for this direction -- refusing to place a "
-                "backwards bracket order.", 1);
-        }
-        else
-        {
-            s_SCPositionData PositionData;
-            sc.GetTradePosition(PositionData);
-            if (PositionData.PositionQuantity != 0)
-            {
-                sc.AddMessageToLog(
-                    ("Trading Hypothesis Display: manual trigger fired but a position is already open ("
-                     + std::to_string(PositionData.PositionQuantity) + " contracts) -- refusing to open "
-                     "a second one. Flatten first if this is intentional.").c_str(), 1);
-            }
-            else if (PositionData.WorkingOrdersExist != 0)
-            {
-                sc.AddMessageToLog(
-                    "Trading Hypothesis Display: manual trigger fired but a working (not yet filled) "
-                    "order already exists for this account/symbol -- refusing to place a second one. "
-                    "Cancel it first if this is intentional.", 1);
-            }
-            else if (CountTriggersForDate(triggerLogPath, TodayDateString(nowTimeT)) >= Input_MaxTradesPerDay.GetInt())
-            {
-                sc.AddMessageToLog(
-                    ("Trading Hypothesis Display: manual trigger fired but Max Trades Per Day ("
-                     + std::to_string(Input_MaxTradesPerDay.GetInt()) + ") is already reached for today "
-                     "(see trigger_log.csv) -- refusing to place another. Raise the input if this is "
-                     "intentional.").c_str(), 1);
-            }
-            else
-            {
-                // Up to three separate bracket orders, one per nonzero
-                // scale-out leg -- s_SCNewOrder only carries a single
-                // Target1Price, so a real multi-target scale-out needs one
-                // order submission per target, not one order with several
-                // targets. All legs share proposal.stop; there is
-                // deliberately no per-leg stop management (breakeven-on-
-                // fill, trailing the runner) yet -- that's FULLY_AUTO-era
-                // work, deferred the same way pyramiding/trailing already
-                // are (see ARCHITECTURE.md's Step 4 notes).
-                struct Leg { const char* name; int quantity; double targetPrice; };
-                const Leg legs[] = {
-                    {"target_1", proposal.contractsTarget1, proposal.target1},
-                    {"target_2", proposal.contractsTarget2, proposal.target2},
-                    {"runner",   proposal.contractsRunner,  proposal.runner},
-                };
+            LastAutoFireAttempt = now;
+            TriggerAttempt attempt = TryFireOrderFromProposal(
+                sc, orderProposalPath, triggerLogPath, instrument,
+                Input_TradingEnabled.GetYesNo() != 0,
+                Input_MaxProposalAgeSeconds.GetInt(),
+                Input_MaxContractsSafetyCap.GetInt(),
+                Input_MaxTradesPerDay.GetInt(),
+                nowTimeT, now,
+                std::string("Trading Hypothesis Display: Fully Auto"));
 
-                int totalSubmitted = 0;
-                for (const Leg& leg : legs)
-                {
-                    if (leg.quantity <= 0)
-                        continue;
-
-                    s_SCNewOrder NewOrder;
-                    NewOrder.OrderQuantity = leg.quantity;
-                    NewOrder.OrderType = SCT_ORDERTYPE_MARKET;
-                    NewOrder.TimeInForce = SCT_TIF_DAY;
-                    NewOrder.Target1Price = leg.targetPrice;
-                    NewOrder.Stop1Price = proposal.stop;
-                    NewOrder.AttachedOrderTarget1Type = SCT_ORDERTYPE_LIMIT;
-                    NewOrder.AttachedOrderStop1Type = SCT_ORDERTYPE_STOP;
-
-                    const int result = (proposal.direction == "long") ? sc.BuyEntry(NewOrder) : sc.SellEntry(NewOrder);
-                    std::stringstream msg;
-                    msg << "Trading Hypothesis Display: manual trigger -> " << proposal.direction << " "
-                        << leg.quantity << " contract(s) [" << leg.name << " leg] (" << proposal.hypothesis_type
-                        << ", " << proposal.confluence << "), stop=" << proposal.stop << " target=" << leg.targetPrice
-                        << " -- sc." << (proposal.direction == "long" ? "BuyEntry" : "SellEntry")
-                        << " returned " << result
-                        << (result > 0 ? " (submitted)" : " (FAILED -- check Sierra Chart's own Trade Service log for the reason)");
-                    sc.AddMessageToLog(msg.str().c_str(), result > 0 ? 0 : 1);
-
-                    if (result > 0)
-                        totalSubmitted += leg.quantity;
-                }
-
-                // Only log this trigger toward the daily cap once at least
-                // one leg actually went out -- a fully-failed submission
-                // shouldn't burn a slot the trader could otherwise retry
-                // after fixing whatever caused the failure. Counts as one
-                // trade regardless of how many legs succeeded -- the cap is
-                // about how many times you've fired the trigger today, not
-                // how many individual bracket orders exist on the account.
-                if (totalSubmitted > 0)
-                {
-                    const std::string todayStr = TodayDateString(nowTimeT);
-                    const bool needsHeader = !std::ifstream(triggerLogPath).good();
-                    std::ofstream logOut(triggerLogPath, std::ios::app);
-                    if (logOut.is_open())
-                    {
-                        if (needsHeader)
-                            logOut << "date,timestamp,direction,contracts\n";
-                        logOut << todayStr << "," << FormatISODateTime(nowTimeT) << ","
-                               << proposal.direction << "," << totalSubmitted << "\n";
-                    }
-                    else
-                    {
-                        sc.AddMessageToLog(
-                            ("Trading Hypothesis Display: order placed but could not open "
-                             + triggerLogPath + " for writing: " + std::strerror(errno) + " (errno "
-                             + std::to_string(errno) + "). Max Trades Per Day will under-count today.").c_str(), 1);
-                    }
-                }
-            }
+            // Dedup against the previous attempt's outcome so a routine,
+            // long-lived state (no signal right now, already in a trade,
+            // today's cap already reached) logs once on the transition into
+            // it instead of spamming the Message Log every
+            // Input_RefreshIntervalSeconds for as long as it holds. A real
+            // order placement (Success) is never deduplicated -- each one
+            // is always logged (via the per-leg lines inside
+            // TryFireOrderFromProposal itself), and is also what resets this
+            // so the *next* new refusal reason (e.g. the position this just
+            // opened) gets its own fresh log line.
+            int& LastAutoOutcome = sc.GetPersistentInt(7);
+            const int outcomeCode = static_cast<int>(attempt.outcome);
+            if (attempt.outcome != TriggerOutcome::Success && outcomeCode != LastAutoOutcome)
+                sc.AddMessageToLog(attempt.refusalMessage.c_str(), 1);
+            LastAutoOutcome = outcomeCode;
         }
     }
 

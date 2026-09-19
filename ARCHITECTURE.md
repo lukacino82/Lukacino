@@ -378,10 +378,66 @@ debugging.
      internally consistent, not that these are the real SDK's exact field
      names; the real Sierra Chart build is the authoritative check, and it
      did succeed on the user's machine for everything above.
-     FULLY_AUTO (pyramiding, trailing, kill switch) stays explicitly
-     deferred until manual triggering is proven reliable on SIM -- not yet
-     started, waiting on the user's first real actionable proposal to test
-     the manual trigger against.
+     Pyramiding and per-leg stop management (breakeven-on-fill, trailing)
+     stay explicitly deferred -- not started, since neither needs solving to
+     reach the goal below.
+   - **Fully Auto, implemented** -- reached once real Sierra Chart builds had
+     confirmed the manual-trigger code path (kill switch, risk limits,
+     scale-out, working-order guard, all above) compiles and runs correctly,
+     per the staged rollout. The manual-trigger block's entire body (every
+     safety check plus the actual `sc.BuyEntry`/`sc.SellEntry` calls) was
+     extracted into a shared free function, `TryFireOrderFromProposal`, so
+     Fully Auto reuses the *exact* tested logic rather than a second,
+     divergent copy -- Semi Auto calls it once when `Trigger Order Now`
+     flips to Yes, Fully Auto calls it automatically on a timer
+     (`Bridge File Refresh Interval` cadence, not every recalculation,
+     since `sc.UpdateAlways=1` can fire many times a second and
+     `order_proposal.csv` only actually changes as often as `run_live.py`
+     polls anyway). Logging is the one real behavioral difference: Semi
+     Auto always logs every outcome (a deliberate, one-shot click deserves
+     visible feedback every time); Fully Auto deduplicates a *repeated,
+     unchanged* refusal reason (persistent int, the same "don't trust a
+     persistent int for anything that must survive a restart" caveat
+     applies here too, but this one only needs to survive *within* a
+     session, not across a Sierra Chart restart, so that's an acceptable
+     use) so a long-lived state (already in a trade, cap reached) logs once
+     on the transition into it instead of spamming the Message Log every
+     refresh interval for as long as it holds -- a genuine order placement
+     is never deduplicated. No separate exit logic exists or is needed:
+     each leg's attached stop/target is a normal Sierra Chart order the
+     Trade Service fills against price action on its own (live or Replay)
+     once submitted, so Fully Auto's entries AND exits both ultimately come
+     from the same bracket-order mechanism Semi Auto already used.
+     Verified against the local stub (after fixing a real stub bug found
+     while testing this -- see below): a first Fully Auto attempt with no
+     proposal logs a refusal once; an immediate second attempt is throttled
+     (no attempt at all, not even a suppressed one); a third attempt after
+     the throttle window elapses but with the same outcome is deduplicated
+     (no new log line); a valid proposal appearing then fires and logs
+     normally; a simulated working order existing then refuses with a
+     fresh, newly-different reason (logged); and repeating that same
+     working-order refusal is deduplicated again. Also confirmed compiling
+     on the user's real Sierra Chart remote build server.
+   - **A real bug in the local g++ stub, found and fixed while testing Fully
+     Auto's throttle/dedup above (scratchpad-only, never shipped -- not part
+     of the repo or the real build).** The stub originally declared
+     `SCStudyInterfaceRef` as a plain value struct, so passing `sc` into the
+     study function copied it -- `sc.GetPersistentInt`/`GetPersistentDouble`
+     silently stopped persisting across calls (each call read/wrote a
+     throwaway copy), while `SCInputRef`-based state (e.g. the self-resetting
+     trigger toggle) happened to keep working anyway, by an unrelated
+     accident of how its internal pointer was copied. This was invisible
+     before because nothing previously tested cross-call `GetPersistentInt`/
+     `GetPersistentDouble` behavior directly -- confirmed with a standalone
+     repro (an incrementing persistent int printed the same value on every
+     call instead of accumulating) before touching the fix. Real Sierra
+     Chart's `SCStudyInterfaceRef` is genuinely a reference type, so none of
+     this ever affected the real, already-shipped persistent-int-based
+     features (`LastExportedDateYYYYMMDD`, `SessionOpenTradingDayYYYYMMDD`,
+     etc.) running on the user's actual chart -- only this local stub's
+     ability to verify anything relying on that behavior. Fixed by renaming
+     the struct to `s_sc` and making `SCStudyInterfaceRef` a true reference
+     alias over it, matching the real SDK's own design.
    - **Second guard against working (not yet filled) orders, now
      implemented.** A first attempt added a `HasWorkingOrder()` check
      looping a guessed `sc.GetOrders(index, order)` -- this compiled
