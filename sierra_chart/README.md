@@ -619,33 +619,50 @@ automatically. All output (the same lines you'd see in the console today,
 plus a start/restart timestamp line from the `.bat` itself) is appended to
 `C:\SierraChart\TradingHypothesisBridge\NQ\run_live_supervisor.log`.
 
-**One-time setup, in an ordinary (non-admin) cmd or PowerShell window:**
+**One-time setup — Startup folder shortcut (confirmed working; use this
+first).** On a locked-down machine (e.g. a trading VPS), `schtasks /create`
+can fail with "Přístup byl odepřen" / "Access denied" for a non-admin user
+even with `/rl limited` — confirmed on the user's real deployment. A
+shortcut in the per-user Startup folder needs no special privileges at all
+and starts at the same point in the login process:
+1. `Win+R` → `shell:startup` → Enter — opens your Startup folder.
+2. In File Explorer, open `C:\LukacinoGit`, right-click
+   `run_live_supervisor.bat` → Send to → Desktop (create shortcut).
+3. Drag that new desktop shortcut into the Startup folder from step 1.
+
+To also start it right now instead of waiting for the next logon, just run
+`C:\LukacinoGit\run_live_supervisor.bat` directly (double-click it, or run
+it from a cmd window already `cd`'d into `C:\LukacinoGit`). If a
+`run_live.py` window from before this setup is still open, close it first
+(Ctrl+C, possibly more than once since it's a loop, then close the window)
+so you don't end up with two instances writing the same bridge files.
+
+**Alternative — Task Scheduler**, on a machine that actually grants
+`schtasks` permission to your user:
 ```
 cd C:\LukacinoGit
 git pull
 schtasks /create /tn "Lukacino run_live" /tr "C:\LukacinoGit\run_live_supervisor.bat" /sc onlogon /rl limited /f
-```
-This registers a task that starts the supervisor the next time you log on
-to Windows — it does **not** start it immediately. To also start it right
-now, in the same window:
-```
 schtasks /run /tn "Lukacino run_live"
 ```
-A console window titled after the `.bat` will open and stay open — that's
-the supervisor loop; leave it running, same as you'd leave `run_live.py`'s
-own window running today. If a `run_live.py` window from before this setup
-is still open, close it first (Ctrl+C, then close the window) so you don't
-end up with two instances writing the same bridge files.
+The `/create` line registers a task that starts the supervisor at your next
+logon (it does not start it immediately); `/run` starts it right now too.
+To remove it later: `schtasks /delete /tn "Lukacino run_live" /f`.
+
+Either way, a console window titled after the `.bat` opens and stays
+open — that's the supervisor loop; leave it running (minimizing it is
+fine), same as you'd leave `run_live.py`'s own window running today.
 
 **Checking it's working:** open
 `C:\SierraChart\TradingHypothesisBridge\NQ\run_live_supervisor.log` — a
 fresh `[<date> <time>] Starting run_live.py` line confirms the supervisor
-fired, followed by the same `Watching ... (poll every 5s) ...` line
-`run_live.py` always prints on startup.
+fired, followed immediately by the `Watching ... (poll every 5s) ...` line
+`run_live.py` always prints on startup (the `.bat` launches Python with
+`-u`/unbuffered specifically so this line shows up right away instead of
+sitting invisible in an output buffer for minutes — confirmed against a
+real run where the log briefly looked empty/hung before this fix).
 
 **To stop it for good** (not just for one restart): close the supervisor's
-console window, then remove the scheduled task so it doesn't come back
-after your next logon:
-```
-schtasks /delete /tn "Lukacino run_live" /f
-```
+console window, then either delete the Startup-folder shortcut from step 3
+above, or (Task Scheduler route) `schtasks /delete /tn "Lukacino run_live" /f`,
+so it doesn't come back after your next logon.

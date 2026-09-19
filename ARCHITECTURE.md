@@ -587,19 +587,33 @@ debugging.
      existing "no signal beats a wrong signal" design, so it's left as-is
      rather than adding a history-replay-on-startup mechanism for a cold
      start that self-resolves in minutes.
-   - **The Windows machine itself restarting, now closed via
-     `run_live_supervisor.bat` (repo root) + a Task Scheduler "at logon"
-     entry** -- see the "Auto-start after a reboot" section of
-     `sierra_chart/README.md` for the exact `schtasks` command and the
-     user's real deployment paths (`C:\LukacinoGit`,
-     `C:\SierraChart\TradingHypothesisBridge`). The `.bat` is a supervisor
-     loop, not a replacement for `run_live.py`'s own resilience (its
-     `while True` already never exits on an ordinary tick error) -- it only
-     ever matters when something outside `run_live.py`'s control kills the
-     whole process (a stray Ctrl+C, the console window closing, a reboot).
-     Deliberately does not `git pull` automatically -- code updates stay a
-     manual, reviewed step; a `git pull` followed by one Ctrl+C on the
-     running window is enough, since each restart launches a fresh process
+   - **The Windows machine itself restarting, now closed and confirmed
+     working on the user's real deployment via `run_live_supervisor.bat`
+     (repo root) + a per-user Startup-folder shortcut** -- see the
+     "Auto-start run_live.py after a reboot" section of
+     `sierra_chart/README.md` for both the shortcut steps and the
+     `schtasks` alternative, and the user's real deployment paths
+     (`C:\LukacinoGit`, `C:\SierraChart\TradingHypothesisBridge`).
+     `schtasks /create` was tried first but failed with "Přístup byl
+     odepřen" (access denied) even as a non-admin, limited-privilege task
+     on the user's real machine (a locked-down trading VPS) -- the
+     Startup-folder shortcut needs no special privileges at all and starts
+     at the same point in the login sequence, so it became the primary
+     documented method rather than a fallback. Also fixed along the way: the
+     `.bat` originally redirected Python's output straight to a log file
+     without `-u` (unbuffered), so `run_live.py`'s own startup print sat
+     invisible in Python's block-buffered stdout for minutes on the user's
+     real run, making a genuinely running process look hung -- confirmed
+     both the bug (empty-looking log right after start) and the fix (the
+     line appears immediately with `-u`) against the user's real console
+     output. The `.bat` is a supervisor loop, not a replacement for
+     `run_live.py`'s own resilience (its `while True` already never exits on
+     an ordinary tick error) -- it only ever matters when something outside
+     `run_live.py`'s control kills the whole process (a stray Ctrl+C, the
+     console window closing, a reboot). Deliberately does not `git pull`
+     automatically -- code updates stay a manual, reviewed step; a
+     `git pull` followed by one Ctrl+C on the running window is enough,
+     since each restart launches a fresh process
      that re-reads `trading_system/` from disk. Until now, until
      `run_live.py` was manually restarted after a reboot,
      `order_proposal.csv` would simply go stale and the manual trigger's
