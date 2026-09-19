@@ -32,7 +32,14 @@ if not exist "C:\SierraChart\TradingHypothesisBridge\NQ" mkdir "C:\SierraChart\T
 :loop
 echo [%date% %time%] Starting run_live.py >> "%LOG_FILE%"
 cd /d "%REPO_DIR%"
-python -m trading_system.run_live --bridge-dir "%BRIDGE_DIR%" --instrument %INSTRUMENT% --history-out "%HISTORY_OUT%" >> "%LOG_FILE%" 2>&1
+rem -u (unbuffered): with stdout/stderr redirected to a file, Python
+rem defaults to block-buffering instead of line-buffering, so ordinary
+rem print() output (e.g. run_live.py's own "Watching ..." startup line)
+rem can sit invisible in the buffer for minutes before it's actually
+rem written to the log -- confirmed against a real run: the log showed
+rem only the supervisor's own "Starting run_live.py" line long after
+rem run_live.py had actually started and was polling normally.
+python -u -m trading_system.run_live --bridge-dir "%BRIDGE_DIR%" --instrument %INSTRUMENT% --history-out "%HISTORY_OUT%" >> "%LOG_FILE%" 2>&1
 echo [%date% %time%] run_live.py exited (code %ERRORLEVEL%) -- restarting in 10s >> "%LOG_FILE%"
 timeout /t 10 /nobreak >nul
 goto loop
