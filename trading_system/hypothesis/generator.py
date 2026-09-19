@@ -17,11 +17,31 @@ regime, not all four types at once.
   monthly/weekly VWAP tiers. regime.py already requires a non-neutral
   structural bias for B_DAY, so bullish/bearish is unambiguous here.
 
-Unlike regime.py/delta.py, nothing here introduces new unvalidated numeric
-thresholds -- entry/targets/invalidation are all read directly off
-existing VWAP levels and active composite zones, not fabricated
-constants. The regime classification feeding this still needs the
-calibration flagged in regime.py/ARCHITECTURE.md.
+Target candidates come from two structural sources, both read directly off
+active composites (no fabricated constants): the composite's own val/vah
+edges (``_composite_targets``) and each member day's individual POC
+(``_poc_targets``) -- POC is a distinct key level price tends to retest on
+its own, not just the composite's merged value-area boundary. The two are
+merged and sorted by distance from price (``_structural_targets``) to pick
+target_1/target_2 when no fixed RRR is configured; ``runner`` stays keyed to
+the single strongest (highest day_count) composite edge specifically, per
+the skill's "biggest zone is the stretch target" reading.
+
+``rrr`` (optional, e.g. 1.5 for a 1.5:1 reward:risk) is a user-configured
+override for target_1 only, added at the user's request so target_1 can be
+a plain multiple of the stop distance instead of always depending on
+composite/POC structure existing at all: ``target_1 = entry +/- rrr *
+abs(entry - invalidation)``. Stop/invalidation is never derived from RRR --
+it's still the structural level (nearest opposing composite edge, or the
+existing VWAP fallback). When RRR is set, target_2 becomes the nearest
+structural candidate that sits *beyond* the RRR-derived target_1 in the
+trade's direction (so it's still a real second level to scale into, not one
+already passed). ``runner`` is unaffected either way. Applies identically
+to SEMI_AUTO and FULLY_AUTO, since both read whatever this writes to
+order_proposal.csv -- no ACSIL-side change needed for this.
+
+The regime classification feeding this still needs the calibration flagged
+in regime.py/ARCHITECTURE.md.
 """
 
 from __future__ import annotations
@@ -84,6 +104,42 @@ def _composite_targets(composites: Sequence[Composite], price: float, long: bool
     return edges
 
 
+def _poc_targets(composites: Sequence[Composite], price: float, long: bool) -> List[float]:
+    """Each active composite's member days' individual POC levels that sit
+    on the trade's target side, nearest first -- POC is a distinct key
+    level price tends to retest on its own, not just the composite's merged
+    value-area edge (which _composite_targets already covers).
+    """
+    levels = [
+        poc
+        for c in composites
+        if c.is_active
+        for poc in c.member_pocs
+        if ((poc > price) if long else (poc < price))
+    ]
+    levels.sort(key=lambda lvl: abs(lvl - price))
+    return levels
+
+
+def _structural_targets(composites: Sequence[Composite], price: float, long: bool) -> List[float]:
+    """Composite value-area edges and member POCs merged into one
+    nearest-first candidate list -- the pool target_1/target_2 are picked
+    from when no fixed RRR is configured (see module docstring).
+    """
+    merged = _composite_targets(composites, price, long) + _poc_targets(composites, price, long)
+    merged.sort(key=lambda lvl: abs(lvl - price))
+    return merged
+
+
+def _beyond(levels: Sequence[float], price: float, long: bool) -> List[float]:
+    """Filters an already nearest-first candidate list down to levels that
+    sit strictly beyond ``price`` (an RRR-derived target_1) in the trade's
+    direction -- used so target_2 is still a real further level to scale
+    into, not one the RRR target has already passed.
+    """
+    return [lvl for lvl in levels if ((lvl > price) if long else (lvl < price))]
+
+
 def _strongest_composite_target(composites: Sequence[Composite], price: float, long: bool) -> Optional[float]:
     candidates = [
         (c.day_count, c.val if long else c.vah)
@@ -113,17 +169,51 @@ def _confluence(delta_supports: bool, delta_contradicts: bool, has_target: bool)
     return Confluence.CLEAN
 
 
+def _rrr_target(entry: float, invalidation: float, rrr: float, long: bool) -> float:
+    risk = abs(entry - invalidation)
+    return entry + rrr * risk if long else entry - rrr * risk
+
+
+def _pick_targets(
+    structural_targets: Sequence[float],
+    entry: float,
+    invalidation: float,
+    long: bool,
+    rrr: Optional[float],
+    no_structural_fallback: Optional[float],
+) -> "tuple[Optional[float], Optional[float]]":
+    """Returns (target_1, target_2). When ``rrr`` is set, target_1 is a
+    plain multiple of the stop distance (see module docstring) and target_2
+    is the nearest structural candidate that sits *beyond* it in the
+    trade's direction. Otherwise both come straight from
+    ``structural_targets``, with target_1 falling back to
+    ``no_structural_fallback`` when there's no structural candidate at all
+    (A-day passes ``vwap_intraday``; B-day passes ``None``, its existing
+    "no target" case).
+    """
+    if rrr is not None:
+        target_1 = _rrr_target(entry, invalidation, rrr, long)
+        beyond = _beyond(structural_targets, target_1, long)
+        target_2 = beyond[0] if beyond else None
+        return target_1, target_2
+
+    target_1 = structural_targets[0] if structural_targets else no_structural_fallback
+    target_2 = structural_targets[1] if len(structural_targets) > 1 else None
+    return target_1, target_2
+
+
 def generate_hypothesis(
     state: LiveMarketState,
     regime: Regime,
     tier_report: TierReport,
     delta_signal: DeltaSignal,
     composites: Sequence[Composite] = (),
+    rrr: Optional[float] = None,
 ) -> Optional[Hypothesis]:
     if regime == Regime.A_DAY:
-        return _a_day_hypothesis(state, tier_report, delta_signal, composites)
+        return _a_day_hypothesis(state, tier_report, delta_signal, composites, rrr)
     if regime == Regime.B_DAY:
-        return _b_day_hypothesis(state, tier_report, delta_signal, composites)
+        return _b_day_hypothesis(state, tier_report, delta_signal, composites, rrr)
     return None
 
 
@@ -132,6 +222,7 @@ def _a_day_hypothesis(
     tier_report: TierReport,
     delta_signal: DeltaSignal,
     composites: Sequence[Composite],
+    rrr: Optional[float] = None,
 ) -> Optional[Hypothesis]:
     if tier_report.intraday == Position.AT:
         return None  # sitting at the mean already -- nothing to revert from
@@ -144,9 +235,7 @@ def _a_day_hypothesis(
     delta_supports = delta_signal in (DeltaSignal.ABSORPTION, DeltaSignal.DIVERGENCE)
     delta_contradicts = delta_signal == DeltaSignal.CONFIRMING
 
-    targets = _composite_targets(composites, state.last_price, long)
-    target_1 = targets[0] if targets else state.vwap_intraday
-    target_2 = targets[1] if len(targets) > 1 else None
+    structural_targets = _structural_targets(composites, state.last_price, long)
     runner = _strongest_composite_target(composites, state.last_price, long)
     invalidation = _opposing_invalidation(composites, state.last_price, long, fallback=state.session_open)
 
@@ -162,6 +251,11 @@ def _a_day_hypothesis(
     if (long and invalidation >= state.last_price) or (not long and invalidation <= state.last_price):
         return None
 
+    target_1, target_2 = _pick_targets(
+        structural_targets, state.last_price, invalidation, long, rrr,
+        no_structural_fallback=state.vwap_intraday,
+    )
+
     thesis = (
         f"Price {'below' if long else 'above'} intraday VWAP on a range day -- "
         f"expect reversion toward intraday VWAP ({state.vwap_intraday:.2f})."
@@ -175,7 +269,7 @@ def _a_day_hypothesis(
         target_2=target_2,
         runner=runner,
         invalidation=invalidation,
-        confluence=_confluence(delta_supports, delta_contradicts, bool(targets)),
+        confluence=_confluence(delta_supports, delta_contradicts, bool(structural_targets)),
     )
 
 
@@ -184,6 +278,7 @@ def _b_day_hypothesis(
     tier_report: TierReport,
     delta_signal: DeltaSignal,
     composites: Sequence[Composite],
+    rrr: Optional[float] = None,
 ) -> Optional[Hypothesis]:
     if tier_report.structural_bias == StructuralBias.NEUTRAL:
         return None  # defensive only -- regime.classify_regime already rules this out for B_DAY
@@ -193,12 +288,21 @@ def _b_day_hypothesis(
     delta_supports = delta_signal == DeltaSignal.CONFIRMING
     delta_contradicts = delta_signal in (DeltaSignal.DIVERGENCE, DeltaSignal.ABSORPTION)
 
-    targets = _composite_targets(composites, state.last_price, long)
-    target_1 = targets[0] if targets else None
-    target_2 = targets[1] if len(targets) > 1 else None
+    structural_targets = _structural_targets(composites, state.last_price, long)
     runner = _strongest_composite_target(composites, state.last_price, long)
     # The immediate level that would lose the acceptance-beyond-VWAP read.
     invalidation = state.vwap_intraday
+
+    # With no RRR configured and no active composite/POC, B-day has no
+    # target_1 at all -- an unopposed continuation call, deliberately left
+    # without a fabricated target rather than guessing one (see
+    # ARCHITECTURE.md/backtest's skipped_no_target). Setting `rrr` always
+    # gives target_1 a value, since it no longer depends on structure
+    # existing.
+    target_1, target_2 = _pick_targets(
+        structural_targets, state.last_price, invalidation, long, rrr,
+        no_structural_fallback=None,
+    )
 
     thesis = (
         f"Price accepted {'above' if long else 'below'} the monthly/weekly VWAP "
@@ -214,5 +318,5 @@ def _b_day_hypothesis(
         target_2=target_2,
         runner=runner,
         invalidation=invalidation,
-        confluence=_confluence(delta_supports, delta_contradicts, bool(targets)),
+        confluence=_confluence(delta_supports, delta_contradicts, bool(structural_targets)),
     )

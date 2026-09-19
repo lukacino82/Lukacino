@@ -181,6 +181,7 @@ class BacktestConfig:
     delta_move_threshold: float
     delta_imbalance: float = 1000.0
     delta_window: int = 20
+    rrr: Optional[float] = None
 
 
 @dataclass
@@ -302,6 +303,7 @@ def run_backtest(
             config.price_move_threshold,
             config.delta_move_threshold,
             config.delta_imbalance,
+            config.rrr,
         )
         report.regime_counts[result.regime] = report.regime_counts.get(result.regime, 0) + 1
         if result.proposal is None:

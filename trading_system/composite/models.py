@@ -73,6 +73,11 @@ class Composite:
     vah: float
     day_count: int
     member_dates: Tuple[date, ...] = field(default_factory=tuple)
+    # Each member day's own POC (point of control) -- a distinct key level
+    # price tends to retest on its own, not just the composite's merged
+    # val/vah edges. Kept per-day (not merged into one number) since there's
+    # no principled way to combine several days' POCs into a single price.
+    member_pocs: Tuple[float, ...] = field(default_factory=tuple)
     invalidated_on: Optional[date] = None
     invalidated_by: Optional[str] = None
     remaining_ranges: Tuple[Tuple[float, float], ...] = field(default_factory=tuple)
@@ -97,6 +102,7 @@ class Composite:
         self.vah = max(self.vah, profile.vah)
         self.day_count += 1
         self.member_dates = self.member_dates + (profile.session_date,)
+        self.member_pocs = self.member_pocs + (profile.poc,)
         return self
 
     def invalidate(self, by_id: str, on: date, remaining_ranges: Tuple[Tuple[float, float], ...]) -> None:

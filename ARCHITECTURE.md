@@ -291,6 +291,45 @@ debugging.
      guard as before -- that part was never about regime). All 101 tests
      (100 existing + 1 new, covering the delta-vs-bias divergence case)
      pass.
+   - **Pure POC targets + optional fixed RRR override, at the user's
+     request** -- two more gaps against the skill's manual methodology,
+     closed together since both change target selection in
+     `hypothesis/generator.py`. (1) POC: the skill treats each day's own
+     Point of Control as a level price tests in its own right, distinct
+     from a composite's merged value-area edges (VAL/VAH) -- a composite's
+     rectangle alone was dropping that information. `Composite` gained
+     `member_pocs: Tuple[float, ...]` (populated in both
+     `CompositeEngine.ingest_day`'s initial two-day merge and
+     `Composite.extend()`, one POC per merged day, never re-aggregated --
+     POC isn't a zone-strength concept like day_count, so `runner`, which
+     is keyed off day_count, stays composite-edge-only and ignores POCs).
+     `_structural_targets()` merges composite edges and member POCs and
+     sorts by distance from price, so target_1/target_2 pick whichever is
+     genuinely nearer, POC or composite edge. (2) RRR: a fixed
+     reward:risk override for target_1 (e.g. 1.5 meaning target_1 sits at
+     1.5x the entry-to-invalidation risk), settable per instrument via
+     `InstrumentConfig.rrr` in `run_live.py` (`None` by default -- opt-in,
+     applies identically to Semi Auto and Fully Auto since both already
+     read `target_1` from the same `order_proposal.csv`). Asked the user
+     how RRR should interact with structural targets when both are
+     available; the user chose to have RRR *replace* target_1 rather than
+     compete with it: `invalidation` (the stop) stays structural always,
+     `target_1` becomes `entry +/- rrr * risk` whenever `rrr` is set
+     (regardless of whether a structural target exists at all -- this is
+     also why B-day's long-standing "no target_1 without a composite in
+     trend direction" gap now has an escape hatch, since RRR needs no
+     structure to compute against), and `target_2`/`runner` are left
+     alone as structural stretch targets, with `target_2` specifically
+     picking the nearest structural level that sits *beyond* the
+     RRR-derived target_1 (so it's never behind/inside it). Both features
+     are pure Python (`composite/models.py`, `composite/engine.py`,
+     `hypothesis/generator.py`, threaded through `engine.py`/
+     `run_live.py`/`backtest/replay.py`/`run_backtest.py`) -- no ACSIL/C++
+     changes, since order automation already flows entirely through
+     `order_proposal.csv`. 105 tests (101 existing + 4 new: POC beating a
+     farther composite edge, RRR with no structural targets at all, RRR's
+     target_2 skipping a structural level that sits behind it, and RRR
+     giving B-day a real target_1 where before there was none) pass.
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads
@@ -309,11 +348,11 @@ debugging.
      box" in TradingHypothesisStudy.cpp) instead of adding a new file
      format or touching ACSIL again.
    - ~~`engine.py`~~ (`LiveEngine`, done): per-tick orchestration --
-     `live_state.csv` snapshot + yesterday's `DailyProfile` + active
-     composites -> tier report -> delta signal (its `DeltaHistory` persists
-     across ticks on the same instance) -> regime -> hypothesis -> order
-     proposal -> formatted text. Pure logic, no file I/O, unit-tested with
-     in-memory data.
+     `live_state.csv` snapshot + active composites -> tier report -> delta
+     signal (its `DeltaHistory` persists across ticks on the same
+     instance) -> regime -> hypothesis (with optional RRR override) ->
+     order proposal -> formatted text. Pure logic, no file I/O,
+     unit-tested with in-memory data.
    - ~~`run_live.py`~~ (done, confirmed running live): the actual polling
      loop -- reads `live_state.csv`/`daily_profile_export.csv`, feeds new
      closed days into `CompositeEngine`, writes `composites.csv` (nothing

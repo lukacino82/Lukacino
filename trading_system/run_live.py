@@ -43,6 +43,15 @@ class InstrumentConfig:
     price_move_threshold: float
     delta_move_threshold: float
     delta_imbalance: float
+    # Optional fixed reward:risk override for target_1, e.g. 1.5 for a
+    # 1.5:1 RRR -- None (the default) keeps target_1 structural (nearest
+    # composite/POC level, or the existing VWAP fallback), matching
+    # behavior before this existed. See hypothesis/generator.py's module
+    # docstring for exactly what this changes and what it leaves alone
+    # (the stop, target_2, and runner are never RRR-derived). Applies to
+    # both Semi Auto and Fully Auto identically -- it's applied here in
+    # Python, before anything reaches order_proposal.csv.
+    rrr: Optional[float] = None
 
 
 INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
@@ -162,6 +171,7 @@ def _tick(
         config.price_move_threshold,
         config.delta_move_threshold,
         config.delta_imbalance,
+        config.rrr,
     )
     write_hypothesis(hypothesis_path, instrument=state.instrument, generated_at=state.timestamp, body=result.hypothesis_text)
     if order_proposal_path is not None:

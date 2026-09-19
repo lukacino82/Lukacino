@@ -87,6 +87,7 @@ def run(instrument: str, daily_profiles_path: Path, intraday_history_path: Path)
         price_move_threshold=live_config.price_move_threshold,
         delta_move_threshold=live_config.delta_move_threshold,
         delta_imbalance=live_config.delta_imbalance,
+        rrr=live_config.rrr,
     )
 
     daily_profiles = read_daily_profiles(daily_profiles_path)

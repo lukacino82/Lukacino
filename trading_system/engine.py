@@ -54,6 +54,7 @@ class LiveEngine:
         price_move_threshold: float,
         delta_move_threshold: float,
         delta_imbalance: float = 1000.0,
+        rrr: Optional[float] = None,
     ) -> EngineResult:
         self._delta_history.add(state)
         report = tier_report(state)
@@ -65,7 +66,7 @@ class LiveEngine:
         regime_inputs = RegimeInputs(tier_report=report, cum_delta=state.cum_delta)
         regime = classify_regime(regime_inputs, delta_imbalance)
 
-        hypothesis = generate_hypothesis(state, regime, report, delta_signal, composites)
+        hypothesis = generate_hypothesis(state, regime, report, delta_signal, composites, rrr)
         proposal = build_order_proposal(self.instrument, hypothesis, sizing_config)
         text = format_hypothesis_text(hypothesis, proposal) if hypothesis is not None else NO_HYPOTHESIS_TEXT
 

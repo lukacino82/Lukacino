@@ -78,6 +78,7 @@ class CompositeEngine:
                 vah=max(pending.vah, profile.vah),
                 day_count=2,
                 member_dates=(pending.session_date, profile.session_date),
+                member_pocs=(pending.poc, profile.poc),
             )
             self.composites.append(composite)
             self._active_composite[instrument] = composite
