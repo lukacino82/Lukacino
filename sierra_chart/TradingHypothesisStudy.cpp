@@ -696,6 +696,25 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // chart configured differently.
     SCInputRef Input_VWAP_IntradaySD1Subgraph = sc.Input[++InputIdx];
 
+    // Same mechanism as Input_VWAP_IntradaySD1Subgraph immediately above --
+    // and appended right after it for the exact same reason (Sierra
+    // Chart's per-chart saved settings are positional; inserting these two
+    // anywhere but the very end would shift every input after them). Feeds
+    // Python's hypothesis/synthesis.py multi-timeframe weighted model
+    // (ARCHITECTURE.md item 8): reading "MM bullish but cooling" (price
+    // retreated from outside 2SD to inside 1SD, still above the monthly
+    // VWAP line) as a number needs the monthly VWAP study's own +-1SD band,
+    // not just the bare above/below Position tiers.py already gives from
+    // the plain VWAP centerline. Same Study ID/Chart Number as the
+    // existing Monthly/Weekly VWAP inputs above, just a different
+    // subgraph -- check that VWAP study's own "Band N Std Deviation
+    // Multiplier/Fixed Offset" input before trusting the default below
+    // (Band 1 is usually 0.5, not the real +1 SD -- see the comment on
+    // Input_VWAP_IntradaySD1Subgraph above for how this was confirmed on
+    // the user's own chart).
+    SCInputRef Input_VWAP_MonthlySD1Subgraph = sc.Input[++InputIdx];
+    SCInputRef Input_VWAP_WeeklySD1Subgraph = sc.Input[++InputIdx];
+
     if (sc.SetDefaults)
     {
         sc.GraphName = "Trading Hypothesis Display";
@@ -883,6 +902,14 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             "(check the VWAP study's own Band N multiplier -- the band whose multiplier is 1.0 is the real +1 SD)";
         Input_VWAP_IntradaySD1Subgraph.SetInt(3);  // user's own chart: DAY-VWAP ID:5, Top Band 2 (SG4) = index 3
 
+        Input_VWAP_MonthlySD1Subgraph.Name = "VWAP Monthly +1 SD Band Subgraph Index "
+            "(check that VWAP study's own Band N multiplier -- the band whose multiplier is 1.0 is the real +1 SD)";
+        Input_VWAP_MonthlySD1Subgraph.SetInt(3);  // same convention as the intraday input above -- verify against your own chart
+
+        Input_VWAP_WeeklySD1Subgraph.Name = "VWAP Weekly +1 SD Band Subgraph Index "
+            "(check that VWAP study's own Band N multiplier -- the band whose multiplier is 1.0 is the real +1 SD)";
+        Input_VWAP_WeeklySD1Subgraph.SetInt(3);  // same convention as the intraday input above -- verify against your own chart
+
         return;
     }
 
@@ -901,10 +928,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     GetStudyArrayAnyChart(sc, Input_VP_ChartNumber.GetInt(), Input_VP_StudyID.GetInt(), Input_VP_POCSubgraph.GetInt(), POCArray);
 
     SCFloatArray VWAPMonthlyArray, VWAPWeeklyArray, VWAPIntradayArray, VWAPIntradaySD1Array, DeltaArray;
+    SCFloatArray VWAPMonthlySD1Array, VWAPWeeklySD1Array;
     GetStudyArrayAnyChart(sc, Input_VWAP_MonthlyChartNumber.GetInt(), Input_VWAP_MonthlyStudyID.GetInt(), Input_VWAP_MonthlySubgraph.GetInt(), VWAPMonthlyArray);
     GetStudyArrayAnyChart(sc, Input_VWAP_WeeklyChartNumber.GetInt(), Input_VWAP_WeeklyStudyID.GetInt(), Input_VWAP_WeeklySubgraph.GetInt(), VWAPWeeklyArray);
     GetStudyArrayAnyChart(sc, Input_VWAP_IntradayChartNumber.GetInt(), Input_VWAP_IntradayStudyID.GetInt(), Input_VWAP_IntradaySubgraph.GetInt(), VWAPIntradayArray);
     GetStudyArrayAnyChart(sc, Input_VWAP_IntradayChartNumber.GetInt(), Input_VWAP_IntradayStudyID.GetInt(), Input_VWAP_IntradaySD1Subgraph.GetInt(), VWAPIntradaySD1Array);
+    GetStudyArrayAnyChart(sc, Input_VWAP_MonthlyChartNumber.GetInt(), Input_VWAP_MonthlyStudyID.GetInt(), Input_VWAP_MonthlySD1Subgraph.GetInt(), VWAPMonthlySD1Array);
+    GetStudyArrayAnyChart(sc, Input_VWAP_WeeklyChartNumber.GetInt(), Input_VWAP_WeeklyStudyID.GetInt(), Input_VWAP_WeeklySD1Subgraph.GetInt(), VWAPWeeklySD1Array);
     GetStudyArrayAnyChart(sc, Input_Delta_ChartNumber.GetInt(), Input_Delta_StudyID.GetInt(), Input_Delta_Subgraph.GetInt(), DeltaArray);
 
     // 0.0 ("not available", same convention live_state.csv's other optional
@@ -914,6 +944,12 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
     // against a real VWAP value and produce a bogus non-zero "distance".
     const float vwapIntradaySD1Distance = VWAPIntradaySD1Array.GetArraySize() > 0
         ? static_cast<float>(std::fabs(LastArrayValue(VWAPIntradaySD1Array) - LastArrayValue(VWAPIntradayArray)))
+        : 0.0f;
+    const float vwapMonthlySD1Distance = VWAPMonthlySD1Array.GetArraySize() > 0
+        ? static_cast<float>(std::fabs(LastArrayValue(VWAPMonthlySD1Array) - LastArrayValue(VWAPMonthlyArray)))
+        : 0.0f;
+    const float vwapWeeklySD1Distance = VWAPWeeklySD1Array.GetArraySize() > 0
+        ? static_cast<float>(std::fabs(LastArrayValue(VWAPWeeklySD1Array) - LastArrayValue(VWAPWeeklyArray)))
         : 0.0f;
 
     // Log the resolved config once so you can verify it immediately instead
@@ -945,6 +981,10 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
             << " VWAPIntradayArraySize=" << VWAPIntradayArray.GetArraySize()
             << " VWAPIntradaySD1Subgraph=" << Input_VWAP_IntradaySD1Subgraph.GetInt()
             << " VWAPIntradaySD1ArraySize=" << VWAPIntradaySD1Array.GetArraySize()
+            << " VWAPMonthlySD1Subgraph=" << Input_VWAP_MonthlySD1Subgraph.GetInt()
+            << " VWAPMonthlySD1ArraySize=" << VWAPMonthlySD1Array.GetArraySize()
+            << " VWAPWeeklySD1Subgraph=" << Input_VWAP_WeeklySD1Subgraph.GetInt()
+            << " VWAPWeeklySD1ArraySize=" << VWAPWeeklySD1Array.GetArraySize()
             << " DeltaStudyID=" << Input_Delta_StudyID.GetInt()
             << " DeltaChart=" << Input_Delta_ChartNumber.GetInt()
             << " DeltaArraySize=" << DeltaArray.GetArraySize()
@@ -1355,12 +1395,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         std::ofstream liveOut(liveStatePath, std::ios::trunc);
         if (liveOut.is_open())
         {
-            liveOut << "timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta,vwap_intraday_sd1\n";
+            liveOut << "timestamp,instrument,last_price,session_open,vwap_monthly,vwap_weekly,vwap_intraday,cum_delta,vwap_intraday_sd1,vwap_monthly_sd1,vwap_weekly_sd1\n";
             liveOut << FormatISODateTime(nowTimeT) << "," << instrument << ","
                     << sc.Close[lastBar] << "," << SessionOpenPrice << ","
                     << LastArrayValue(VWAPMonthlyArray) << ","
                     << LastArrayValue(VWAPWeeklyArray) << "," << LastArrayValue(VWAPIntradayArray) << ","
-                    << LastArrayValue(DeltaArray) << "," << vwapIntradaySD1Distance << "\n";
+                    << LastArrayValue(DeltaArray) << "," << vwapIntradaySD1Distance << ","
+                    << vwapMonthlySD1Distance << "," << vwapWeeklySD1Distance << "\n";
         }
         else
         {
