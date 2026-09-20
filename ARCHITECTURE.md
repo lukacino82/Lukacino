@@ -1048,6 +1048,104 @@ debugging.
      new synthesis logic actually reproduces the judgment call it was
      designed to encode, before trusting it on anything else.
 
+   **Implemented**, in the new session this handoff describes, extending
+   the existing codebase in place (composites, RRR, sizing, multi-
+   instrument config, the CSV bridge format -- all unchanged):
+   - `bridge/csv_bridge.py`: `LiveMarketState` gained `vwap_monthly_sd1`/
+     `vwap_weekly_sd1` (0.0 = not available, same convention as
+     `vwap_intraday_sd1`), and `TradingHypothesisStudy.cpp` gained
+     `Input_VWAP_MonthlySD1Subgraph`/`Input_VWAP_WeeklySD1Subgraph` --
+     mechanically mirroring the existing intraday SD1 input line for
+     line, appended at the very end of the input list for the same
+     positional-safety reason documented on that input. Not compiled
+     against the real Sierra Chart SDK in this session (no SDK/stub
+     available here) -- needs the same real-build verification as every
+     other ACSIL change in this file before trusting it live.
+   - `hypothesis/delta.py`: `SessionDeltaTracker`/
+     `classify_session_delta_shape`, a session-long
+     `FLAT -> FLUSHING -> RESET -> RENEWED_DOWN/RENEWED_UP` state machine
+     over the whole session's cumulative delta, separate from and
+     alongside the existing short-window `DeltaHistory` (unchanged).
+     Deliberately a single arc, not a repeating zigzag -- matching the
+     user's own description (one flush, one reset, one renewed leg), not
+     a general oscillation detector.
+   - `hypothesis/synthesis.py` (new): `classify_htf_bias` (direction from
+     MM/monthly alone; conviction from HF/weekly agreeing = HIGH,
+     rotating/AT = MODERATE, opposing = LOW; MM itself AT = NONE; a
+     `monthly_extension` ratio -- price's distance from the monthly VWAP
+     measured in "SD1-widths" -- can upgrade MODERATE to HIGH when still
+     strongly extended, e.g. >= 2.0x, rather than genuinely cooling) and
+     `classify_counter_intraday` (the trigger: HTF bias present, intraday
+     opposing it, confirmed by the existing short-window `DeltaSignal.
+     ABSORPTION`/`DIVERGENCE` OR the session-shape's renewed leg in the
+     opposing direction -- either is sufficient, as two independent ways
+     of recognizing the same phenomenon).
+   - `hypothesis/generator.py`: `HypothesisType.COUNTER_LONG`/
+     `COUNTER_SHORT` and `generate_counter_intraday_hypothesis`, reusing
+     the existing structural-target/POC/RRR/fixed-risk-distance helpers
+     unchanged. Unlike A-day (falls back to `vwap_intraday`) or B-day (no
+     target_1 at all), there is no safe VWAP-based invalidation fallback
+     here -- the trigger condition requires price already past
+     `vwap_intraday`, so using it as a stop would put it on the wrong
+     side by construction (the exact bug class A-day's own wrong-side
+     check exists to catch) -- so with no opposing composite edge and no
+     `fixed_risk_distance` configured, this returns `None` rather than
+     guessing a stop.
+   - `hypothesis/regime.py`: one new `Regime.COUNTER_INTRADAY` member for
+     a unified regime concept end to end (Notion sync, `EngineResult`,
+     the backtest harness's `regime_counts`) -- never produced by
+     `classify_regime` itself, only set directly by `LiveEngine.tick()`.
+   - `engine.py`: `LiveEngine` now also maintains a `SessionDeltaTracker`
+     (reset on `session_open` changing -- the same per-session marker
+     used elsewhere as a day-boundary signal) and checks
+     `classify_counter_intraday` **before** falling back to the existing
+     `regime.py`/`generate_hypothesis` A/B-day path -- additive: every
+     case the new trigger doesn't cover (monthly `AT`, intraday agreeing
+     with the HTF bias, no confirming delta signal) falls through
+     unchanged, and all 134 pre-existing tests passed with no fixture
+     changes needed. `EngineResult` gained an `htf_bias` field.
+   - `run_live.InstrumentConfig`/`backtest.replay.BacktestConfig` both
+     gained `session_flush_threshold`/`session_reset_retracement_
+     threshold`/`session_renewal_threshold`, threaded through to
+     `LiveEngine`'s construction the same way every other per-instrument
+     threshold already is, so a backtest can never drift out of sync
+     with what `run_live.py` actually constructs. No instrument has a
+     calibrated value yet -- same caveat as `delta_imbalance` and every
+     other threshold in this file.
+   - **A real bug found and fixed while wiring this up:**
+     `risk/order.py`'s `_LONG_TYPES` tuple (used to resolve
+     `OrderProposal.direction`) only listed `A_LONG`/`B_LONG` -- a
+     `COUNTER_LONG` hypothesis would have silently produced a `"short"`
+     order proposal for what `generator.py` had correctly built as a
+     long. Caught by strengthening the end-to-end engine test to assert
+     on `proposal.direction`, not just `hypothesis.type` (the first
+     version of that test only checked the latter and passed anyway).
+     Fixed by adding `COUNTER_LONG` to `_LONG_TYPES`, with a dedicated
+     regression test in `test_risk.py` covering both directions
+     directly.
+   - `test_synthesis.py`'s `test_counter_intraday_long_on_the_users_
+     worked_scenario` reproduces the user's exact worked example (MM
+     bullish-cooling -- monthly extension ~1.1x its own SD1 band, HF in
+     rotation, intraday selloff, delta pushed down while price pushed up
+     -- `DeltaSignal.DIVERGENCE`) end to end at the synthesis-module
+     level; `test_engine.py`'s `test_tick_resolves_counter_intraday_on_
+     the_users_worked_scenario` drives the same scenario through two real
+     `LiveEngine.tick()` calls (so the short-window `DeltaHistory` has
+     enough samples) and asserts `Regime.COUNTER_INTRADAY` /
+     `HypothesisType.COUNTER_LONG` / `direction == "long"` through the
+     actual production entry point. 136 tests pass in total (123
+     pre-existing + 11 new in test_synthesis.py, +1 new in test_engine.py,
+     +1 new in test_risk.py).
+   - **Still needs, before trusting this live:** real calibration of
+     every new threshold (flush/reset/renewal magnitudes, the 2.0x
+     extension-upgrade ratio) against real per-instrument
+     `--history-out` data, exactly like `delta_imbalance`'s own open
+     item above; a real Sierra Chart build/compile check of the two new
+     ACSIL inputs (this session had no SDK/stub available); and setting
+     the two new "VWAP Monthly/Weekly +1 SD Band Subgraph Index" inputs
+     on the user's real chart after rebuilding (same manual step
+     `vwap_intraday_sd1` needed).
+
    **Handoff to a new session:** the user asked whether to preserve
    everything built so far by starting a fresh chat for this phase.
    Clarified that the code isn't "in the chat" -- it already lives in
