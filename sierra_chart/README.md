@@ -309,6 +309,20 @@ show up live.
    the default of 3 is a real production safety limit and will cut a replay
    test short almost immediately once a few setups fire in quick succession.
    **Set it back to a sane real value before ever running this live.**
+4b. Also check Sierra Chart's own **"Maximum Position Allowed"** field in
+   this chart's Trade Window (Trade menu → Trade Window, or Trade Window
+   Configuration) -- this is a separate, Sierra-Chart-side safety limit
+   from anything in `order_proposal.csv`/`risk/sizing.py`, and it applies
+   to the *total* contracts a single `sc.BuyEntry`/`sc.SellEntry` call
+   requests, not per-trade or per-day. A real Replay run hit this: the
+   default was `1`, but `target_1`'s leg alone was sized at 3 contracts,
+   so every entry attempt was silently ignored with "BuyEntry signal is
+   ignored because maximum Long Position quantity allowed has been
+   reached ... Current Position: 0" in the Message Log, repeated on every
+   `Fully Auto` recalculation with `Current Position` never moving off 0.
+   Raise it to comfortably cover the largest total contract count your
+   sizing config can produce (target_1 + target_2 + runner combined) before
+   testing, and set it back afterward, same as `Max Trades Per Day`.
 5. Set `Mode` to `Fully Auto` (or `Semi Auto` if you'd rather click each
    trigger by hand and just watch the bracket exits happen automatically —
    either tests the exit side; only Fully Auto also tests the automatic
