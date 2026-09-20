@@ -33,6 +33,12 @@ _REGIME_TEXT = {
     Regime.A_DAY: "A-den (range)",
     Regime.B_DAY: "B-den (trend)",
     Regime.UNCLEAR: "Nejasné",
+    # No dedicated Notion select option exists for this yet (see
+    # ARCHITECTURE.md item 8) -- reusing B-den's text since a
+    # counter-intraday trade is still a directional, trend-following call
+    # (in the higher-timeframe direction), just timed off an intraday
+    # extreme rather than an outright breakout.
+    Regime.COUNTER_INTRADAY: "B-den (trend)",
 }
 
 # Exact select option strings confirmed against the live Notion data source
