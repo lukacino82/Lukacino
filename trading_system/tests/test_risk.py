@@ -141,6 +141,19 @@ def test_build_order_proposal_short_direction():
     assert proposal.contracts == 1
 
 
+def test_build_order_proposal_counter_intraday_direction():
+    # HypothesisType.COUNTER_LONG/SHORT (synthesis.py's counter-intraday
+    # hypothesis) must resolve the same "long"/"short" direction as the
+    # existing A/B types -- _LONG_TYPES originally missed COUNTER_LONG,
+    # which would have silently flipped a long into a "short" order.
+    config = SizingConfig(mode=SizingMode.FIXED_CONTRACTS, full_risk_contracts=2, half_risk_contracts=1)
+    long_hyp = _hypothesis(hyp_type=HypothesisType.COUNTER_LONG, confluence=Confluence.CLEAN, entry=100.0, invalidation=99.0)
+    assert build_order_proposal("NQ", long_hyp, config).direction == "long"
+
+    short_hyp = _hypothesis(hyp_type=HypothesisType.COUNTER_SHORT, confluence=Confluence.CLEAN, entry=100.0, invalidation=101.0)
+    assert build_order_proposal("NQ", short_hyp, config).direction == "short"
+
+
 def _hypothesis_with_targets(confluence, target_2, runner) -> Hypothesis:
     return Hypothesis(
         type=HypothesisType.A_LONG,

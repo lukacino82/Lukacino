@@ -117,3 +117,5 @@ def test_tick_resolves_counter_intraday_on_the_users_worked_scenario():
     assert result.hypothesis is not None
     assert result.hypothesis.type == HypothesisType.COUNTER_LONG
     assert "Counter long" in result.hypothesis_text
+    assert result.proposal is not None
+    assert result.proposal.direction == "long"

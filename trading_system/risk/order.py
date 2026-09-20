@@ -13,7 +13,7 @@ from typing import List, Optional
 from ..hypothesis.generator import Confluence, Hypothesis, HypothesisType
 from .sizing import SizingConfig, calculate_contracts
 
-_LONG_TYPES = (HypothesisType.A_LONG, HypothesisType.B_LONG)
+_LONG_TYPES = (HypothesisType.A_LONG, HypothesisType.B_LONG, HypothesisType.COUNTER_LONG)
 
 
 @dataclass(frozen=True)
