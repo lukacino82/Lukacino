@@ -733,9 +733,13 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         // is a first line of defense against a double-fire; the explicit
         // sc.GetTradePosition check in the manual-trigger block below is
         // the real, verified one-trade-at-a-time guard this code controls
-        // directly -- sc.MaximumPositionAllowed is deliberately left at its
-        // default rather than set here, since its exact interaction with
-        // attached-order brackets isn't verified against the real SDK.
+        // directly. sc.MaximumPositionAllowed is set further below, once
+        // Input_MaxContractsSafetyCap has its default -- see the comment
+        // there for why (a real Replay run confirmed Sierra Chart defaults
+        // this to 1 when a study never sets it, silently rejecting every
+        // multi-contract leg with "BuyEntry signal is ignored because
+        // maximum Long Position quantity allowed has been reached", no
+        // matter what order_proposal.csv or Input_MaxContractsSafetyCap say).
         sc.SupportAttachedOrdersForTrading = 1;
         sc.AllowMultipleEntriesInSameDirection = 0;
 
@@ -766,6 +770,19 @@ SCSFExport scsf_TradingHypothesisDisplay(SCStudyInterfaceRef sc)
         Input_MaxContractsSafetyCap.Name = "Max Contracts Safety Cap (independent of Python sizing -- refuses to trigger above this)";
         Input_MaxContractsSafetyCap.SetInt(5);
         Input_MaxContractsSafetyCap.SetIntLimits(1, 100);
+
+        // Sierra Chart's own Trade Service enforces sc.MaximumPositionAllowed
+        // independently of everything above -- TryFireOrderFromProposal's
+        // own maxContractsSafetyCap check (line ~471) already refuses to
+        // submit an order whose *total* contracts (contractsTarget1+
+        // contractsTarget2+contractsRunner) exceeds this same cap, so tying
+        // sc.MaximumPositionAllowed to it keeps a single input in charge of
+        // both checks instead of two numbers that could silently drift out
+        // of sync. Confirmed on a real Replay run: left unset, Sierra Chart
+        // defaulted this to 1 and rejected every entry for a 3-contract
+        // target_1 leg with Current Position stuck at 0, regardless of what
+        // order_proposal.csv or this same Input_MaxContractsSafetyCap said.
+        sc.MaximumPositionAllowed = Input_MaxContractsSafetyCap.GetInt();
 
         Input_TradingEnabled.Name = "Trading Enabled (kill switch -- flip to No to block every trigger immediately)";
         Input_TradingEnabled.SetYesNo(1);
