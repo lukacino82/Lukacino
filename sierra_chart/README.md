@@ -350,6 +350,34 @@ lower-latency protocol like DTC), not a bug to fix before testing — it's
 simply the same tradeoff live trading already accepts, carried over to
 replay.
 
+**If waiting through a whole session at 1x to reach one setup is too slow**
+(e.g. you already know roughly when/where a hypothesis should fire, from an
+earlier real run or an offline `run_backtest.py` pass over the same
+history), two ways to speed this up without losing the mechanics test:
+
+- **Tighten both polling intervals and use a modest speed instead of 1x.**
+  `run_live.py --poll-interval-seconds 1` (default 5) narrows its own
+  aliasing window; also lower this study's `Bridge File Refresh Interval`
+  input to `1` to match -- both sides are independent real-wall-clock
+  throttles, so only lowering one still leaves the other as the bottleneck.
+  With both at 1 second, something like 2-3x replay speed samples nearly as
+  finely as 1x did with the 5-second defaults. Set both back to their
+  defaults before ever running this live -- sub-second polling against a
+  real feed is needless disk I/O for no benefit.
+- **Fast-forward through the boring stretches, then pause to test.** Run
+  the replay at 10x (or faster) to skip past the parts you don't care
+  about, then **pause** it once you're near the point of interest. While
+  paused, `live_state.csv` stops changing, so within one real poll cycle
+  `run_live.py` catches up to that exact, stable snapshot and writes a
+  fresh `order_proposal.csv` against it -- wait roughly
+  `poll-interval-seconds` + `Bridge File Refresh Interval` (10 seconds at
+  the defaults) after pausing before trusting what's in the Message Log or
+  `order_proposal.csv`. From there, `Fully Auto`'s own timer will fire
+  normally, or flip to `Semi Auto` and use the manual trigger to fire it
+  immediately rather than waiting for Fully Auto's next throttled check.
+  This tests the exact same `BuyEntry`/`SellEntry` path as a real 1x run --
+  only the boring waiting is skipped, not the mechanics.
+
 **What this test does and doesn't validate:** it proves the *mechanics* —
 does a valid proposal actually turn into a real bracket order, does that
 order actually fill and later exit via its stop or target, does the daily

@@ -415,6 +415,7 @@ def run(
     instrument: str,
     history_path: Optional[Path] = None,
     order_proposal_path: Optional[Path] = None,
+    poll_interval_seconds: float = POLL_INTERVAL_SECONDS,
 ) -> None:
     if instrument not in INSTRUMENT_CONFIGS:
         known = ", ".join(sorted(INSTRUMENT_CONFIGS)) or "(none configured)"
@@ -446,7 +447,7 @@ def run(
         session_renewal_threshold=config.session_renewal_threshold,
     )
 
-    print(f"Watching {instrument_dir} (poll every {POLL_INTERVAL_SECONDS}s) ...")
+    print(f"Watching {instrument_dir} (poll every {poll_interval_seconds}s) ...")
     while True:
         try:
             _tick(
@@ -465,7 +466,7 @@ def run(
             pass  # ACSIL hasn't created the bridge folder yet
         except Exception as exc:  # keep the loop alive on a bad row/parse error
             print(f"tick failed: {exc}")
-        time.sleep(POLL_INTERVAL_SECONDS)
+        time.sleep(poll_interval_seconds)
 
 
 if __name__ == "__main__":
@@ -493,5 +494,23 @@ if __name__ == "__main__":
             "(Step 4: manual trigger first, auto mode later) -- see ARCHITECTURE.md."
         ),
     )
+    parser.add_argument(
+        "--poll-interval-seconds",
+        type=float,
+        default=POLL_INTERVAL_SECONDS,
+        help=(
+            f"Seconds between bridge-file polls (default {POLL_INTERVAL_SECONDS}, matching "
+            "the real-time throttle this was tuned for live trading). Lower this for a faster "
+            "Sierra Chart Replay test -- also lower the ACSIL study's own 'Bridge File Refresh "
+            "Interval' input to the same value, since both are real-wall-clock throttles and a "
+            "fast replay speed can otherwise fly past whatever this side isn't polling for (see "
+            "sierra_chart/README.md's Replay-mode section). Set back to the default before "
+            "running this live -- a sub-second interval serves no purpose against a real feed "
+            "and just adds needless disk I/O."
+        ),
+    )
     args = parser.parse_args()
-    run(Path(args.bridge_dir), args.instrument, args.history_out, args.order_proposal_out)
+    run(
+        Path(args.bridge_dir), args.instrument, args.history_out, args.order_proposal_out,
+        poll_interval_seconds=args.poll_interval_seconds,
+    )
