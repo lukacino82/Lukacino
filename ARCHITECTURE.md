@@ -964,6 +964,103 @@ debugging.
      existing `Max Order Proposal Age` check already refused to act on it
      -- a safe failure mode even before this fix, just not a self-healing
      one.
+8. **Multi-timeframe weighted synthesis model (design agreed, NOT yet
+   implemented) -- the next major phase, meant to be picked up in a new
+   chat/session against this same repo (see "Handoff to a new session"
+   below), not a rewrite.** Triggered by the user asking, before any more
+   rework: is it even possible to program the judgment a discretionary
+   trader (or the `trading-vwap-hypotezy` skill reading a screenshot)
+   applies when MM/HF/intraday genuinely disagree, or is that irreducibly
+   visual/discretionary? Worked through a real concrete scenario the user
+   gave: monthly VWAP (MM) bullish but cooling (price moved from outside
+   2SD to inside 1SD, still above the monthly VWAP line itself); weekly
+   VWAP (HF) in rotation (no net weekly drift); daily/intraday VWAP shows
+   a breakout out of rotation into a trend, price migrating from one
+   composite to another, price below the intraday VWAP (a selloff read on
+   that timeframe alone); cumulative delta negative (net aggressive
+   selling) while price is nonetheless pushed *up* into stops -- classic
+   absorption/short-squeeze dynamics, not confirmed selling. Conclusion:
+   **yes, this is programmable in principle** -- every ingredient the user
+   described is a well-defined numeric fact or an already-existing
+   `DeltaSignal` (this exact price-up/delta-down pattern is already
+   `DeltaSignal.DIVERGENCE`/`ABSORPTION`, see `hypothesis/delta.py`), not
+   something that requires vision or human intuition. What's genuinely
+   missing is a way to combine three timeframes that legitimately
+   disagree without collapsing to NEUTRAL/UNCLEAR the way today's
+   single-vote `structural_bias` (even after the 2-of-3 fix above) still
+   would on a case like this -- MM and HF read one way, intraday reads the
+   opposite way, and the *correct* trade is often to time an entry off the
+   intraday extreme in the direction of the higher-timeframe bias, not to
+   average the three into mush.
+
+   The agreed shape of the fix, for whichever session builds it:
+   - **A hierarchical, weighted model, not a bigger flat AND/OR gate.**
+     MM (monthly) carries the heaviest weight for the *strategic* long/
+     short bias, because it's the slowest-moving and least prone to
+     whipsaw. HF (weekly) modulates confidence in that bias (rotation =
+     lower conviction, not a veto) rather than voting equally against it.
+     Intraday sets *entry timing*, not direction -- an intraday read that
+     opposes the MM/HF bias, combined with a delta divergence/absorption
+     signal at that intraday extreme, is the specific trigger for a
+     counter-intraday, pro-higher-timeframe entry (exactly the user's
+     worked example: MM bullish + HF neutral-rotation + intraday selloff
+     with delta absorption = a long, not an "unclear").
+   - **Two new numeric inputs needed, both extensions of mechanisms
+     already built, not new concepts:**
+     1. Monthly/weekly VWAP standard-deviation bands over the ACSIL
+        bridge, the same way `vwap_intraday_sd1`/`Input_VWAP_
+        IntradaySD1Subgraph` already expose the intraday +1SD band (see
+        item 40's ARCHITECTURE.md entry above) -- needed to read "2SD ->
+        1SD but still above the monthly VWAP line" as a number
+        (distance from price to each band) instead of just a bare
+        above/below read.
+     2. A longer-memory, session-shape-aware view of cumulative delta,
+        not just `DeltaHistory`'s short rolling window (`maxlen`
+        samples) -- needed to recognize the user's other worked example:
+        an early-session flush (delta negative, price weak), delta
+        resetting toward zero by midday (inventory neutralizing, not a
+        real reversal), then a *fresh* leg down as new sellers arrive.
+        This is a shape-recognition problem over a numeric time series
+        (local minimum -> partial recovery -> renewed decline), which is
+        ordinary, buildable pattern detection -- not fundamentally
+        different from what `delta.py` already does over a short window,
+        just over a longer one with more states to track.
+   - **This will still say UNCLEAR sometimes, deliberately.** The goal
+     isn't a model that always picks a direction -- a system that forces
+     a call on a genuinely ambiguous setup is worse than one that
+     correctly recognizes ambiguity. The goal is narrowing *which* cases
+     get UNCLEAR down to the genuinely hard ones, instead of the
+     mechanically-too-strict cases the 2-of-3 fix above already closed
+     off one layer of.
+   - **Needs real calibration, not just a formula.** The weights (how
+     much HF rotation should discount confidence, how much intraday
+     divergence should count as a valid counter-trend trigger vs. noise)
+     are not something to guess correctly on the first attempt -- same
+     lesson as `delta_imbalance`'s placeholder history above. Plan for
+     iterating against real `--history-out` data and `run_backtest.py`,
+     per instrument, the same way every other threshold in this file
+     eventually needed to.
+   - **The user's worked scenario above should become this model's first
+     test case** -- a concrete `TierReport`/`DeltaSignal`/composite
+     fixture built to match it exactly, asserting the model reaches a
+     long (or whatever the correct read turns out to be once SD-band
+     distances are added), is the natural way to pin down whether the
+     new synthesis logic actually reproduces the judgment call it was
+     designed to encode, before trusting it on anything else.
+
+   **Handoff to a new session:** the user asked whether to preserve
+   everything built so far by starting a fresh chat for this phase.
+   Clarified that the code isn't "in the chat" -- it already lives in
+   this git repo (`Lukacino`, branch `claude/wonderful-euler-vocpnm`), so
+   a new session needs no code copy-paste: point it at this same repo
+   (this branch, or a new branch off it if the user wants this phase
+   tracked separately) and have it start by reading this file. Agreed:
+   a new chat/session for this phase makes sense (it's a large, distinct
+   body of work, better started with a clean context window than
+   continuing an already-long conversation), but **extend this same
+   codebase and repo -- do not fork into a separate project or rename the
+   underlying system.** A descriptive name for this phase of work in
+   conversation is fine; a second parallel codebase/bridge format is not.
 
 ## Repo layout
 
