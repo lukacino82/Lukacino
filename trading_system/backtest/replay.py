@@ -190,6 +190,12 @@ class BacktestConfig:
     # --history-out data (which carries this column once ACSIL exports it)
     # sees the same per-tick behavior production would.
     use_vwap_sd1_as_risk_distance: bool = False
+    # Mirrors run_live.InstrumentConfig's session-shape thresholds (see
+    # hypothesis/delta.py's SessionDeltaTracker) -- same defaults, same
+    # "not calibrated" caveat.
+    session_flush_threshold: float = 3000.0
+    session_reset_retracement_threshold: float = 1500.0
+    session_renewal_threshold: float = 1000.0
 
 
 @dataclass
@@ -279,7 +285,13 @@ def run_backtest(
     )
 
     composite_engine = CompositeEngine()
-    engine = LiveEngine(instrument, delta_window=config.delta_window)
+    engine = LiveEngine(
+        instrument,
+        delta_window=config.delta_window,
+        session_flush_threshold=config.session_flush_threshold,
+        session_reset_retracement_threshold=config.session_reset_retracement_threshold,
+        session_renewal_threshold=config.session_renewal_threshold,
+    )
     report = BacktestReport()
 
     profile_idx = 0

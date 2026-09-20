@@ -90,6 +90,9 @@ def run(instrument: str, daily_profiles_path: Path, intraday_history_path: Path)
         rrr=live_config.rrr,
         fixed_risk_distance=resolve_fixed_risk_distance(live_config),
         use_vwap_sd1_as_risk_distance=live_config.use_vwap_sd1_as_risk_distance,
+        session_flush_threshold=live_config.session_flush_threshold,
+        session_reset_retracement_threshold=live_config.session_reset_retracement_threshold,
+        session_renewal_threshold=live_config.session_renewal_threshold,
     )
 
     daily_profiles = read_daily_profiles(daily_profiles_path)

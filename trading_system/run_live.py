@@ -83,6 +83,15 @@ class InstrumentConfig:
     # VWAP study hasn't accumulated enough of the session to compute a
     # band), so a trade is never sized off a plain zero distance.
     use_vwap_sd1_as_risk_distance: bool = False
+    # Session-long flush/reset/renewed delta shape thresholds (see
+    # hypothesis/delta.py's SessionDeltaTracker and ARCHITECTURE.md item 8) --
+    # same "not calibrated" caveat as delta_imbalance above: these are
+    # absolute cum_delta magnitudes, wildly different per instrument, and
+    # need the same real --history-out sampling before trusting them.
+    # Defaults match LiveEngine's own constructor defaults.
+    session_flush_threshold: float = 3000.0
+    session_reset_retracement_threshold: float = 1500.0
+    session_renewal_threshold: float = 1000.0
 
 
 def resolve_fixed_risk_distance(config: "InstrumentConfig") -> Optional[float]:
@@ -430,7 +439,12 @@ def run(
 
     composite_engine = CompositeEngine()
     ingested_dates: Set = set()
-    engine = LiveEngine(instrument)
+    engine = LiveEngine(
+        instrument,
+        session_flush_threshold=config.session_flush_threshold,
+        session_reset_retracement_threshold=config.session_reset_retracement_threshold,
+        session_renewal_threshold=config.session_renewal_threshold,
+    )
 
     print(f"Watching {instrument_dir} (poll every {POLL_INTERVAL_SECONDS}s) ...")
     while True:
