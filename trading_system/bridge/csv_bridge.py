@@ -45,6 +45,16 @@ class LiveMarketState:
     # added at the user's request to use "1 SD VWAP envelope" as the stop
     # distance instead of a static one.
     vwap_intraday_sd1: float = 0.0
+    # Same mechanism, one band each for the monthly/weekly VWAP studies --
+    # needed to read "MM bullish but cooling" (price retreated from outside
+    # 2SD to inside 1SD, still above the VWAP line) as a number instead of
+    # just the bare above/below Position tiers.py already gives. See
+    # hypothesis/synthesis.py's classify_htf_bias for how this feeds the
+    # multi-timeframe weighted synthesis model (ARCHITECTURE.md item 8).
+    # 0.0 (the default) means "not available", same convention as
+    # vwap_intraday_sd1 above.
+    vwap_monthly_sd1: float = 0.0
+    vwap_weekly_sd1: float = 0.0
 
 @dataclass(frozen=True)
 class OrderProposalSnapshot:
@@ -109,6 +119,8 @@ LIVE_STATE_FIELDS = [
     "vwap_intraday",
     "cum_delta",
     "vwap_intraday_sd1",
+    "vwap_monthly_sd1",
+    "vwap_weekly_sd1",
 ]
 COMPOSITE_FIELDS = [
     "instrument",
@@ -196,6 +208,8 @@ def write_live_state(path: Path, state: LiveMarketState) -> None:
                 state.vwap_intraday,
                 state.cum_delta,
                 state.vwap_intraday_sd1,
+                state.vwap_monthly_sd1,
+                state.vwap_weekly_sd1,
             ]
         )
 
@@ -214,6 +228,8 @@ def _live_state_from_row(row: dict) -> LiveMarketState:
         # before this field existed won't have this column at all; treat
         # that the same as "not available" (0.0) rather than raising.
         vwap_intraday_sd1=float(row.get("vwap_intraday_sd1") or 0.0),
+        vwap_monthly_sd1=float(row.get("vwap_monthly_sd1") or 0.0),
+        vwap_weekly_sd1=float(row.get("vwap_weekly_sd1") or 0.0),
     )
 
 
@@ -258,6 +274,8 @@ def append_live_state(path: Path, state: LiveMarketState) -> None:
                 state.vwap_intraday,
                 state.cum_delta,
                 state.vwap_intraday_sd1,
+                state.vwap_monthly_sd1,
+                state.vwap_weekly_sd1,
             ]
         )
 

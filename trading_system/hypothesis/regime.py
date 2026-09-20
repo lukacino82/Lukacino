@@ -41,6 +41,12 @@ class Regime(Enum):
     A_DAY = "a_day"
     B_DAY = "b_day"
     UNCLEAR = "unclear"
+    # From hypothesis/synthesis.py's classify_counter_intraday -- MM/HF bias
+    # opposed by the current intraday read, confirmed by delta absorption/
+    # divergence at that extreme (ARCHITECTURE.md item 8). Never produced by
+    # classify_regime below; LiveEngine.tick() sets this directly when the
+    # synthesis model's trigger fires, ahead of the A/B-day check.
+    COUNTER_INTRADAY = "counter_intraday"
 
 
 @dataclass(frozen=True)

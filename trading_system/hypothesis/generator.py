@@ -72,6 +72,7 @@ from ..bridge.csv_bridge import LiveMarketState
 from ..composite.models import Composite
 from .delta import DeltaSignal
 from .regime import Regime
+from .synthesis import HTFBiasReport, HTFConviction
 from .tiers import Position, StructuralBias, TierReport
 
 
@@ -80,6 +81,8 @@ class HypothesisType(Enum):
     A_SHORT = "A short"
     B_LONG = "B long"
     B_SHORT = "B short"
+    COUNTER_LONG = "Counter long"
+    COUNTER_SHORT = "Counter short"
 
 
 class Confluence(Enum):
@@ -300,6 +303,84 @@ def _a_day_hypothesis(
         runner=runner,
         invalidation=invalidation,
         confluence=_confluence(delta_supports, delta_contradicts, bool(structural_targets)),
+    )
+
+
+def _counter_confluence(conviction: HTFConviction, has_target: bool) -> Confluence:
+    """HTF conviction (see synthesis.py) drives sizing here, not delta
+    agreement/contradiction like `_confluence` above -- delta absorption/
+    divergence at the intraday extreme is already required just to reach
+    this function at all (classify_counter_intraday's trigger condition),
+    so there's no separate "delta contradicts" case to score down for.
+    """
+    if conviction == HTFConviction.LOW:
+        return Confluence.WEAK
+    if conviction == HTFConviction.HIGH and has_target:
+        return Confluence.A_PLUS
+    return Confluence.CLEAN
+
+
+def generate_counter_intraday_hypothesis(
+    state: LiveMarketState,
+    tier_report: TierReport,
+    htf_bias: HTFBiasReport,
+    delta_signal: DeltaSignal,
+    composites: Sequence[Composite] = (),
+    rrr: Optional[float] = None,
+    fixed_risk_distance: Optional[float] = None,
+) -> Optional[Hypothesis]:
+    """The hypothesis for `hypothesis/synthesis.py`'s COUNTER_INTRADAY
+    trigger -- called directly by LiveEngine.tick() ahead of the regime.py/
+    generate_hypothesis A/B-day path above, not dispatched through it (see
+    engine.py). Direction comes from `htf_bias.direction` (MM alone, per
+    synthesis.py), not from tier_report.structural_bias.
+    """
+    long = htf_bias.direction == StructuralBias.BULLISH
+    hyp_type = HypothesisType.COUNTER_LONG if long else HypothesisType.COUNTER_SHORT
+
+    structural_targets = _structural_targets(composites, state.last_price, long)
+    runner = _strongest_composite_target(composites, state.last_price, long)
+
+    if fixed_risk_distance is not None:
+        invalidation = _fixed_invalidation(state.last_price, long, fixed_risk_distance)
+    else:
+        # Unlike A-day (which falls back to vwap_intraday) or B-day (which
+        # falls back to a plain "no target_1" case), there's no VWAP-based
+        # fallback that's safely on the correct side here: the whole
+        # trigger condition requires price already past vwap_intraday, so
+        # using it as a stop would put it on the WRONG side by
+        # construction (the exact bug class A-day's own wrong-side check
+        # exists to catch). With no opposing composite edge and no
+        # fixed_risk_distance configured, there is no safe stop to
+        # propose, so this returns None rather than guessing one.
+        opposing = _composite_targets(composites, state.last_price, long=not long)
+        if not opposing:
+            return None
+        invalidation = opposing[0]
+
+    target_1, target_2 = _pick_targets(
+        structural_targets, state.last_price, invalidation, long, rrr,
+        no_structural_fallback=None,
+    )
+
+    thesis = (
+        f"Monthly VWAP bias {'bullish' if long else 'bearish'} "
+        f"({htf_bias.conviction.value} conviction, weekly "
+        f"{tier_report.weekly.value}) while intraday shows a "
+        f"{'selloff' if long else 'rally'} ({tier_report.intraday.value} its "
+        f"own VWAP) with delta {delta_signal.value} at the extreme -- "
+        "counter-intraday entry in the higher-timeframe direction."
+    )
+
+    return Hypothesis(
+        type=hyp_type,
+        thesis=thesis,
+        entry=state.last_price,
+        target_1=target_1,
+        target_2=target_2,
+        runner=runner,
+        invalidation=invalidation,
+        confluence=_counter_confluence(htf_bias.conviction, bool(structural_targets)),
     )
 
 
