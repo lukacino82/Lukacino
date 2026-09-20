@@ -166,6 +166,134 @@ INSTRUMENT_CONFIGS: Dict[str, InstrumentConfig] = {
         # is deployed.
         use_vwap_sd1_as_risk_distance=True,
     ),
+    # The other 7 instruments the `trading-vwap-hypotezy` skill's own Notion
+    # "Daily Hypotheses" database covers -- added so more instruments can
+    # fire hypotheses on any given day (breadth), rather than trying to
+    # force one instrument (NQ) to signal more often by loosening its rules
+    # further than the real 2-of-3 tier-majority fix in tiers.py already
+    # does. Each needs its OWN `python -m trading_system.run_live
+    # --instrument <key>` process (and its own ACSIL "Trading Hypothesis
+    # Display" instance, with that Instrument input set to the same key,
+    # pointed at that instrument's own VWAP/Volume Value Area/delta
+    # studies) -- run.py already keys every bridge file off `--instrument`,
+    # so nothing else about the architecture needs to change for this.
+    #
+    # tick_size/tick_value below are real exchange contract specs ONLY for
+    # the ones marked "confirmed" -- everywhere else they're a best-guess
+    # starting point that needs your confirmation before you trust sizing
+    # on that instrument, because Sierra Chart may be feeding you a
+    # completely different instrument (spot/CFD forex vs. a CME future,
+    # a different quoting convention) with different unit economics. NONE
+    # of price_move_threshold/delta_move_threshold/delta_imbalance below
+    # are calibrated (same caveat as NQ's) -- they need the same
+    # --history-out sampling + run_backtest.py regime_counts check NQ's own
+    # comment above describes, once you're gathering real data for each.
+    "ES": InstrumentConfig(
+        # E-mini S&P 500 (CME): tick_size=0.25, tick_value=$12.50 (0.25 x
+        # $50/point) -- confirmed real contract specs.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.25, tick_value=12.50,
+        ),
+        price_move_threshold=2.0, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=10.0, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "CL": InstrumentConfig(
+        # WTI Crude Oil (NYMEX): tick_size=0.01, tick_value=$10 (1000 bbl x
+        # $0.01) -- confirmed real contract specs.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.01, tick_value=10.0,
+        ),
+        price_move_threshold=0.10, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=0.50, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "GC": InstrumentConfig(
+        # UNCONFIRMED: assumes COMEX Gold futures (100 troy oz, tick_size=
+        # 0.10, tick_value=$10). The Notion table lists this as "Gold /
+        # XAUUSD" -- if your Sierra Chart feed is actually spot/CFD XAUUSD
+        # from a forex broker instead of the GC future, these numbers are
+        # wrong (spot gold CFDs are usually quoted/sized completely
+        # differently). Confirm which one you're charting before trusting
+        # sizing here.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.10, tick_value=10.0,
+        ),
+        price_move_threshold=1.0, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=5.0, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "6E": InstrumentConfig(
+        # UNCONFIRMED: assumes the CME EUR/USD future (6E, EUR125,000,
+        # tick_size=0.0001, tick_value=$12.50). If Sierra Chart is instead
+        # feeding you spot/CFD EURUSD from a forex broker, the price decimal
+        # convention and tick_value both differ -- confirm before trusting.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.0001, tick_value=12.50,
+        ),
+        price_move_threshold=0.0010, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=0.0020, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "6B": InstrumentConfig(
+        # UNCONFIRMED: assumes the CME GBP/USD future (6B, GBP62,500,
+        # tick_size=0.0001, tick_value=$6.25). Same spot/CFD-vs-future
+        # caveat as 6E above.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.0001, tick_value=6.25,
+        ),
+        price_move_threshold=0.0010, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=0.0020, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "6J": InstrumentConfig(
+        # UNCONFIRMED, and a real trap if wrong: the CME JPY future (6J) is
+        # quoted USD-per-100-JPY (e.g. ~0.0067), the INVERSE of how retail
+        # USD/JPY is normally quoted (e.g. ~150.00) -- these two are not
+        # interchangeable, and last_price/vwap values from the wrong
+        # convention would silently produce nonsense tier/target math, not
+        # an error. tick_size=0.0000005, tick_value=$6.25 (JPY12,500,000
+        # contract) is 6J's real spec IF that's genuinely what's charted.
+        # If Sierra Chart is instead feeding spot/CFD USD/JPY (the ~150.00
+        # convention), every number here is wrong -- confirm which one
+        # before trusting this at all.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.0000005, tick_value=6.25,
+        ),
+        price_move_threshold=0.000005, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=0.00001, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "GBPJPY": InstrumentConfig(
+        # UNCONFIRMED AND INCOMPLETE: GBP/JPY has no standard CME/ICE future
+        # at all -- it only exists as spot forex/CFD, whose tick_size/
+        # tick_value depend entirely on your broker's lot size convention
+        # (not a fixed, look-up-able exchange spec the way every other
+        # entry above is). The numbers below are a placeholder guess
+        # (a common retail CFD convention: 1 standard lot = 100,000 GBP,
+        # 1 pip = 0.01 at 2 decimal JPY-cross quoting = ~$6.50-9 depending
+        # on the live GBP/JPY and USD/JPY cross rates, approximated here as
+        # a flat $7) -- get your actual broker's contract specification
+        # before trusting sizing on this one at all.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.01, tick_value=7.0,
+        ),
+        price_move_threshold=0.05, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=0.20, use_vwap_sd1_as_risk_distance=True,
+    ),
+    "DX": InstrumentConfig(
+        # UNCONFIRMED: assumes the ICE US Dollar Index future (DX,
+        # tick_size=0.005, tick_value=$5 -- $1000/index-point contract
+        # multiplier x 0.005). Confirm this is genuinely what's charted
+        # (vs. a spot/derived DXY feed) before trusting sizing.
+        sizing=SizingConfig(
+            mode=SizingMode.FIXED_RISK_USD, full_risk_usd=1000.0, half_risk_usd=500.0,
+            tick_size=0.005, tick_value=5.0,
+        ),
+        price_move_threshold=0.05, delta_move_threshold=500.0, delta_imbalance=5000.0,
+        rrr=1.5, fixed_risk_points=0.20, use_vwap_sd1_as_risk_distance=True,
+    ),
 }
 
 POLL_INTERVAL_SECONDS = 5

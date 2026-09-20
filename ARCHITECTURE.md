@@ -426,6 +426,66 @@ debugging.
      rebuild the ACSIL DLL, then re-open Study Settings and set the new
      "VWAP Intraday +1 SD Band Subgraph Index" input (every other input
      keeps its saved value, per the append-at-the-end choice above).
+   - **`structural_bias` loosened to a 2-of-3 tier majority, and NQ-only
+     live running expanded to the `trading-vwap-hypotezy` skill's other 7
+     instruments** -- both from the same real complaint: too few trades
+     per week. Diagnosed two separate causes and fixed both rather than
+     just tightening/loosening one number:
+     1. `TierReport.structural_bias` required **all three** tiers
+        (monthly/weekly/intraday VWAP) to agree for a directional
+        (non-neutral) read; anything mixed was NEUTRAL. In practice this
+        was nearly impossible to satisfy: monthly/weekly VWAP move slowly
+        across a session while intraday price oscillates around its own
+        VWAP constantly, so intraday alone flipping the "wrong" way for a
+        few ticks -- even mid a real, persistent trend the slower tiers
+        already confirmed -- forced bias back to NEUTRAL and starved
+        `B_DAY` of almost every signal it should have gotten (and, since
+        `A_DAY` needs the *opposite* -- neutral bias -- this wasn't a
+        "make B_DAY easier at A_DAY's expense" tradeoff: cases that were
+        previously an unclassifiable mixed read now resolve to whichever
+        regime the data actually supports, instead of neither). Confirmed
+        this wasn't inventing a looser standard: the real Notion "Daily
+        Hypotheses" database (fetched and inspected directly) commits to
+        one `HTF Bias` per instrument/day already, not a three-way
+        unanimous vote -- a 2-of-3 majority is a legitimate real-majority
+        read, not a guess. `structural_bias` now returns BULLISH/BEARISH
+        whenever either side reaches 2 of the 3 tiers, NEUTRAL only on a
+        genuine 3-way split (one ABOVE, one AT, one BELOW). Every existing
+        `TierReport` test fixture built around the old "2 agree, 1
+        disagrees = NEUTRAL" pattern needed re-deriving under the new rule
+        across `test_hypothesis.py`, `test_engine.py`, `test_backtest.py`,
+        and `test_notion_sync.py` (`hypothesis/generator.py`'s own A-day
+        path never reads `structural_bias` at all, so `test_generator.py`
+        was untouched) -- a genuine 3-way NEUTRAL fixture usually means
+        pinning one tier's VWAP to `last_price` itself (forces `AT`,
+        which never counts toward either side) rather than just picking
+        two mismatched values.
+     2. `run_live.py` only ever ran one instrument (NQ). The skill's own
+        methodology generates hypotheses across **8 instruments** every
+        morning (ES, Gold, WTI, GBP/USD, EUR/USD, USD/JPY, GBP/JPY, DXY --
+        confirmed directly from the live Notion database's `Instrument`
+        select options) -- trade frequency there comes from breadth across
+        instruments, not from any one instrument signaling more often.
+        `INSTRUMENT_CONFIGS` gained entries for the other 7 (keys `ES`,
+        `CL`, `GC`, `6E`, `6B`, `6J`, `GBPJPY`, `DX`); no other code
+        changed, since the architecture already keys every bridge file off
+        `--instrument` -- each just needs its own `run_live.py` process and
+        its own ACSIL "Trading Hypothesis Display" instance pointed at
+        that instrument's own VWAP/Volume Value Area/delta studies. Only
+        `ES`/`CL`'s tick_size/tick_value are confirmed real exchange specs
+        (E-mini S&P 500, WTI Crude) the same way NQ's are; every other
+        entry is explicitly marked UNCONFIRMED in its own comment, because
+        Sierra Chart could be feeding a completely different instrument
+        with different unit economics than assumed (spot/CFD forex vs. a
+        CME future for Gold/EUR/GBP/DX; 6J's CME quoting, USD-per-100-JPY,
+        is the *inverse* of retail USD/JPY's ~150.00 convention -- a real
+        trap if the wrong one is charted; GBP/JPY has no standard
+        CME/ICE future at all, so its numbers are a generic CFD-lot guess,
+        not a lookup-able exchange spec). None of these seven have any real
+        `--history-out` data yet, so their `price_move_threshold`/
+        `delta_move_threshold`/`delta_imbalance` are placeholders needing
+        the same calibration process as NQ's, per-instrument, before
+        Fully Auto should be trusted on any of them.
    - ~~`generator.py`~~ (done): one concrete `Hypothesis` (type, thesis,
      entry, target_1/target_2/runner, invalidation, confluence) from the
      current regime + tier + delta read + active composites. A-day reads

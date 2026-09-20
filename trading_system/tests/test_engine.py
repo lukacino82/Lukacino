@@ -8,15 +8,22 @@ from trading_system.hypothesis.regime import Regime
 from trading_system.risk.sizing import SizingConfig, SizingMode
 
 
-def _state(last_price: float, session_open: float, cum_delta: float = 0.0) -> LiveMarketState:
+def _state(
+    last_price: float,
+    session_open: float,
+    cum_delta: float = 0.0,
+    vwap_monthly: float = 95.0,
+    vwap_weekly: float = 110.0,
+    vwap_intraday: float = 100.0,
+) -> LiveMarketState:
     return LiveMarketState(
         instrument="NQ",
         timestamp=datetime(2026, 9, 10, 14, 0, 0),
         last_price=last_price,
         session_open=session_open,
-        vwap_monthly=95.0,
-        vwap_weekly=110.0,
-        vwap_intraday=100.0,
+        vwap_monthly=vwap_monthly,
+        vwap_weekly=vwap_weekly,
+        vwap_intraday=vwap_intraday,
         cum_delta=cum_delta,
     )
 
@@ -39,9 +46,12 @@ def test_tick_produces_no_hypothesis_when_bias_and_delta_disagree():
 def test_tick_resolves_a_day_and_generates_a_short_hypothesis():
     engine = LiveEngine("NQ")
     # last_price=102 is above vwap_intraday=100 -> A_SHORT (reversion down).
-    # monthly ABOVE / weekly BELOW -> structural bias NEUTRAL -> A-day sign.
-    # No daily profile needed any more -- see hypothesis/regime.py.
-    state = _state(last_price=102.0, session_open=105.0, cum_delta=50.0)
+    # monthly AT (pinned to last_price so it never sides with either),
+    # weekly BELOW (102<110), intraday ABOVE (102>100) -> ABOVE/BELOW both
+    # sit at 1 -- no 2-of-3 majority -> NEUTRAL structural bias -> A-day
+    # sign (see tiers.py's structural_bias). No daily profile needed any
+    # more -- see hypothesis/regime.py.
+    state = _state(last_price=102.0, session_open=105.0, cum_delta=50.0, vwap_monthly=102.0)
     result = engine.tick(state, [], _SIZING, price_move_threshold=1.0, delta_move_threshold=200.0)
 
     assert result.regime == Regime.A_DAY

@@ -46,14 +46,29 @@ class TierReport:
 
     @property
     def structural_bias(self) -> StructuralBias:
-        """All three tiers agreeing reads as a runaway trend; anything mixed
-        is the "decision zone at the edge" case the skill's bias table
-        describes, and is intentionally read as neutral rather than guessed.
+        """A majority (2 of the 3) tiers agreeing is enough for a directional
+        read; only a genuine three-way split (no side reaching 2) is neutral.
+
+        Originally required all three to agree, on the theory that anything
+        mixed was the skill's "decision zone at the edge" case and should be
+        read as neutral rather than guessed. Loosened after real Replay-mode
+        testing (and cross-checking the actual Notion "Daily Hypotheses"
+        methodology, which commits to one HTF Bias per instrument/day, not a
+        three-way unanimous vote) showed unanimous-3 essentially never
+        happens in practice: monthly and weekly VWAP move slowly across a
+        session while intraday price oscillates around its own VWAP
+        constantly, so intraday alone flipping the "wrong" way for a few
+        ticks -- even during a real, persistent trend the slower monthly/
+        weekly tiers already confirm -- forced bias back to NEUTRAL and
+        starved B_DAY of almost every signal it should have gotten. Two of
+        three agreeing is still a real majority read, not a guess.
         """
         positions = (self.monthly, self.weekly, self.intraday)
-        if all(p == Position.ABOVE for p in positions):
+        above = sum(1 for p in positions if p == Position.ABOVE)
+        below = sum(1 for p in positions if p == Position.BELOW)
+        if above >= 2:
             return StructuralBias.BULLISH
-        if all(p == Position.BELOW for p in positions):
+        if below >= 2:
             return StructuralBias.BEARISH
         return StructuralBias.NEUTRAL
 

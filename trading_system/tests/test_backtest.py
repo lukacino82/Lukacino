@@ -32,10 +32,17 @@ YESTERDAY = DailyProfile(instrument=INSTRUMENT, session_date=date(2024, 1, 1), v
 
 
 def _a_day_state(when: datetime, last_price: float) -> LiveMarketState:
-    """A_DAY regime: balanced delta and a neutral tier bias (monthly/weekly
-    above price, intraday below) -- see hypothesis/regime.py's
-    classify_regime. session_open no longer feeds regime classification at
-    all, but is still part of LiveMarketState/the invalidation fallback.
+    """A_DAY regime: balanced delta and a neutral tier bias -- see
+    hypothesis/regime.py's classify_regime. session_open no longer feeds
+    regime classification at all, but is still part of LiveMarketState/the
+    invalidation fallback.
+
+    structural_bias now needs a 2-of-3 majority (see tiers.py), so a
+    genuine 3-way split is needed for NEUTRAL: monthly ABOVE (fixed, well
+    below every price used here), weekly pinned to last_price itself (AT,
+    always -- never sides with either), intraday BELOW/ABOVE depending on
+    last_price vs. 103.0. Whichever way intraday falls, only one of
+    ABOVE/BELOW ever reaches 1 -- weekly's AT keeps it from becoming 2.
     """
     return LiveMarketState(
         instrument=INSTRUMENT,
@@ -43,8 +50,8 @@ def _a_day_state(when: datetime, last_price: float) -> LiveMarketState:
         last_price=last_price,
         session_open=100.5,
         vwap_monthly=95.0,  # price above -> ABOVE
-        vwap_weekly=95.0,  # price above -> ABOVE
-        vwap_intraday=103.0,  # price below -> BELOW -> mixed -> NEUTRAL bias
+        vwap_weekly=last_price,  # always AT -- never contributes to a majority
+        vwap_intraday=103.0,  # price below -> BELOW -> no majority -> NEUTRAL bias
         cum_delta=0.0,  # balanced
     )
 

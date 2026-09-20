@@ -58,10 +58,16 @@ def test_tier_report_bearish_when_price_below_all_tiers():
 
 
 def test_tier_report_neutral_when_tiers_disagree():
-    state = _state(price=101, monthly=100, weekly=102, intraday=105)
+    # A genuine 3-way split (one ABOVE, one AT, one BELOW) -- no side
+    # reaches the 2-of-3 majority structural_bias now needs, so this stays
+    # NEUTRAL. Two tiers merely disagreeing while a third still sides with
+    # one of them (e.g. ABOVE/BELOW/BELOW) is a majority read now, not a
+    # neutral one -- see tiers.py's structural_bias docstring.
+    state = _state(price=101, monthly=100, weekly=101, intraday=105)
     report = tier_report(state)
     assert report.monthly == Position.ABOVE
-    assert report.weekly == Position.BELOW
+    assert report.weekly == Position.AT
+    assert report.intraday == Position.BELOW
     assert report.structural_bias == StructuralBias.NEUTRAL
 
 

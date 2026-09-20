@@ -42,7 +42,10 @@ def test_tick_writes_hypothesis_end_to_end(tmp_path):
         timestamp=datetime(2026, 9, 10, 14, 0, 0),
         last_price=102.0,
         session_open=105.0,
-        vwap_monthly=95.0,
+        # monthly AT (pinned to last_price), weekly BELOW, intraday ABOVE --
+        # no 2-of-3 majority -> NEUTRAL structural bias -> A-day sign (see
+        # tiers.py's structural_bias).
+        vwap_monthly=102.0,
         vwap_weekly=110.0,
         vwap_intraday=100.0,
         cum_delta=50.0,
@@ -145,7 +148,7 @@ def test_tick_writes_order_proposal_when_path_given(tmp_path):
         timestamp=datetime(2026, 9, 10, 14, 0, 0),
         last_price=102.0,
         session_open=105.0,
-        vwap_monthly=95.0,
+        vwap_monthly=102.0,
         vwap_weekly=110.0,
         vwap_intraday=100.0,
         cum_delta=50.0,
@@ -236,8 +239,8 @@ def test_tick_is_a_noop_when_live_state_missing(tmp_path):
 
 
 def test_run_raises_a_clear_error_for_an_unconfigured_instrument(tmp_path):
-    with pytest.raises(ValueError, match="ES"):
-        run(tmp_path, "ES")
+    with pytest.raises(ValueError, match="ZZZ"):
+        run(tmp_path, "ZZZ")
 
 
 def _config(

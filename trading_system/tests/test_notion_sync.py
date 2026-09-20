@@ -22,7 +22,10 @@ def _state(last_price: float = 29639.0) -> LiveMarketState:
     )
 
 
-_NEUTRAL_TIERS = TierReport(monthly=Position.ABOVE, weekly=Position.BELOW, intraday=Position.ABOVE)
+# A genuine 3-way split (ABOVE/AT/BELOW) -- structural_bias now needs a
+# 2-of-3 majority (see tiers.py), so two agreeing (e.g. ABOVE/BELOW/ABOVE)
+# would actually read as directional, not neutral.
+_NEUTRAL_TIERS = TierReport(monthly=Position.ABOVE, weekly=Position.AT, intraday=Position.BELOW)
 _BEARISH_TIERS = TierReport(monthly=Position.BELOW, weekly=Position.BELOW, intraday=Position.BELOW)
 
 
