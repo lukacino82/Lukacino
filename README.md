@@ -44,6 +44,8 @@ Délka svíčky by měla dělit délku range beze zbytku (15 min range → 1, 3,
 
 ## 3) Rychlý backtest v Pythonu (RRR sweep)
 
+Data ze Sierry nahraj do složky `data/` (viz `data/README.md`).
+
 Export dat: `Edit >> Export Bar Data To Text File` (5min graf, RTH).
 
 ```bash
@@ -58,5 +60,19 @@ python orb_backtest.py MES_5min.txt --point-value 5 --stop mid --direction long 
 ```
 
 Výstup: počet obchodů, win rate, net P&L v $, průměr na obchod, profit factor a max drawdown – zvlášť pro in-sample, out-of-sample a celek. Poplatky se odečítají (`--commission`, default $4 round-trip). Když svíčka zasáhne SL i TP současně, počítá se konzervativně jako SL.
+
+Seznam obchodů pro kontrolu proti Sierra `Trade Activity Log`:
+
+```bash
+python orb_backtest.py ../data/ES_5min.txt --rrr 1.5 --trades trades.csv
+```
+
+### Testy logiky
+
+```bash
+python -m unittest discover -s backtest/tests -v
+```
+
+11 scénářů: long→TP, short→SL, SL+TP ve stejné svíčce (= SL), EOD exit, žádný průraz, průraz po 11:30, jen longy, stop na středu range, filtr velikosti range, max 1 obchod denně, výpočet $ a drawdownu.
 
 > Pozn.: Python backtest vstupuje na close signální svíčky; Sierra v bar-based backtestu plní market příkaz až na dalším ticku/baru, takže čísla se mírně liší. Bereš to jako rychlé třídění nápadů, ne jako finální verdikt.

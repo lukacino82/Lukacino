@@ -20,7 +20,6 @@ Příklady:
 import argparse
 import csv
 from collections import OrderedDict
-from datetime import datetime
 
 
 def hms(s):
@@ -49,7 +48,7 @@ def load_bars(path):
 
 
 def run_day(bars, p):
-    """Vrátí výsledek dne v bodech (None = žádný obchod)."""
+    """Vrátí (body, směr, entry, exit, důvod) nebo None = žádný obchod."""
     t_start, t_or_end = p.start, p.start + p.or_min * 60
     hi = lo = None
     pos = 0
@@ -65,16 +64,16 @@ def run_day(bars, p):
         if pos != 0:
             if pos > 0:
                 if l <= stop:
-                    return stop - entry, pos
+                    return stop - entry, pos, entry, stop, "SL"
                 if h >= target:
-                    return target - entry, pos
+                    return target - entry, pos, entry, target, "TP"
             else:
                 if h >= stop:
-                    return entry - stop, pos
+                    return entry - stop, pos, entry, stop, "SL"
                 if l <= target:
-                    return entry - target, pos
+                    return entry - target, pos, entry, target, "TP"
             if secs >= p.flatten:
-                return (c - entry) * pos, pos
+                return (c - entry) * pos, pos, entry, c, "EOD"
             continue
 
         if secs >= p.flatten or secs > p.last_entry:
@@ -101,7 +100,7 @@ def run_day(bars, p):
         entry, pos = c, sig
         target = entry + reward * sig
     if pos != 0:  # data skončila před flatten časem
-        return (bars[-1][4] - entry) * pos, pos
+        return (bars[-1][4] - entry) * pos, pos, entry, bars[-1][4], "EOD"
     return None
 
 
@@ -136,7 +135,7 @@ def fmt(name, s):
             f"maxDD {s['maxdd']:>9.2f}")
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--rrr", type=float, default=1.5)
@@ -154,7 +153,12 @@ def main():
     ap.add_argument("--qty", type=int, default=1)
     ap.add_argument("--commission", type=float, default=4.0, help="$ round-trip na kontrakt")
     ap.add_argument("--oos", type=float, default=0.3, help="podíl dat na konci jako out-of-sample")
-    p = ap.parse_args()
+    ap.add_argument("--trades", help="uloží seznam obchodů do CSV (pro kontrolu vs. Sierra)")
+    return ap
+
+
+def main():
+    p = build_parser().parse_args()
 
     days = load_bars(p.file)
     keys = list(days.keys())
@@ -171,6 +175,17 @@ def main():
         print(fmt("In-sample", stats(is_tr, p)))
         print(fmt("Out-of-sample", stats(oos_tr, p)))
         print(fmt("All", stats(is_tr + oos_tr, p)))
+        if p.trades:
+            out = p.trades if len(p.sweep or [0]) == 1 else p.trades.replace(".csv", f"_rrr{rrr:g}.csv")
+            with open(out, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["date", "side", "entry", "exit", "reason", "points", "pnl_usd"])
+                for k, r in res:
+                    if r:
+                        usd = r[0] * p.point_value * p.qty - p.commission * p.qty
+                        w.writerow([k, "LONG" if r[1] > 0 else "SHORT", r[2], r[3], r[4],
+                                    round(r[0], 2), round(usd, 2)])
+            print(f"Trades saved: {out}")
 
 
 if __name__ == "__main__":
