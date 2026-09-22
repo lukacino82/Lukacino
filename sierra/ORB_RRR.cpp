@@ -286,7 +286,7 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     if (Result <= 0)
     {
         SCString Err;
-        Err.Format("ORB order NOT sent: %s", sc.GetTradingErrorTextMessage(Result).GetChars());
+        Err.Format("ORB order NOT sent: %s", sc.GetTradingErrorTextMessage(Result));
         sc.AddMessageToLog(Err, 1);
     }
 }
