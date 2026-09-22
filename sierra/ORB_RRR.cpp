@@ -266,6 +266,8 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     Msg.Format("ORB %s @ %.2f | SL %.2f | TP %.2f | RRR 1:%.2f",
                Signal > 0 ? "LONG" : "SHORT", C, StopPrice, TargetPrice, RRR);
 
+    sc.AddMessageToLog(Msg, 0);   // každý signál do Message Logu (diagnostika)
+
     if (!FullAuto)
     {
         sc.SetAlert(1, Msg);
@@ -280,7 +282,11 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     Order.Stop1Offset   = sc.RoundToTickSize(Risk, sc.TickSize);
     Order.Target1Offset = Reward;
 
-    const double Result = Signal > 0 ? sc.BuyEntry(Order) : sc.SellEntry(Order);
-    if (Result > 0)
-        sc.AddMessageToLog(Msg, 0);
+    const int Result = (int)(Signal > 0 ? sc.BuyEntry(Order) : sc.SellEntry(Order));
+    if (Result <= 0)
+    {
+        SCString Err;
+        Err.Format("ORB order NOT sent: %s", sc.GetTradingErrorTextMessage(Result).GetChars());
+        sc.AddMessageToLog(Err, 1);
+    }
 }
