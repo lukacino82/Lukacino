@@ -7,7 +7,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from orb_backtest import build_parser, run_day, stats  # noqa: E402
+from orb_backtest import build_parser, load_bars, run_day, stats  # noqa: E402
 
 
 def params(*argv):
@@ -107,6 +107,19 @@ class OrbLogic(unittest.TestCase):
         self.assertEqual(s["trades"], 3)
         self.assertAlmostEqual(s["net"], 10 * 50 - 3 * 4)
         self.assertAlmostEqual(s["maxdd"], -254)
+
+
+class Resample(unittest.TestCase):
+    def test_1min_to_5min(self):
+        import tempfile
+        rows = ["Date, Time, Open, High, Low, Last, Volume"]
+        for m in range(10):  # 9:30..9:39
+            rows.append(f"2025/1/2, 09:{30+m}:00, {100+m}, {101+m}, {99+m}, {100.5+m}, 1")
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+            f.write("\n".join(rows))
+        bars = load_bars(f.name, resample=5)["2025/1/2"]
+        os.unlink(f.name)
+        self.assertEqual(bars, [(t(9, 30), 100, 105, 99, 104.5), (t(9, 35), 105, 110, 104, 109.5)])
 
 
 if __name__ == "__main__":

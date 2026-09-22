@@ -27,7 +27,7 @@ def hms(s):
     return int(h) * 3600 + int(m) * 60
 
 
-def load_bars(path):
+def load_bars(path, resample=0):
     days = OrderedDict()
     with open(path, newline="") as f:
         reader = csv.reader(f)
@@ -43,7 +43,15 @@ def load_bars(path):
             secs = int(hh) * 3600 + int(mm) * 60 + (int(ss[0]) if ss else 0)
             bar = (secs, float(row[ix["open"]]), float(row[ix["high"]]),
                    float(row[ix["low"]]), float(row[ix["close"]]))
-            days.setdefault(d, []).append(bar)
+            day = days.setdefault(d, [])
+            if resample:
+                start = secs - secs % (resample * 60)
+                if day and day[-1][0] == start:
+                    _, o0, h0, l0, _ = day[-1]
+                    day[-1] = (start, o0, max(h0, bar[2]), min(l0, bar[3]), bar[4])
+                    continue
+                bar = (start,) + bar[1:]
+            day.append(bar)
     return days
 
 
@@ -153,6 +161,8 @@ def build_parser():
     ap.add_argument("--qty", type=int, default=1)
     ap.add_argument("--commission", type=float, default=4.0, help="$ round-trip na kontrakt")
     ap.add_argument("--oos", type=float, default=0.3, help="podíl dat na konci jako out-of-sample")
+    ap.add_argument("--resample", type=int, default=0,
+                    help="sloučí svíčky do N minut (např. export 1min -> --resample 5)")
     ap.add_argument("--trades", help="uloží seznam obchodů do CSV (pro kontrolu vs. Sierra)")
     return ap
 
@@ -160,7 +170,7 @@ def build_parser():
 def main():
     p = build_parser().parse_args()
 
-    days = load_bars(p.file)
+    days = load_bars(p.file, p.resample)
     keys = list(days.keys())
     split = int(len(keys) * (1 - p.oos))
     print(f"Days: {len(keys)}  |  in-sample {keys[0]} .. {keys[max(split-1,0)]}"
