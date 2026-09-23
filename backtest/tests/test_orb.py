@@ -83,7 +83,7 @@ class OrbLogic(unittest.TestCase):
             (t(9, 45), 100, 103, 100, 103),
             (t(9, 50), 103, 109.25, 102, 109),
         ]
-        pts, *_, reason = run_day(day, params("--stop", "mid", "--rrr", "2"))
+        pts, *_, reason = run_day(day, params("--exit", "mid", "--rrr", "2"))
         self.assertEqual(reason, "TP")
         self.assertAlmostEqual(pts, 6)
 
@@ -93,7 +93,7 @@ class OrbLogic(unittest.TestCase):
             (t(9, 45), 100, 103, 100, 103),
             (t(9, 50), 103, 106.25, 102, 106),
         ]
-        pts, *_, reason = run_day(day, params("--stop", "fixed", "--stop-ticks", "20", "--target-ticks", "12"))
+        pts, *_, reason = run_day(day, params("--exit", "fixed-tp", "--stop-ticks", "20", "--target-ticks", "12"))
         self.assertEqual(reason, "TP")
         self.assertAlmostEqual(pts, 3)
 
@@ -103,7 +103,7 @@ class OrbLogic(unittest.TestCase):
             (t(9, 45), 99, 99, 96.5, 97),
             (t(9, 50), 97, 98, 92.75, 93),
         ]
-        pts, *_, reason = run_day(day, params("--stop", "fixed", "--stop-ticks", "8", "--rrr", "2"))
+        pts, *_, reason = run_day(day, params("--exit", "fixed", "--stop-ticks", "8", "--rrr", "2", "--target-ticks", "999"))
         self.assertEqual(reason, "TP")
         self.assertAlmostEqual(pts, 4)
 
@@ -112,6 +112,16 @@ class OrbLogic(unittest.TestCase):
         day = [b + (vw,) for b in RANGE] + [(t(9, 45), 100, 103, 100, 103, vw)]
         self.assertIsNone(run_day(day, params("--vwap", "eth")))
         self.assertIsNotNone(run_day(day, params()))
+
+    def test_target_ticks_ignored_outside_fixed_tp(self):
+        # range SL + RRR 1: TP = 103 + 5 = 108, --target-ticks nesmí nic změnit
+        day = RANGE + [
+            (t(9, 45), 100, 103, 100, 103),
+            (t(9, 50), 103, 108.25, 102, 108),
+        ]
+        pts, *_, reason = run_day(day, params("--rrr", "1", "--target-ticks", "4"))
+        self.assertEqual(reason, "TP")
+        self.assertAlmostEqual(pts, 5)
 
     def test_max_range_filter(self):
         # range 4 body = 16 ticků

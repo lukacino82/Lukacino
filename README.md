@@ -7,8 +7,11 @@
 | Range | High/Low prvních **15 min** od otevření (9:30–9:45 NY) |
 | Entry LONG | Svíčka **zavře nad** OR High |
 | Entry SHORT | Svíčka **zavře pod** OR Low |
-| Stop Loss | Opačná strana range / střed range / pevně v ticích |
-| Take Profit | Riziko × **RRR** (default 1:1.5), nebo pevně v ticích |
+| SL / TP | Input **Exit Mode** (jeden přepínač, nic se nepřebíjí): |
+| 0 Range SL + RRR | SL = opačná strana range, TP = riziko × RRR (default 1:1.5) |
+| 1 Range midpoint SL + RRR | SL = střed range, TP = riziko × RRR |
+| 2 Fixed SL ticks + RRR | SL = *Fixed SL in Ticks*, TP = SL × RRR |
+| 3 Fixed SL + Fixed TP | SL i TP v ticích, RRR se ignoruje |
 | Exit | SL / TP, jinak **Flatten Time** 15:55 |
 | Počet obchodů | Max **1 denně** (první signál vyhrává), vstupy jen do 11:30 |
 | Velikost | 1 kontrakt (nastavitelné) |
@@ -55,7 +58,7 @@ python orb_backtest.py ES_5min.txt --rrr 1.5
 # porovnání více RRR + 30 % dat na konci jako out-of-sample
 python orb_backtest.py ES_5min.txt --sweep 0.5 1 1.5 2 3 --oos 0.3
 # MES, stop na středu range, jen longy, čas v datech je pražský
-python orb_backtest.py MES_5min.txt --point-value 5 --stop mid --direction long \
+python orb_backtest.py MES_5min.txt --point-value 5 --exit mid --direction long \
        --start 15:30 --last-entry 17:30 --flatten 21:55
 ```
 

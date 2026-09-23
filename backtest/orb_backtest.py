@@ -8,8 +8,7 @@ Soubor má hlavičku:     Date, Time, Open, High, Low, Last, Volume, ...
 Logika je 1:1 se studií sierra/ORB_RRR.cpp:
   - Opening Range = high/low od --start po dobu --or-min minut
   - vstup na ZAVŘENÍ svíčky mimo range (1 obchod denně)
-  - SL = opačná strana range (nebo střed: --stop mid)
-  - TP = riziko * RRR
+  - SL/TP podle --exit (range | mid | fixed | fixed-tp), stejně jako Exit Mode ve studii
   - exit na --flatten, pokud nezasáhne SL/TP
   - když svíčka zasáhne SL i TP zároveň, počítá se SL (konzervativně)
 
@@ -139,16 +138,19 @@ def run_day(bars, p):
             if v is None or (c - v) * sig <= 0:
                 continue  # proti VWAP -> signál ignorujeme, čekáme dál
         mid = (hi + lo) / 2
-        if p.stop == "fixed":
+        if p.exit in ("fixed", "fixed-tp"):
             stop = c - sig * p.stop_ticks * p.tick
-        elif p.stop == "mid":
+        elif p.exit == "mid":
             stop = mid
         else:
             stop = lo if sig > 0 else hi
         risk = (c - stop) * sig
         if risk <= 0:
             return None
-        reward = p.target_ticks * p.tick if p.target_ticks else round(risk * p.rrr / p.tick) * p.tick
+        if p.exit == "fixed-tp":
+            reward = p.target_ticks * p.tick
+        else:
+            reward = round(risk * p.rrr / p.tick) * p.tick
         entry, pos = c, sig
         target = entry + reward * sig
     if pos != 0:  # data skončila před flatten časem
@@ -196,9 +198,10 @@ def build_parser():
     ap.add_argument("--or-min", type=int, default=15, help="délka opening range v minutách")
     ap.add_argument("--last-entry", type=hms, default=hms("11:30"))
     ap.add_argument("--flatten", type=hms, default=hms("15:55"))
-    ap.add_argument("--stop", choices=["range", "mid", "fixed"], default="range")
-    ap.add_argument("--stop-ticks", type=int, default=40, help="SL v ticích pro --stop fixed")
-    ap.add_argument("--target-ticks", type=int, default=0, help="pevný TP v ticích (0 = riziko * RRR)")
+    ap.add_argument("--exit", choices=["range", "mid", "fixed", "fixed-tp"], default="range",
+                    help="range/mid/fixed: TP = riziko * RRR | fixed-tp: SL i TP v ticích, RRR se ignoruje")
+    ap.add_argument("--stop-ticks", type=int, default=40, help="SL v ticích (--exit fixed / fixed-tp)")
+    ap.add_argument("--target-ticks", type=int, default=60, help="TP v ticích (jen --exit fixed-tp)")
     ap.add_argument("--direction", choices=["both", "long", "short"], default="both")
     ap.add_argument("--vwap", choices=("off",) + VWAP_MODES, default="off",
                     help="filtr: long jen nad VWAP, short jen pod VWAP")
@@ -229,7 +232,7 @@ def main():
         res = [(k, run_day(days[k], p)) for k in keys]
         is_tr = [r[0] for k, r in res[:split] if r]
         oos_tr = [r[0] for k, r in res[split:] if r]
-        print(f"\n=== RRR 1:{rrr:g} | stop={p.stop} | dir={p.direction} | vwap={p.vwap} ===")
+        print(f"\n=== RRR 1:{rrr:g} | exit={p.exit} | dir={p.direction} | vwap={p.vwap} ===")
         print(fmt("In-sample", stats(is_tr, p)))
         print(fmt("Out-of-sample", stats(oos_tr, p)))
         print(fmt("All", stats(is_tr + oos_tr, p)))
