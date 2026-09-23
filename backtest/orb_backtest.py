@@ -100,11 +100,16 @@ def run_day(bars, p):
         if not sig:
             continue
         mid = (hi + lo) / 2
-        stop = (mid if p.stop == "mid" else lo) if sig > 0 else (mid if p.stop == "mid" else hi)
+        if p.stop == "fixed":
+            stop = c - sig * p.stop_ticks * p.tick
+        elif p.stop == "mid":
+            stop = mid
+        else:
+            stop = lo if sig > 0 else hi
         risk = (c - stop) * sig
         if risk <= 0:
             return None
-        reward = round(risk * p.rrr / p.tick) * p.tick
+        reward = p.target_ticks * p.tick if p.target_ticks else round(risk * p.rrr / p.tick) * p.tick
         entry, pos = c, sig
         target = entry + reward * sig
     if pos != 0:  # data skončila před flatten časem
@@ -152,7 +157,9 @@ def build_parser():
     ap.add_argument("--or-min", type=int, default=15, help="délka opening range v minutách")
     ap.add_argument("--last-entry", type=hms, default=hms("11:30"))
     ap.add_argument("--flatten", type=hms, default=hms("15:55"))
-    ap.add_argument("--stop", choices=["range", "mid"], default="range")
+    ap.add_argument("--stop", choices=["range", "mid", "fixed"], default="range")
+    ap.add_argument("--stop-ticks", type=int, default=40, help="SL v ticích pro --stop fixed")
+    ap.add_argument("--target-ticks", type=int, default=0, help="pevný TP v ticích (0 = riziko * RRR)")
     ap.add_argument("--direction", choices=["both", "long", "short"], default="both")
     ap.add_argument("--min-ticks", type=int, default=0)
     ap.add_argument("--max-ticks", type=int, default=0)

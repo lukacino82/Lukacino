@@ -87,6 +87,26 @@ class OrbLogic(unittest.TestCase):
         self.assertEqual(reason, "TP")
         self.assertAlmostEqual(pts, 6)
 
+    def test_fixed_ticks_stop_and_target(self):
+        # long @103, SL 20 ticků = 5 b -> 98, TP 12 ticků = 3 b -> 106
+        day = RANGE + [
+            (t(9, 45), 100, 103, 100, 103),
+            (t(9, 50), 103, 106.25, 102, 106),
+        ]
+        pts, *_, reason = run_day(day, params("--stop", "fixed", "--stop-ticks", "20", "--target-ticks", "12"))
+        self.assertEqual(reason, "TP")
+        self.assertAlmostEqual(pts, 3)
+
+    def test_fixed_stop_with_rrr(self):
+        # short @97, SL 8 ticků = 2 b -> 99, RRR 2 -> TP 93
+        day = RANGE + [
+            (t(9, 45), 99, 99, 96.5, 97),
+            (t(9, 50), 97, 98, 92.75, 93),
+        ]
+        pts, *_, reason = run_day(day, params("--stop", "fixed", "--stop-ticks", "8", "--rrr", "2"))
+        self.assertEqual(reason, "TP")
+        self.assertAlmostEqual(pts, 4)
+
     def test_max_range_filter(self):
         # range 4 body = 16 ticků
         day = RANGE + [(t(9, 45), 100, 103, 100, 103)]

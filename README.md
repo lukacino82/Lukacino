@@ -7,8 +7,8 @@
 | Range | High/Low prvních **15 min** od otevření (9:30–9:45 NY) |
 | Entry LONG | Svíčka **zavře nad** OR High |
 | Entry SHORT | Svíčka **zavře pod** OR Low |
-| Stop Loss | Opačná strana range (volitelně střed range) |
-| Take Profit | Riziko × **RRR** (nastavitelné, default 1:1.5) |
+| Stop Loss | Opačná strana range / střed range / pevně v ticích |
+| Take Profit | Riziko × **RRR** (default 1:1.5), nebo pevně v ticích |
 | Exit | SL / TP, jinak **Flatten Time** 15:55 |
 | Počet obchodů | Max **1 denně** (první signál vyhrává), vstupy jen do 11:30 |
 | Velikost | 1 kontrakt (nastavitelné) |

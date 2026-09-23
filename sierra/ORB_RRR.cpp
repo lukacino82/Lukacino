@@ -8,8 +8,8 @@
 //   2) Vstup LONG, když svíčka ZAVŘE nad OR high.
 //      Vstup SHORT, když svíčka ZAVŘE pod OR low.
 //      (první signál dne vyhrává, pak už nic)
-//   3) Stop loss: opačná strana range (nebo střed range – volitelné).
-//   4) Take profit: riziko × RRR.
+//   3) Stop loss: opačná strana range / střed range / pevně v ticích.
+//   4) Take profit: riziko × RRR, nebo pevně v ticích.
 //   5) Pokud nic nezasáhne, pozice se zavře v čase "Flatten Time".
 //
 //  Režimy:
@@ -36,6 +36,8 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     SCInputRef In_MinRangeTicks = sc.Input[9];
     SCInputRef In_MaxRangeTicks = sc.Input[10];
     SCInputRef In_SendLive      = sc.Input[11];
+    SCInputRef In_StopTicks     = sc.Input[12];
+    SCInputRef In_TargetTicks   = sc.Input[13];
 
     // ---- Subgraphs ---------------------------------------------------
     SCSubgraphRef SG_ORHigh = sc.Subgraph[0];
@@ -81,7 +83,7 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
         In_RRR.SetFloatLimits(0.1f, 20.0f);
 
         In_StopMode.Name = "Stop Loss Placement";
-        In_StopMode.SetCustomInputStrings("Opposite side of range;Range midpoint");
+        In_StopMode.SetCustomInputStrings("Opposite side of range;Range midpoint;Fixed ticks");
         In_StopMode.SetCustomInputIndex(0);
 
         In_Qty.Name = "Position Size (contracts)";
@@ -96,6 +98,14 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
 
         In_SendLive.Name = "Send Orders To Trade Service (LIVE!)";
         In_SendLive.SetYesNo(0);
+
+        In_StopTicks.Name = "Fixed Stop Loss in Ticks (Stop Placement = Fixed ticks)";
+        In_StopTicks.SetInt(40);
+        In_StopTicks.SetIntLimits(1, 10000);
+
+        In_TargetTicks.Name = "Fixed Take Profit in Ticks (0 = risk x RRR)";
+        In_TargetTicks.SetInt(0);
+        In_TargetTicks.SetIntLimits(0, 10000);
 
         SG_ORHigh.Name = "OR High";
         SG_ORHigh.DrawStyle = DRAWSTYLE_DASH;
@@ -238,7 +248,7 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     const int  Dir     = In_Direction.GetIndex(); // 0 both, 1 long, 2 short
     const float C      = sc.Close[i];
     const float Mid    = (RangeHigh + RangeLow) * 0.5f;
-    const bool  StopMid = In_StopMode.GetIndex() == 1;
+    const int   StopMode = In_StopMode.GetIndex(); // 0 range, 1 mid, 2 fixed ticks
     const float RRR    = In_RRR.GetFloat();
 
     int Signal = 0;
@@ -247,12 +257,17 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     if (Signal == 0)
         return;
 
-    const float Stop = Signal > 0 ? (StopMid ? Mid : RangeLow)
-                                  : (StopMid ? Mid : RangeHigh);
+    const float FixedStop = In_StopTicks.GetInt() * sc.TickSize;
+    float Stop;
+    if (StopMode == 2)      Stop = Signal > 0 ? C - FixedStop : C + FixedStop;
+    else if (StopMode == 1) Stop = Mid;
+    else                    Stop = Signal > 0 ? RangeLow : RangeHigh;
     const float Risk = Signal > 0 ? C - Stop : Stop - C;
     if (Risk <= 0)
         return;
-    const float Reward = sc.RoundToTickSize(Risk * RRR, sc.TickSize);
+    const float Reward = In_TargetTicks.GetInt() > 0
+        ? In_TargetTicks.GetInt() * sc.TickSize
+        : sc.RoundToTickSize(Risk * RRR, sc.TickSize);
 
     TradedToday = 1;
     TradeDir    = Signal;
