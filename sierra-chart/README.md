@@ -8,7 +8,8 @@ Jednoduchý automatický systém podle pravidel:
 | Stop Loss | Low předchozí (referenční) session |
 | Risk/Reward | 1:1 (input `Reward : Risk`) |
 | Exit | Target, Stop, nebo konec aktuální session |
-| Velikost | 1 kontrakt, max. 1 obchod za session |
+| Velikost | 1 kontrakt |
+| Limit obchodů | `Max Trades Per Session` (default 1), `Max Trades Per Day` (0 = bez limitu) |
 
 Na grafu se kreslí linie Previous Session High, Previous Session Low (= stop) a Target.
 
@@ -29,7 +30,11 @@ Na grafu se kreslí linie Previous Session High, Previous Session Low (= stop) a
 
 Příklady Custom: 9:30–16:00 → 9:30–16:00 (předchozí RTH den), 18:00–9:30 → 9:30–16:00 (overnight → RTH, okna přes půlnoc fungují).
 
-Společné: **Reward : Risk**, **Position Size**, **Trading Enabled**. Časy jsou v časové zóně grafu.
+Společné: **Reward : Risk**, **Position Size**, **Trading Enabled**.
+
+**Omezení počtu obchodů:**
+- **Max Trades Per Session** – max. počet obchodů v jedné session (den / okno / blok podle Session Mode). Další obchod v téže session se otevře jen po novém průrazu – cena se musí nejdřív vrátit pod PSH.
+- **Max Trades Per Day** – celkový denní limit napříč všemi sessions (hodí se hlavně pro Fixed Interval, např. max 3 obchody za den). 0 = bez limitu. Časy jsou v časové zóně grafu.
 
 ## Poznámky
 - Výchozí `sc.SendOrdersToTradeService = false` → obchoduje se jen v simulaci (Trade Simulation Mode). Pro live účet změň v kódu na `true` – na vlastní riziko.

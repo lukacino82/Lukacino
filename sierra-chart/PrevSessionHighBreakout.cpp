@@ -5,7 +5,9 @@
 //   Stop Loss:    Low predchozi session
 //   Risk/Reward:  1:1 (nastavitelne)
 //   Exit:         Target / Stop / konec aktualni session
-//   Pozice:       1 kontrakt, max 1 obchod za session
+//   Pozice:       1 kontrakt
+//   Limity:       Max Trades Per Session (default 1), Max Trades Per Day (0 = bez limitu).
+//                 Dalsi obchod v session jen po novem prurazu (cena se musi vratit pod PSH).
 //
 // Session Mode (vzdy plati PRAVE JEDEN rezim, rezimy se nemichaji):
 //   0 = Custom Time Window  - predchozi session = okno Reference Start-End,
@@ -67,6 +69,8 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	SCInputRef In_Minutes    = sc.Input[7];
 	SCInputRef In_RR         = sc.Input[8];
 	SCInputRef In_Qty        = sc.Input[9];
+	SCInputRef In_MaxSess    = sc.Input[10];
+	SCInputRef In_MaxDay     = sc.Input[11];
 
 	if (sc.SetDefaults)
 	{
@@ -121,6 +125,13 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		In_Qty.Name = "Position Size (contracts)";
 		In_Qty.SetInt(1);
 
+		In_MaxSess.Name = "Max Trades Per Session";
+		In_MaxSess.SetInt(1);
+		In_MaxSess.SetIntLimits(1, 1000);
+		In_MaxDay.Name = "Max Trades Per Day (0 = no limit)";
+		In_MaxDay.SetInt(0);
+		In_MaxDay.SetIntLimits(0, 1000);
+
 		// Nastaveni obchodovani
 		sc.AllowMultipleEntriesInSameDirection = false;
 		sc.MaximumPositionAllowed = 1;
@@ -145,9 +156,11 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	float& TargetPrice   = sc.GetPersistentFloat(5);
 	double& EntryKey     = sc.GetPersistentDouble(1); // session, ve ktere byla otevrena pozice
 	int& RefValid        = sc.GetPersistentInt(1);
-	int& TradedSession   = sc.GetPersistentInt(2);
+	int& TradesSession   = sc.GetPersistentInt(2);    // pocet obchodu v aktualni session
 	int& BeenBelow       = sc.GetPersistentInt(3);    // cena byla v session pod PSH -> skutecny pruraz
 	int& LastIndex       = sc.GetPersistentInt(4);
+	int& TradesDay       = sc.GetPersistentInt(5);    // pocet obchodu v aktualnim obchodnim dni
+	int& DayKey          = sc.GetPersistentInt(6);
 
 	const int i = sc.Index;
 	const int mode    = In_Mode.GetIndex();
@@ -180,8 +193,8 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		RefHigh = 0; RefHighBuild = -FLT_MAX;
 		RefLow = 0; RefLowBuild = FLT_MAX;
 		TargetPrice = 0; EntryKey = -1;
-		RefValid = 0; TradedSession = 0; BeenBelow = 0;
-		LastIndex = -1;
+		RefValid = 0; TradesSession = 0; BeenBelow = 0;
+		LastIndex = -1; TradesDay = 0; DayKey = -1;
 	}
 
 	const long long kTrCur = TradeKey(sc.BaseDateTimeIn[i]);
@@ -225,8 +238,15 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 
 		if (kTrCur != -1 && kTrCur != kTrPrev)
 		{
-			TradedSession = 0;  // nova obchodni session -> povolen 1 novy obchod
+			TradesSession = 0;  // nova obchodni session -> vynuluj pocitadlo
 			BeenBelow = 0;
+		}
+
+		const int dayCur = sc.GetTradingDayDate(sc.BaseDateTimeIn[i]);
+		if (dayCur != DayKey)
+		{
+			TradesDay = 0;  // novy obchodni den
+			DayKey = dayCur;
 		}
 
 		LastIndex = i;
@@ -267,7 +287,13 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	}
 
 	// Entry
-	if (!In_Enabled.GetYesNo() || !RefValid || kTrCur == -1 || inFlatten || TradedSession)
+	if (!In_Enabled.GetYesNo() || !RefValid || kTrCur == -1 || inFlatten)
+		return;
+
+	// Limity poctu obchodu
+	if (TradesSession >= In_MaxSess.GetInt())
+		return;
+	if (In_MaxDay.GetInt() > 0 && TradesDay >= In_MaxDay.GetInt())
 		return;
 
 	const bool breakout = (BeenBelow || sc.Open[i] <= RefHigh) && sc.Close[i] > RefHigh;
@@ -289,7 +315,9 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 
 	if (sc.BuyEntry(Order) > 0)
 	{
-		TradedSession = 1;
+		TradesSession++;
+		TradesDay++;
+		BeenBelow = 0;  // dalsi obchod az po novem prurazu zespodu
 		EntryKey = (double)kTrCur;
 		TargetPrice = Order.Target1Price;
 		SG_Target[i] = TargetPrice;
