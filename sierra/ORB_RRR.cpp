@@ -170,12 +170,13 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     int&   CurDate     = sc.GetPersistentInt(1);
     int&   TradedToday = sc.GetPersistentInt(2);
     int&   TradeDir    = sc.GetPersistentInt(3);   // +1 long, -1 short, 0 flat (virtuální stav pro čáry)
+    int&   OwnPosition = sc.GetPersistentInt(4);   // 1 = pozici otevřela tato instance studie
 
     const int i = sc.Index;
     if (i == 0)
     {
         RangeHigh = RangeLow = StopPrice = TargetPrice = 0;
-        CurDate = TradedToday = TradeDir = 0;
+        CurDate = TradedToday = TradeDir = OwnPosition = 0;
     }
 
     const int BarDate = sc.BaseDateTimeIn[i].GetDate();
@@ -228,14 +229,17 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
         return;
 
     // ---- EOD exit ------------------------------------------------------
+    // Zavírá jen pozici, kterou otevřela tato instance. Jiný graf se stejnou
+    // studií (třeba live graf vedle replaye) tak nezruší cizí SL/TP.
     if (BarTime >= tFlatten)
     {
-        if (FullAuto)
+        if (FullAuto && OwnPosition)
         {
             s_SCPositionData Pos;
             sc.GetTradePosition(Pos);
             if (Pos.PositionQuantity != 0)
                 sc.FlattenAndCancelAllOrders();
+            OwnPosition = 0;
         }
         return;
     }
@@ -302,7 +306,9 @@ SCSFExport scsf_Lukacino_ORB_RRR(SCStudyInterfaceRef sc)
     Order.Target1Offset = Reward;
 
     const int Result = (int)(Signal > 0 ? sc.BuyEntry(Order) : sc.SellEntry(Order));
-    if (Result <= 0)
+    if (Result > 0)
+        OwnPosition = 1;
+    else
     {
         SCString Err;
         Err.Format("ORB order NOT sent: %s", sc.GetTradingErrorTextMessage(Result));
