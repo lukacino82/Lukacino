@@ -7,10 +7,10 @@ Jednoduchý automatický systém podle pravidel:
 | Entry | Long, když cena prorazí high předchozí session (cena v session byla pod PSH, pak `Close > PSH`) |
 | Stop Loss | Low předchozí (referenční) session |
 | Risk/Reward | 1:1 (input `Reward : Risk`) |
-| Exit | Target, Stop, nebo konec dne (`Flatten Time`) |
-| Velikost | 1 kontrakt |
+| Exit | Target, Stop, nebo konec aktuální session |
+| Velikost | 1 kontrakt, max. 1 obchod za session |
 
-Max. 1 obchod za session. Na grafu se kreslí linie Previous Session High, Previous Session Low (= stop) a Target.
+Na grafu se kreslí linie Previous Session High, Previous Session Low (= stop) a Target.
 
 ## Instalace
 1. Zkopíruj `PrevSessionHighBreakout.cpp` do `C:\SierraChart\ACS_Source\`.
@@ -19,15 +19,17 @@ Max. 1 obchod za session. Na grafu se kreslí linie Previous Session High, Previ
 4. Zapni `Trade >> Auto Trading Enabled - Global` a `Auto Trading Enabled - Chart`.
 
 ## Nastavení (inputs)
-- **Reference (Previous) Session Type** – co je „předchozí session“, podle které se aktivují pravidla:
-  - `Custom Time Window` – vlastní časové okno od–do (**Reference Session Start/End**). Např. 9:30–16:00 = předchozí RTH, 18:00–9:30 = overnight (okna přes půlnoc fungují), 8:00–9:00 = konkrétní hodina.
-  - `Full Previous Day` – celý předchozí obchodní den podle Session Times grafu (Chart Settings).
-  - `Fixed Interval (minutes)` – předchozí blok o délce **Fixed Interval Length**, např. 60 = předchozí hodina, 30 = předchozí půlhodina.
-- **Trading Session Start/End** – kdy se smí vstupovat (max. 1 obchod za tuto session).
-- **Flatten Time** – čas uzavření pozice na konci dne.
-- **Reward : Risk**, **Position Size**.
+**Session Mode** – vždy platí právě jeden režim, režimy se nemíchají. Určuje zároveň, co je předchozí session, kdy se obchoduje a kdy se pozice zavírá. Inputy s prefixem jiného režimu se ignorují.
 
-Časy jsou v časové zóně grafu.
+| Session Mode | Předchozí session (high/low) | Obchoduje se | Exit | Používané inputy |
+|---|---|---|---|---|
+| Custom Time Window | okno `[Custom] Previous Session Start–End` | okno `[Custom] Trading Session Start–End` | Flatten Time / konec okna | `[Custom]`, Flatten Time |
+| Daily (Previous Day) | celý předchozí obchodní den (Session Times grafu) | aktuální obchodní den | Flatten Time / konec dne | Flatten Time |
+| Fixed Interval (minutes) | předchozí blok N minut (např. 60 = předchozí hodina) | aktuální blok | konec bloku | `[Interval] Interval Length` |
+
+Příklady Custom: 9:30–16:00 → 9:30–16:00 (předchozí RTH den), 18:00–9:30 → 9:30–16:00 (overnight → RTH, okna přes půlnoc fungují).
+
+Společné: **Reward : Risk**, **Position Size**, **Trading Enabled**. Časy jsou v časové zóně grafu.
 
 ## Poznámky
 - Výchozí `sc.SendOrdersToTradeService = false` → obchoduje se jen v simulaci (Trade Simulation Mode). Pro live účet změň v kódu na `true` – na vlastní riziko.

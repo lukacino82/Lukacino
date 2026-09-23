@@ -1,22 +1,27 @@
 // Previous-session-high breakout – jednoduchy automaticky system pro Sierra Chart (ACSIL)
 //
 // Logika:
-//   Entry:        Long, kdyz cena prorazi high predchozi (referencni) session
-//   Stop Loss:    Low predchozi (referencni) session
+//   Entry:        Long, kdyz cena prorazi high predchozi session
+//   Stop Loss:    Low predchozi session
 //   Risk/Reward:  1:1 (nastavitelne)
-//   Exit:         Target / Stop / konec dne (Flatten Time)
-//   Pozice:       1 kontrakt
-//   Max 1 obchod za obchodni session.
+//   Exit:         Target / Stop / konec aktualni session
+//   Pozice:       1 kontrakt, max 1 obchod za session
 //
-// Referencni ("predchozi") session lze nastavit jako:
-//   0 = Vlastni casove okno (od - do), napr. 18:00-9:30 nebo 9:30-16:00
-//   1 = Cely predchozi obchodni den (podle Session Times grafu)
-//   2 = Pevny interval v minutach, napr. 60 = predchozi hodina
+// Session Mode (vzdy plati PRAVE JEDEN rezim, rezimy se nemichaji):
+//   0 = Custom Time Window  - predchozi session = okno Reference Start-End,
+//                             obchoduje se v okne Trading Start-End, exit ve Flatten Time.
+//   1 = Daily               - predchozi session = cely predchozi obchodni den (Session Times grafu),
+//                             obchoduje se aktualni den, exit ve Flatten Time / na konci dne.
+//   2 = Fixed Interval      - predchozi session = predchozi blok N minut (napr. 60 = hodina),
+//                             obchoduje se aktualni blok, exit na konci bloku.
+// Inputy, ktere do zvoleneho rezimu nepatri, se ignoruji.
 
 #include "sierrachart.h"
 #include <cfloat>
 
 SCDLLName("Previous Session High Breakout")
+
+enum { MODE_CUSTOM = 0, MODE_DAILY = 1, MODE_INTERVAL = 2 };
 
 // Je cas t (v sekundach od pulnoci) v okne [s, e)? Podporuje okna pres pulnoc.
 static bool InWindow(int t, int s, int e)
@@ -39,24 +44,11 @@ static long long WindowKey(const SCDateTime& dt, int s, int e)
 	return d;
 }
 
-enum { REF_CUSTOM = 0, REF_FULL_DAY = 1, REF_INTERVAL = 2 };
-
-// Klic instance referencni session. -1 = bar do zadne referencni session nepatri.
-static long long RefKey(SCStudyInterfaceRef sc, const SCDateTime& dt, int mode, int s, int e, int minutes)
+static long long IntervalKey(const SCDateTime& dt, int minutes)
 {
-	switch (mode)
-	{
-	case REF_FULL_DAY:
-		return sc.GetTradingDayDate(dt);
-	case REF_INTERVAL:
-	{
-		const long long len = (minutes > 0 ? minutes : 60) * 60LL;
-		const long long secs = (long long)dt.GetDate() * 86400LL + dt.GetTimeInSeconds();
-		return secs / len;
-	}
-	default:
-		return WindowKey(dt, s, e);
-	}
+	const long long len = (minutes > 0 ? minutes : 60) * 60LL;
+	const long long secs = (long long)dt.GetDate() * 86400LL + dt.GetTimeInSeconds();
+	return secs / len;
 }
 
 SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
@@ -66,20 +58,20 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	SCSubgraphRef SG_Target   = sc.Subgraph[2];
 
 	SCInputRef In_Enabled    = sc.Input[0];
-	SCInputRef In_RefStart   = sc.Input[1];
-	SCInputRef In_RefEnd     = sc.Input[2];
-	SCInputRef In_TradeStart = sc.Input[3];
-	SCInputRef In_TradeEnd   = sc.Input[4];
-	SCInputRef In_Flatten    = sc.Input[5];
-	SCInputRef In_RR         = sc.Input[6];
-	SCInputRef In_Qty        = sc.Input[7];
-	SCInputRef In_RefMode    = sc.Input[8];
-	SCInputRef In_RefMinutes = sc.Input[9];
+	SCInputRef In_Mode       = sc.Input[1];
+	SCInputRef In_RefStart   = sc.Input[2];
+	SCInputRef In_RefEnd     = sc.Input[3];
+	SCInputRef In_TradeStart = sc.Input[4];
+	SCInputRef In_TradeEnd   = sc.Input[5];
+	SCInputRef In_Flatten    = sc.Input[6];
+	SCInputRef In_Minutes    = sc.Input[7];
+	SCInputRef In_RR         = sc.Input[8];
+	SCInputRef In_Qty        = sc.Input[9];
 
 	if (sc.SetDefaults)
 	{
 		sc.GraphName = "Previous Session High Breakout";
-		sc.StudyDescription = "Long pri prurazu high predchozi session, SL = low predchozi session, RR 1:1, exit na konci dne.";
+		sc.StudyDescription = "Long pri prurazu high predchozi session, SL = low predchozi session, RR 1:1, exit na konci session.";
 		sc.GraphRegion = 0;
 		sc.AutoLoop = 1;
 
@@ -104,24 +96,25 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		In_Enabled.Name = "Trading Enabled";
 		In_Enabled.SetYesNo(1);
 
-		In_RefMode.Name = "Reference (Previous) Session Type";
-		In_RefMode.SetCustomInputStrings("Custom Time Window;Full Previous Day;Fixed Interval (minutes)");
-		In_RefMode.SetCustomInputIndex(REF_CUSTOM);
-		In_RefMinutes.Name = "Fixed Interval Length (minutes)";
-		In_RefMinutes.SetInt(60);
-		In_RefMinutes.SetIntLimits(1, 1440);
+		In_Mode.Name = "Session Mode";
+		In_Mode.SetCustomInputStrings("Custom Time Window;Daily (Previous Day);Fixed Interval (minutes)");
+		In_Mode.SetCustomInputIndex(MODE_CUSTOM);
 
-		In_RefStart.Name = "Reference (Previous) Session Start";
+		In_RefStart.Name = "[Custom] Previous Session Start";
 		In_RefStart.SetTime(HMS_TIME(9, 30, 0));
-		In_RefEnd.Name = "Reference (Previous) Session End";
+		In_RefEnd.Name = "[Custom] Previous Session End";
 		In_RefEnd.SetTime(HMS_TIME(16, 0, 0));
-
-		In_TradeStart.Name = "Trading Session Start";
+		In_TradeStart.Name = "[Custom] Trading Session Start";
 		In_TradeStart.SetTime(HMS_TIME(9, 30, 0));
-		In_TradeEnd.Name = "Trading Session End";
+		In_TradeEnd.Name = "[Custom] Trading Session End";
 		In_TradeEnd.SetTime(HMS_TIME(16, 0, 0));
-		In_Flatten.Name = "Flatten Time (End of Day Exit)";
+
+		In_Flatten.Name = "[Custom + Daily] Flatten Time (End of Day Exit)";
 		In_Flatten.SetTime(HMS_TIME(15, 55, 0));
+
+		In_Minutes.Name = "[Interval] Interval Length (minutes)";
+		In_Minutes.SetInt(60);
+		In_Minutes.SetIntLimits(1, 1440);
 
 		In_RR.Name = "Reward : Risk";
 		In_RR.SetFloat(1.0f);
@@ -145,43 +138,65 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 
 	sc.MaximumPositionAllowed = In_Qty.GetInt();
 
-	float& RefHigh      = sc.GetPersistentFloat(1);  // high posledni dokoncene referencni session
-	float& RefHighBuild = sc.GetPersistentFloat(2);  // high rozpracovane referencni session
-	float& RefLow       = sc.GetPersistentFloat(3);  // low posledni dokoncene referencni session
-	float& RefLowBuild  = sc.GetPersistentFloat(4);  // low rozpracovane referencni session
-	float& TargetPrice  = sc.GetPersistentFloat(5);
-	int& RefHighValid   = sc.GetPersistentInt(1);
-	int& TradedSession  = sc.GetPersistentInt(2);
-	int& BeenBelow      = sc.GetPersistentInt(3);  // cena byla v session pod PSH -> skutecny pruraz
-	int& LastIndex      = sc.GetPersistentInt(4);
+	float& RefHigh       = sc.GetPersistentFloat(1);  // high predchozi (dokoncene) session
+	float& RefHighBuild  = sc.GetPersistentFloat(2);  // high rozpracovane session
+	float& RefLow        = sc.GetPersistentFloat(3);  // low predchozi (dokoncene) session
+	float& RefLowBuild   = sc.GetPersistentFloat(4);  // low rozpracovane session
+	float& TargetPrice   = sc.GetPersistentFloat(5);
+	double& EntryKey     = sc.GetPersistentDouble(1); // session, ve ktere byla otevrena pozice
+	int& RefValid        = sc.GetPersistentInt(1);
+	int& TradedSession   = sc.GetPersistentInt(2);
+	int& BeenBelow       = sc.GetPersistentInt(3);    // cena byla v session pod PSH -> skutecny pruraz
+	int& LastIndex       = sc.GetPersistentInt(4);
 
 	const int i = sc.Index;
-	const int refS = In_RefStart.GetTime(), refE = In_RefEnd.GetTime();
-	const int trS  = In_TradeStart.GetTime(), trE = In_TradeEnd.GetTime();
-	const int refMode = In_RefMode.GetIndex();
-	const int refMin  = In_RefMinutes.GetInt();
+	const int mode    = In_Mode.GetIndex();
+	const int refS    = In_RefStart.GetTime(), refE = In_RefEnd.GetTime();
+	const int trS     = In_TradeStart.GetTime(), trE = In_TradeEnd.GetTime();
+	const int minutes = In_Minutes.GetInt();
+
+	// Klic predchozi/referencni session a klic obchodni session podle JEDNOHO zvoleneho rezimu
+	auto RefKey = [&](const SCDateTime& dt) -> long long
+	{
+		switch (mode)
+		{
+		case MODE_DAILY:    return sc.GetTradingDayDate(dt);
+		case MODE_INTERVAL: return IntervalKey(dt, minutes);
+		default:            return WindowKey(dt, refS, refE);
+		}
+	};
+	auto TradeKey = [&](const SCDateTime& dt) -> long long
+	{
+		switch (mode)
+		{
+		case MODE_DAILY:    return sc.GetTradingDayDate(dt);
+		case MODE_INTERVAL: return IntervalKey(dt, minutes);
+		default:            return WindowKey(dt, trS, trE);
+		}
+	};
 
 	if (i == 0)
 	{
 		RefHigh = 0; RefHighBuild = -FLT_MAX;
 		RefLow = 0; RefLowBuild = FLT_MAX;
-		TargetPrice = 0;
-		RefHighValid = 0; TradedSession = 0; BeenBelow = 0;
+		TargetPrice = 0; EntryKey = -1;
+		RefValid = 0; TradedSession = 0; BeenBelow = 0;
 		LastIndex = -1;
 	}
+
+	const long long kTrCur = TradeKey(sc.BaseDateTimeIn[i]);
 
 	// --- Zpracovani uzavreneho baru a prechodu mezi sessions (jednou za bar) ---
 	if (i != LastIndex)
 	{
-		const long long kRefCur = RefKey(sc, sc.BaseDateTimeIn[i], refMode, refS, refE, refMin);
-		const long long kTrCur  = WindowKey(sc.BaseDateTimeIn[i], trS, trE);
+		const long long kRefCur = RefKey(sc.BaseDateTimeIn[i]);
 		long long kRefPrev = -1, kTrPrev = -1;
 
 		if (i > 0)
 		{
 			const int p = i - 1;
-			kRefPrev = RefKey(sc, sc.BaseDateTimeIn[p], refMode, refS, refE, refMin);
-			kTrPrev  = WindowKey(sc.BaseDateTimeIn[p], trS, trE);
+			kRefPrev = RefKey(sc.BaseDateTimeIn[p]);
+			kTrPrev  = TradeKey(sc.BaseDateTimeIn[p]);
 
 			if (kRefPrev != -1)
 			{
@@ -189,28 +204,28 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 				RefLowBuild  = min(RefLowBuild, sc.Low[p]);
 			}
 
-			if (kTrPrev != -1 && RefHighValid && sc.Close[p] <= RefHigh)
+			if (kTrPrev != -1 && RefValid && sc.Close[p] <= RefHigh)
 				BeenBelow = 1;
 
-			// Referencni session skoncila -> zafixuj jeji high a low
+			// Predchozi session skoncila -> zafixuj jeji high a low
 			if (kRefPrev != -1 && kRefCur != kRefPrev)
 			{
 				RefHigh = RefHighBuild;
 				RefLow = RefLowBuild;
-				RefHighValid = 1;
-				BeenBelow = 0;  // novy level -> cekame na novy pruraz zespodu
+				RefValid = 1;
+				BeenBelow = 0;
 			}
 		}
 
 		if (kRefCur != -1 && kRefCur != kRefPrev)
 		{
-			RefHighBuild = -FLT_MAX;  // zacina nova referencni session
+			RefHighBuild = -FLT_MAX;  // zacina nova session
 			RefLowBuild = FLT_MAX;
 		}
 
 		if (kTrCur != -1 && kTrCur != kTrPrev)
 		{
-			TradedSession = 0;  // zacina nova obchodni session
+			TradedSession = 0;  // nova obchodni session -> povolen 1 novy obchod
 			BeenBelow = 0;
 		}
 
@@ -219,10 +234,14 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 
 	// --- Aktualni bar ---
 	const int t = sc.BaseDateTimeIn[i].GetTimeInSeconds();
-	const bool inTrade   = InWindow(t, trS, trE);
-	const bool inFlatten = InWindow(t, In_Flatten.GetTime(), trE);
 
-	if (RefHighValid)
+	bool inFlatten = false;  // okno pred koncem dne, kdy se pozice zavira a nevstupuje se
+	if (mode == MODE_CUSTOM)
+		inFlatten = InWindow(t, In_Flatten.GetTime(), trE);
+	else if (mode == MODE_DAILY)
+		inFlatten = InWindow(t, In_Flatten.GetTime(), sc.EndTime1 + 1);
+
+	if (RefValid)
 	{
 		SG_PrevHigh[i] = RefHigh;
 		SG_PrevLow[i] = RefLow;
@@ -232,21 +251,23 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	sc.GetTradePosition(Pos);
 	const bool flat = Pos.PositionQuantity == 0;
 
-	// Exit: konec dne / mimo obchodni session
-	if (!flat && (!inTrade || inFlatten))
-	{
-		sc.FlattenAndCancelAllOrders();
-		return;
-	}
-
+	// Exit: konec session, ve ktere byl obchod otevren / Flatten Time
 	if (!flat)
 	{
+		if (EntryKey < 0)
+			EntryKey = (double)kTrCur;  // pozice existovala uz pred prepocitanim studie
+
+		if (kTrCur == -1 || (double)kTrCur != EntryKey || inFlatten)
+		{
+			sc.FlattenAndCancelAllOrders();
+			return;
+		}
 		SG_Target[i] = TargetPrice;
 		return;
 	}
 
 	// Entry
-	if (!In_Enabled.GetYesNo() || !RefHighValid || !inTrade || inFlatten || TradedSession)
+	if (!In_Enabled.GetYesNo() || !RefValid || kTrCur == -1 || inFlatten || TradedSession)
 		return;
 
 	const bool breakout = (BeenBelow || sc.Open[i] <= RefHigh) && sc.Close[i] > RefHigh;
@@ -269,6 +290,7 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	if (sc.BuyEntry(Order) > 0)
 	{
 		TradedSession = 1;
+		EntryKey = (double)kTrCur;
 		TargetPrice = Order.Target1Price;
 		SG_Target[i] = TargetPrice;
 	}
