@@ -47,7 +47,7 @@ def win_key(day, t, s, e):
     return k
 
 
-def run(df, ref, trade, flatten, rr=1.0, max_sess=1, fill="live", close_eos=True):
+def run(df, ref, trade, flatten, rr=1.0, max_sess=1, fill="live", close_eos=True, direction="long"):
     t = (df.dt.dt.hour * 3600 + df.dt.dt.minute * 60).to_numpy()
     day = df.dt.to_numpy().astype("datetime64[D]").astype(np.int64)
     o, h, l, c = (df[x].to_numpy() for x in "ohlc")
@@ -64,6 +64,8 @@ def run(df, ref, trade, flatten, rr=1.0, max_sess=1, fill="live", close_eos=True
     partial = kref[0] != -1
     n_sess = 0
     pos = None  # dict
+    below = above = False
+    do_long, do_short = direction in ("long", "both"), direction in ("short", "both")
 
     for i in range(len(t)):
         # --- novy bar: zpracovani uzavreneho baru i-1 a prechodu ---
@@ -76,24 +78,32 @@ def run(df, ref, trade, flatten, rr=1.0, max_sess=1, fill="live", close_eos=True
                     partial = False
                 else:
                     ref_hi, ref_lo = b_hi, b_lo
+                    below = above = False
         if kref[i] != -1 and (i == 0 or kref[i] != kref[i - 1]):
             b_hi, b_lo = -np.inf, np.inf
         if ktr[i] != -1 and (i == 0 or ktr[i] != ktr[i - 1]):
             n_sess = 0
+        if i == 0 or ktr[i] != ktr[i - 1]:
+            below = above = False
+        elif ktr[i] != -1 and ref_hi is not None and pos is None:
+            if c[i - 1] <= ref_hi: below = True
+            if c[i - 1] >= ref_lo: above = True
 
         # --- sprava otevrene pozice ---
         if pos is not None:
             ex = None
             if close_eos and (ktr[i] == -1 or ktr[i] != pos["key"] or infl[i]):
                 ex, why = o[i], "cas"
-            elif o[i] <= pos["sl"]:
-                ex, why = o[i], "SL"
-            elif o[i] >= pos["tp"]:
-                ex, why = o[i], "TP"
-            elif l[i] <= pos["sl"]:
-                ex, why = pos["sl"], "SL"
-            elif h[i] >= pos["tp"]:
-                ex, why = pos["tp"], "TP"
+            else:
+                sd = pos["side"]
+                if (o[i] - pos["sl"]) * sd <= 0:
+                    ex, why = o[i], "SL"
+                elif (o[i] - pos["tp"]) * sd >= 0:
+                    ex, why = o[i], "TP"
+                elif (l[i] if sd == 1 else h[i]) * sd <= pos["sl"] * sd:
+                    ex, why = pos["sl"], "SL"
+                elif (h[i] if sd == 1 else l[i]) * sd >= pos["tp"] * sd:
+                    ex, why = pos["tp"], "TP"
             if ex is None:
                 continue
             pos.update(exit=ex, why=why, xdt=df.dt.iat[i])
@@ -105,35 +115,40 @@ def run(df, ref, trade, flatten, rr=1.0, max_sess=1, fill="live", close_eos=True
         # --- vstup ---
         if ref_hi is None or ktr[i] == -1 or infl[i] or n_sess >= max_sess:
             continue
-        prev_below = i > 0 and ktr[i - 1] == ktr[i] and c[i - 1] <= ref_hi
-        from_below = prev_below or o[i] <= ref_hi
-        if not from_below:
+        side = 0
+        if do_long and (below or o[i] <= ref_hi) and (h[i] > ref_hi if fill == "live" else c[i] > ref_hi):
+            side = 1
+        elif do_short and (above or o[i] >= ref_lo) and (l[i] < ref_lo if fill == "live" else c[i] < ref_lo):
+            side = -1
+        if side == 0:
             continue
         if fill == "live":
-            if h[i] <= ref_hi:
-                continue
-            entry = o[i] if o[i] > ref_hi else ref_hi + TICK
+            if side == 1:
+                entry = o[i] if o[i] > ref_hi else ref_hi + TICK
+            else:
+                entry = o[i] if o[i] < ref_lo else ref_lo - TICK
         else:
-            if c[i] <= ref_hi:
-                continue
             entry = c[i]
-        sl = ref_lo
-        risk = entry - sl
+        sl = ref_lo if side == 1 else ref_hi
+        risk = (entry - sl) * side
         if risk <= 0:
             continue
-        tp = entry + rr * risk
+        tp = entry + side * rr * risk
         n_sess += 1
-        pos = dict(edt=df.dt.iat[i], entry=entry, sl=sl, tp=tp, risk=risk, key=ktr[i])
+        below = above = False
+        pos = dict(edt=df.dt.iat[i], side=side, entry=entry, sl=sl, tp=tp, risk=risk, key=ktr[i])
         if fill == "live":  # zbytek vstupniho baru (konzervativne: stop pred targetem)
-            if l[i] <= sl:
+            hit_sl = l[i] <= sl if side == 1 else h[i] >= sl
+            hit_tp = h[i] >= tp if side == 1 else l[i] <= tp
+            if hit_sl:
                 pos.update(exit=sl, why="SL", xdt=df.dt.iat[i]); trades.append(pos); pos = None
-            elif h[i] >= tp:
+            elif hit_tp:
                 pos.update(exit=tp, why="TP", xdt=df.dt.iat[i]); trades.append(pos); pos = None
 
     tr = pd.DataFrame(trades)
     if tr.empty:
         return tr
-    tr["pts"] = tr.exit - tr.entry
+    tr["pts"] = (tr.exit - tr.entry) * tr.side
     tr["gross"] = tr.pts * PV
     tr["net"] = tr.gross - COST
     tr["R"] = tr.pts / tr.risk

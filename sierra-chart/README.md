@@ -35,6 +35,8 @@ Pravidla konzistence:
 
 Příklady Custom: 9:30–16:00 → 9:30–16:00 (předchozí RTH den), 18:00–9:30 → 9:30–16:00 (overnight → RTH, okna přes půlnoc fungují).
 
+**Direction** – `Long only` (výchozí), `Short only`, `Long + Short`. Short = průraz low předchozí session shora, SL = high předchozí session, TP = vstup − RR × riziko.
+
 Společné: **Reward : Risk**, **Position Size**, **Trading Enabled**.
 
 **Close Position At End Of Session/Day** – `Yes` (výchozí) = pozice se zavře na konci session/dne (Flatten Time, resp. konec bloku). `No` = pozice se drží, dokud ji neukončí Stop nebo Target (i přes noc / do další session); Stop/Target se vždy posílají jako GTC, takže přepnutí volby ani s otevřenou pozicí nenechá pozici bez stopu. Dokud je pozice otevřená, nový obchod se neotevře.
