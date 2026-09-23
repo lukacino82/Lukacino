@@ -20,6 +20,9 @@ Příklady:
 import argparse
 import csv
 from collections import OrderedDict
+from datetime import datetime, timedelta
+
+VWAP_MODES = ("rth", "eth", "week")
 
 
 def hms(s):
@@ -27,13 +30,22 @@ def hms(s):
     return int(h) * 3600 + int(m) * 60
 
 
-def load_bars(path, resample=0):
+def load_bars(path, resample=0, rth_start=9 * 3600 + 30 * 60):
+    """Svíčky po dnech: (secs, o, h, l, c, {vwap_mode: hodnota}).
+
+    VWAP (typická cena (H+L+C)/3 * objem) se počítá z původních svíček:
+      rth  – od začátku seance (rth_start) do konce dne
+      eth  – od otevření Globexu 18:00 (session = datum posunuté o +6 h)
+      week – anchored na začátek týdne (neděle 18:00)
+    """
     days = OrderedDict()
+    acc = {m: [None, 0.0, 0.0] for m in VWAP_MODES}  # [klíč seance, sum(pv), sum(v)]
     with open(path, newline="") as f:
         reader = csv.reader(f)
         header = [h.strip().lower() for h in next(reader)]
         ix = {name: header.index(name) for name in ("date", "time", "open", "high", "low")}
         ix["close"] = header.index("last") if "last" in header else header.index("close")
+        vol_ix = header.index("volume") if "volume" in header else None
         for row in reader:
             if not row or not row[0].strip():
                 continue
@@ -41,14 +53,36 @@ def load_bars(path, resample=0):
             t = row[ix["time"]].strip().split(".")[0]
             hh, mm, *ss = t.split(":")
             secs = int(hh) * 3600 + int(mm) * 60 + (int(ss[0]) if ss else 0)
-            bar = (secs, float(row[ix["open"]]), float(row[ix["high"]]),
-                   float(row[ix["low"]]), float(row[ix["close"]]))
+            o, h, l, c = (float(row[ix[k]]) for k in ("open", "high", "low", "close"))
+            vol = float(row[vol_ix]) if vol_ix is not None else 0.0
+
+            y, m_, dd = (int(x) for x in d.split("/"))
+            shifted = datetime(y, m_, dd) + timedelta(seconds=secs + 6 * 3600)
+            keys = {
+                "rth": (d if secs >= rth_start else None),
+                "eth": shifted.date(),
+                "week": shifted.isocalendar()[:2],
+            }
+            vw = {}
+            tp = (h + l + c) / 3
+            for mode, a in acc.items():
+                k = keys[mode]
+                if k is None:
+                    vw[mode] = None
+                    continue
+                if a[0] != k:
+                    a[:] = [k, 0.0, 0.0]
+                a[1] += tp * vol
+                a[2] += vol
+                vw[mode] = a[1] / a[2] if a[2] else c
+
+            bar = (secs, o, h, l, c, vw)
             day = days.setdefault(d, [])
             if resample:
                 start = secs - secs % (resample * 60)
                 if day and day[-1][0] == start:
-                    _, o0, h0, l0, _ = day[-1]
-                    day[-1] = (start, o0, max(h0, bar[2]), min(l0, bar[3]), bar[4])
+                    _, o0, h0, l0, _, _ = day[-1]
+                    day[-1] = (start, o0, max(h0, h), min(l0, l), c, vw)
                     continue
                 bar = (start,) + bar[1:]
             day.append(bar)
@@ -61,7 +95,8 @@ def run_day(bars, p):
     hi = lo = None
     pos = 0
     entry = stop = target = 0.0
-    for secs, o, h, l, c in bars:
+    for bar in bars:
+        secs, o, h, l, c = bar[:5]
         if t_start <= secs < t_or_end:
             hi = h if hi is None else max(hi, h)
             lo = l if lo is None else min(lo, l)
@@ -99,6 +134,10 @@ def run_day(bars, p):
             sig = -1
         if not sig:
             continue
+        if p.vwap != "off":
+            v = bar[5][p.vwap] if len(bar) > 5 else None
+            if v is None or (c - v) * sig <= 0:
+                continue  # proti VWAP -> signál ignorujeme, čekáme dál
         mid = (hi + lo) / 2
         if p.stop == "fixed":
             stop = c - sig * p.stop_ticks * p.tick
@@ -161,6 +200,8 @@ def build_parser():
     ap.add_argument("--stop-ticks", type=int, default=40, help="SL v ticích pro --stop fixed")
     ap.add_argument("--target-ticks", type=int, default=0, help="pevný TP v ticích (0 = riziko * RRR)")
     ap.add_argument("--direction", choices=["both", "long", "short"], default="both")
+    ap.add_argument("--vwap", choices=("off",) + VWAP_MODES, default="off",
+                    help="filtr: long jen nad VWAP, short jen pod VWAP")
     ap.add_argument("--min-ticks", type=int, default=0)
     ap.add_argument("--max-ticks", type=int, default=0)
     ap.add_argument("--tick", type=float, default=0.25, help="tick size (ES/MES 0.25)")
@@ -177,7 +218,7 @@ def build_parser():
 def main():
     p = build_parser().parse_args()
 
-    days = load_bars(p.file, p.resample)
+    days = load_bars(p.file, p.resample, p.start)
     keys = list(days.keys())
     split = int(len(keys) * (1 - p.oos))
     print(f"Days: {len(keys)}  |  in-sample {keys[0]} .. {keys[max(split-1,0)]}"
@@ -188,7 +229,7 @@ def main():
         res = [(k, run_day(days[k], p)) for k in keys]
         is_tr = [r[0] for k, r in res[:split] if r]
         oos_tr = [r[0] for k, r in res[split:] if r]
-        print(f"\n=== RRR 1:{rrr:g} | stop={p.stop} | dir={p.direction} ===")
+        print(f"\n=== RRR 1:{rrr:g} | stop={p.stop} | dir={p.direction} | vwap={p.vwap} ===")
         print(fmt("In-sample", stats(is_tr, p)))
         print(fmt("Out-of-sample", stats(oos_tr, p)))
         print(fmt("All", stats(is_tr + oos_tr, p)))

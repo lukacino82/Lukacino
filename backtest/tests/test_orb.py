@@ -107,6 +107,12 @@ class OrbLogic(unittest.TestCase):
         self.assertEqual(reason, "TP")
         self.assertAlmostEqual(pts, 4)
 
+    def test_vwap_filter_blocks_long_below_vwap(self):
+        vw = {"rth": 104, "eth": 104, "week": 104}
+        day = [b + (vw,) for b in RANGE] + [(t(9, 45), 100, 103, 100, 103, vw)]
+        self.assertIsNone(run_day(day, params("--vwap", "eth")))
+        self.assertIsNotNone(run_day(day, params()))
+
     def test_max_range_filter(self):
         # range 4 body = 16 ticků
         day = RANGE + [(t(9, 45), 100, 103, 100, 103)]
@@ -139,7 +145,26 @@ class Resample(unittest.TestCase):
             f.write("\n".join(rows))
         bars = load_bars(f.name, resample=5)["2025/1/2"]
         os.unlink(f.name)
-        self.assertEqual(bars, [(t(9, 30), 100, 105, 99, 104.5), (t(9, 35), 105, 110, 104, 109.5)])
+        self.assertEqual([b[:5] for b in bars],
+                         [(t(9, 30), 100, 105, 99, 104.5), (t(9, 35), 105, 110, 104, 109.5)])
+
+    def test_vwap_resets(self):
+        import tempfile
+        rows = ["Date, Time, Open, High, Low, Last, Volume",
+                "2025/1/5, 18:00:00, 10, 10, 10, 10, 1",   # neděle Globex -> nový týden i ETH
+                "2025/1/6, 09:00:00, 20, 20, 20, 20, 1",
+                "2025/1/6, 09:30:00, 40, 40, 40, 40, 2",   # RTH start
+                "2025/1/6, 18:00:00, 70, 70, 70, 70, 1"]   # nová ETH seance, stejný týden
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+            f.write("\n".join(rows))
+        days = load_bars(f.name)
+        os.unlink(f.name)
+        v = [b[5] for b in days["2025/1/6"]]
+        self.assertIsNone(v[0]["rth"])
+        self.assertAlmostEqual(v[1]["rth"], 40)
+        self.assertAlmostEqual(v[1]["eth"], (10 + 20 + 80) / 4)
+        self.assertAlmostEqual(v[2]["eth"], 70)
+        self.assertAlmostEqual(v[2]["week"], (10 + 20 + 80 + 70) / 5)
 
 
 if __name__ == "__main__":
