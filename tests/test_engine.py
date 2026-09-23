@@ -121,3 +121,13 @@ def test_load_mt5_csv(tmp_path):
     assert list(df.columns) == ["open", "high", "low", "close", "volume"]
     assert df.index.tz is not None and len(df) == 2
     assert summary(pd.DataFrame(columns=["r", "date", "exit_reason"]))["trades"] == 0
+
+
+def test_load_ninjatrader_txt(tmp_path):
+    p = tmp_path / "es.txt"
+    p.write_text("20240102 093100;4700.25;4701.5;4699.75;4701;1200\n"
+                 "20240102 093200;4701;4702;4700.5;4701.75;900\n"
+                 "20240102 093300;4701.75;4703;4701.5;4702.5;800\n")
+    df = load_csv(str(p), tz="America/New_York", bar_time="close")
+    assert df.index[0] == pd.Timestamp("2024-01-02 09:30", tz="America/New_York")
+    assert df["close"].iloc[-1] == 4702.5 and df["volume"].iloc[0] == 1200

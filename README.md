@@ -155,6 +155,12 @@ Pak:
 10. **Monte Carlo:** drawdown v 95. percentilu musíte psychicky i finančně
     unést.
 
+**Pozor na průrazové vstupy a skluz:** stop order se v backtestu plní přesně
+na úrovni průrazu. Na hrubých datech nebo v rychlém trhu je reálné plnění
+horší, a to systematicky *proti* obchodu. U malých rangů (ORB 5m) tak
+i 1–2 ticky skluzu mění výsledek. `--cost` proto vždy nastavte aspoň na
+spread + 1 tick skluzu na vstupu i na stopu (ES: 0,5 bodu).
+
 Engine je navíc konzervativní: ATR jen z minulých dní, na vstupním baru
 průrazu se počítá jen SL, když bar zasáhne SL i TP, počítá se SL, a gapy
 přes SL se plní na open.

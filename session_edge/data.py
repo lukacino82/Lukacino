@@ -9,26 +9,61 @@ import pandas as pd
 _TS_CANDIDATES = ("datetime", "timestamp", "time", "date", "gmt time", "local time")
 
 
-def load_csv(path: str, tz: str = "UTC", sep: Optional[str] = None) -> pd.DataFrame:
-    """Načte OHLC(V) CSV z běžných zdrojů (TradingView, MT4/MT5, Dukascopy...).
+def _sniff(path: str) -> tuple[str, bool]:
+    """Zjistí oddělovač a zda má soubor hlavičku."""
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        first = f.readline()
+    sep = next((c for c in (";", "\t", ",") if c in first), r"\s+")
+    has_header = any(ch.isalpha() for ch in first.replace("T", "").replace("Z", ""))
+    return sep, has_header
 
-    Podporuje buď jeden sloupec s datem a časem, nebo oddělené sloupce
-    `date` + `time`. `tz` je časová zóna, ve které jsou časy v souboru.
-    Výsledek má tz-aware DatetimeIndex a sloupce open/high/low/close[/volume].
+
+def load_csv(
+    path: str,
+    tz: str = "UTC",
+    sep: Optional[str] = None,
+    bar_time: str = "open",
+) -> pd.DataFrame:
+    """Načte OHLC(V) data z běžných zdrojů.
+
+    Podporované formáty:
+    * s hlavičkou: TradingView, MT4/MT5 (`<DATE> <TIME> ...`), Dukascopy, unix ts
+    * bez hlavičky: NinjaTrader export `20240102 093100;o;h;l;c;v`,
+      nebo `datum,čas,o,h,l,c[,v]` / `datum čas,o,h,l,c[,v]`
+
+    `tz` = časová zóna časů v souboru. `bar_time="close"` znamená, že čas
+    v souboru označuje konec baru (NinjaTrader, TradeStation) – převede se
+    na čas otevření, který používá engine.
     """
-    df = pd.read_csv(path, sep=sep, engine="python")
-    df.columns = [str(c).strip().strip("<>").lower() for c in df.columns]
-
-    if "date" in df.columns and "time" in df.columns:
-        ts = pd.to_datetime(df["date"].astype(str) + " " + df["time"].astype(str))
-    else:
-        col = next((c for c in _TS_CANDIDATES if c in df.columns), df.columns[0])
-        raw = df[col]
-        if np.issubdtype(raw.dtype, np.number):  # unix timestamp
-            unit = "ms" if raw.iloc[0] > 1e11 else "s"
-            ts = pd.to_datetime(raw, unit=unit, utc=True)
+    sniff_sep, has_header = _sniff(path)
+    sep = sep or sniff_sep
+    if has_header:
+        df = pd.read_csv(path, sep=sep, engine="python")
+        df.columns = [str(c).strip().strip("<>").lower() for c in df.columns]
+        if "date" in df.columns and "time" in df.columns:
+            ts = pd.to_datetime(df["date"].astype(str) + " " + df["time"].astype(str), format="mixed")
         else:
-            ts = pd.to_datetime(raw, utc=False, format="mixed", dayfirst=False)
+            col = next((c for c in _TS_CANDIDATES if c in df.columns), df.columns[0])
+            raw = df[col]
+            if np.issubdtype(raw.dtype, np.number):  # unix timestamp
+                unit = "ms" if raw.iloc[0] > 1e11 else "s"
+                ts = pd.to_datetime(raw, unit=unit, utc=True)
+            else:
+                ts = pd.to_datetime(raw, utc=False, format="mixed", dayfirst=False)
+    else:
+        df = pd.read_csv(path, sep=sep, header=None, engine="c" if len(sep) == 1 else "python",
+                         dtype=str)
+        first = df.iloc[0, 0].strip()
+        n_num = df.shape[1]
+        if " " in first:  # "20240102 093100" nebo "2024-01-02 09:31:00"
+            stamp, rest = df[0].str.strip(), 1
+        else:  # datum a čas ve dvou sloupcích
+            stamp, rest = df[0].str.strip() + " " + df[1].str.strip(), 2
+        fmt = "%Y%m%d %H%M%S" if first.replace(" ", "").isdigit() and len(first) == 15 else "mixed"
+        ts = pd.to_datetime(stamp, format=fmt)
+        names = ["open", "high", "low", "close", "volume"][: n_num - rest]
+        df = df.iloc[:, rest: rest + len(names)]
+        df.columns = names
 
     rename = {"vol": "volume", "tickvol": "volume", "tick_volume": "volume"}
     df = df.rename(columns=rename)
@@ -37,10 +72,17 @@ def load_csv(path: str, tz: str = "UTC", sep: Optional[str] = None) -> pd.DataFr
         raise ValueError(f"CSV neobsahuje sloupce: {sorted(missing)}")
 
     idx = pd.DatetimeIndex(ts)
-    idx = idx.tz_localize(tz) if idx.tz is None else idx.tz_convert(tz)
+    if bar_time == "close":
+        step = pd.Series(idx).diff().dropna()
+        idx = idx - step[step > pd.Timedelta(0)].mode().iloc[0]
+    if idx.tz is None:
+        idx = idx.tz_localize(tz, ambiguous="NaT", nonexistent="shift_forward")
+    else:
+        idx = idx.tz_convert(tz)
     cols = [c for c in ("open", "high", "low", "close", "volume") if c in df.columns]
     out = df[cols].astype(float)
     out.index = idx
+    out = out[out.index.notna()]
     out = out[~out.index.duplicated(keep="first")].sort_index()
     return validate_ohlc(out)
 
@@ -88,28 +130,29 @@ def synthetic_intraday(
     start = pd.Timestamp(session[0])
     end = pd.Timestamp(session[1])
     n_bars = int((end - start) / pd.Timedelta(minutes=bar_minutes))
+    sub = 60  # high/low baru se počítá z jemné cesty, ne z náhodných knotů
     x = np.linspace(-1, 1, n_bars)
     profile = 0.6 + 1.6 * x**2  # U-shape
     profile = profile / np.sqrt((profile**2).mean())
     bar_sigma = daily_vol / np.sqrt(n_bars) * profile
-    orb_bars = orb_minutes // bar_minutes
+    step_sigma = np.repeat(bar_sigma / np.sqrt(sub), sub)
+    orb_steps = orb_minutes // bar_minutes * sub
 
     dates = pd.bdate_range("2020-01-02", periods=days)
     frames = []
     price = start_price
     for d in dates:
         vol_regime = np.exp(rng.normal(0, 0.35))
-        gap = rng.normal(0, daily_vol * 0.3)
-        price *= np.exp(gap)
-        rets = rng.standard_t(5, n_bars) / np.sqrt(5 / 3) * bar_sigma * vol_regime
+        price *= np.exp(rng.normal(0, daily_vol * 0.3))  # overnight gap
+        rets = rng.standard_t(5, n_bars * sub) / np.sqrt(5 / 3) * step_sigma * vol_regime
         if orb_drift:
-            first = rets[:orb_bars].sum()
-            rets[orb_bars:] += np.sign(first) * orb_drift * bar_sigma[orb_bars:] * vol_regime
-        closes = price * np.exp(np.cumsum(rets))
+            first = rets[:orb_steps].sum()
+            rets[orb_steps:] += np.sign(first) * orb_drift * step_sigma[orb_steps:] / np.sqrt(sub) * vol_regime
+        path = (price * np.exp(np.cumsum(rets))).reshape(n_bars, sub)
+        closes = path[:, -1]
         opens = np.concatenate([[price], closes[:-1]])
-        wick = np.abs(rng.normal(0, 0.5, (2, n_bars))) * bar_sigma * vol_regime * closes
-        highs = np.maximum(opens, closes) + wick[0]
-        lows = np.minimum(opens, closes) - wick[1]
+        highs = np.maximum(path.max(axis=1), opens)
+        lows = np.minimum(path.min(axis=1), opens)
         idx = pd.date_range(
             pd.Timestamp.combine(d.date(), start.time()), periods=n_bars, freq=f"{bar_minutes}min"
         ).tz_localize(tz)

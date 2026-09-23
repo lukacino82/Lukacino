@@ -113,9 +113,14 @@ class RangeBreakout(Strategy):
 
         long_pos = next((p for p in pos if h[p] >= up), None)
         short_pos = next((p for p in pos if l[p] <= dn), None)
-        # outside bar prorazí obě strany – pořadí neznáme, takový bar vynecháme
+        # Outside bar prorazí obě strany. Vynechat ho by byla selekce (jde
+        # o typické ztrátové whipsaw dny), takže vstup na straně bližší k open
+        # baru; engine pak konzervativně vyhodnotí SL na témže baru.
         if long_pos is not None and long_pos == short_pos:
-            return []
+            if up - o[long_pos] <= o[long_pos] - dn:
+                short_pos = None
+            else:
+                long_pos = None
 
         out = []
         if long_pos is not None and self.direction in ("both", "long"):

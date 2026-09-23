@@ -3,8 +3,8 @@
 Zásady:
 * ATR a včerejší close se počítají výhradně z předchozích dní.
 * Stop entry (průraz) se plní na úrovni průrazu, nebo na open baru při gapu.
-* Na vstupním baru stop-entry obchodu se kontroluje jen SL (nevíme, zda TP
-  přišel až po vstupu) – konzervativní předpoklad.
+* Na vstupním baru se kontroluje SL i TP; SL konzervativně i tehdy, když
+  opačný extrém baru mohl nastat ještě před vstupem.
 * Když jeden bar zasáhne SL i TP, počítá se SL (conservative_intrabar).
 * Gap přes SL/TP se plní na open baru (realisticky horší/lepší cena).
 * Nucený výstup: na open prvního baru s časem >= exit_time, jinak na close
@@ -125,12 +125,11 @@ def _simulate(
                 exit_price, exit_reason, exit_idx = oj, "target", j
                 break
 
+        # Vstupní bar průrazu: extrém ve směru obchodu nastal až po vstupu
+        # (cena musela nejdřív projít úrovní vstupu), takže TP se kontroluje;
+        # opačný extrém mohl být před vstupem – SL se počítá konzervativně.
         hit_stop = lo <= stop if direction > 0 else hi >= stop
-        check_target = not (first and sig.fill == "intrabar")
-        hit_target = (
-            check_target and target is not None
-            and (hi >= target if direction > 0 else lo <= target)
-        )
+        hit_target = target is not None and (hi >= target if direction > 0 else lo <= target)
         if hit_stop and hit_target:
             if cfg.conservative_intrabar:
                 exit_price, exit_reason = stop, "stop"
