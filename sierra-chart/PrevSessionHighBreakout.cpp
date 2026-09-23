@@ -317,8 +317,9 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	s_SCNewOrder Order;
 	Order.OrderQuantity = In_Qty.GetInt();
 	Order.OrderType = SCT_ORDERTYPE_MARKET;
-	// Pri drzeni pres konec session musi Stop/Target zustat aktivni i dalsi den
-	Order.TimeInForce = closeEOS ? SCT_TIF_DAY : SCT_TIF_GOOD_TILL_CANCELED;
+	// GTC vzdy: Stop/Target nesmi vyprset, ani kdyz se Close At End Of Session
+	// prepne na No pri otevrene pozici. Pri Yes je zrusi FlattenAndCancelAllOrders.
+	Order.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED;
 	Order.Stop1Price = stop;
 	Order.Target1Price = entry + risk * In_RR.GetFloat();
 

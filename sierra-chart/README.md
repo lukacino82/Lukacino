@@ -32,7 +32,7 @@ Příklady Custom: 9:30–16:00 → 9:30–16:00 (předchozí RTH den), 18:00–
 
 Společné: **Reward : Risk**, **Position Size**, **Trading Enabled**.
 
-**Close Position At End Of Session/Day** – `Yes` (výchozí) = pozice se zavře na konci session/dne (Flatten Time, resp. konec bloku). `No` = pozice se drží, dokud ji neukončí Stop nebo Target (i přes noc / do další session); Stop/Target se pak posílají jako GTC. Dokud je pozice otevřená, nový obchod se neotevře.
+**Close Position At End Of Session/Day** – `Yes` (výchozí) = pozice se zavře na konci session/dne (Flatten Time, resp. konec bloku). `No` = pozice se drží, dokud ji neukončí Stop nebo Target (i přes noc / do další session); Stop/Target se vždy posílají jako GTC, takže přepnutí volby ani s otevřenou pozicí nenechá pozici bez stopu. Dokud je pozice otevřená, nový obchod se neotevře.
 
 **Omezení počtu obchodů:**
 - **Max Trades Per Session** – max. počet obchodů v jedné session (den / okno / blok podle Session Mode). Další obchod v téže session se otevře jen po novém průrazu – cena se musí nejdřív vrátit pod PSH.
