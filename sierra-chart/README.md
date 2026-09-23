@@ -7,7 +7,7 @@ Jednoduchý automatický systém podle pravidel:
 | Entry | Long, když cena prorazí high předchozí session (cena v session byla pod PSH, pak `Close > PSH`) |
 | Stop Loss | Low předchozí (referenční) session |
 | Risk/Reward | 1:1 (input `Reward : Risk`) |
-| Exit | Target, Stop, nebo konec aktuální session |
+| Exit | Target, Stop, nebo konec aktuální session (vypnutelné: `Close Position At End Of Session/Day`) |
 | Velikost | 1 kontrakt |
 | Limit obchodů | `Max Trades Per Session` (default 1), `Max Trades Per Day` (0 = bez limitu) |
 
@@ -31,6 +31,8 @@ Na grafu se kreslí linie Previous Session High, Previous Session Low (= stop) a
 Příklady Custom: 9:30–16:00 → 9:30–16:00 (předchozí RTH den), 18:00–9:30 → 9:30–16:00 (overnight → RTH, okna přes půlnoc fungují).
 
 Společné: **Reward : Risk**, **Position Size**, **Trading Enabled**.
+
+**Close Position At End Of Session/Day** – `Yes` (výchozí) = pozice se zavře na konci session/dne (Flatten Time, resp. konec bloku). `No` = pozice se drží, dokud ji neukončí Stop nebo Target (i přes noc / do další session); Stop/Target se pak posílají jako GTC. Dokud je pozice otevřená, nový obchod se neotevře.
 
 **Omezení počtu obchodů:**
 - **Max Trades Per Session** – max. počet obchodů v jedné session (den / okno / blok podle Session Mode). Další obchod v téže session se otevře jen po novém průrazu – cena se musí nejdřív vrátit pod PSH.

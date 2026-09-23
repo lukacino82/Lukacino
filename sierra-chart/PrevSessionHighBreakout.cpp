@@ -4,7 +4,7 @@
 //   Entry:        Long, kdyz cena prorazi high predchozi session
 //   Stop Loss:    Low predchozi session
 //   Risk/Reward:  1:1 (nastavitelne)
-//   Exit:         Target / Stop / konec aktualni session
+//   Exit:         Target / Stop / konec aktualni session (volitelne - input Close At End Of Session)
 //   Pozice:       1 kontrakt
 //   Limity:       Max Trades Per Session (default 1), Max Trades Per Day (0 = bez limitu).
 //                 Dalsi obchod v session jen po novem prurazu (cena se musi vratit pod PSH).
@@ -71,6 +71,7 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	SCInputRef In_Qty        = sc.Input[9];
 	SCInputRef In_MaxSess    = sc.Input[10];
 	SCInputRef In_MaxDay     = sc.Input[11];
+	SCInputRef In_CloseEOS   = sc.Input[12];
 
 	if (sc.SetDefaults)
 	{
@@ -131,6 +132,9 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		In_MaxDay.Name = "Max Trades Per Day (0 = no limit)";
 		In_MaxDay.SetInt(0);
 		In_MaxDay.SetIntLimits(0, 1000);
+
+		In_CloseEOS.Name = "Close Position At End Of Session/Day";
+		In_CloseEOS.SetYesNo(1);
 
 		// Nastaveni obchodovani
 		sc.AllowMultipleEntriesInSameDirection = false;
@@ -271,13 +275,16 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	sc.GetTradePosition(Pos);
 	const bool flat = Pos.PositionQuantity == 0;
 
+	const bool closeEOS = In_CloseEOS.GetYesNo() != 0;
+
 	// Exit: konec session, ve ktere byl obchod otevren / Flatten Time
+	// (pri Close At End Of Session = No se pozice drzi jen do Stop / Target)
 	if (!flat)
 	{
 		if (EntryKey < 0)
 			EntryKey = (double)kTrCur;  // pozice existovala uz pred prepocitanim studie
 
-		if (kTrCur == -1 || (double)kTrCur != EntryKey || inFlatten)
+		if (closeEOS && (kTrCur == -1 || (double)kTrCur != EntryKey || inFlatten))
 		{
 			sc.FlattenAndCancelAllOrders();
 			return;
@@ -310,7 +317,8 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	s_SCNewOrder Order;
 	Order.OrderQuantity = In_Qty.GetInt();
 	Order.OrderType = SCT_ORDERTYPE_MARKET;
-	Order.TimeInForce = SCT_TIF_DAY;
+	// Pri drzeni pres konec session musi Stop/Target zustat aktivni i dalsi den
+	Order.TimeInForce = closeEOS ? SCT_TIF_DAY : SCT_TIF_GOOD_TILL_CANCELED;
 	Order.Stop1Price = stop;
 	Order.Target1Price = entry + risk * In_RR.GetFloat();
 
