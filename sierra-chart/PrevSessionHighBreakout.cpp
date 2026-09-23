@@ -344,7 +344,19 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	Order.Stop1Price = stop;
 	Order.Target1Price = entry + risk * In_RR.GetFloat();
 
-	if (sc.BuyEntry(Order) > 0)
+	const int result = (int)sc.BuyEntry(Order);
+
+	// Diagnostika: na poslednim (zivem) baru zapis do Message Logu, proc prikaz neprosel
+	if (result <= 0 && i == sc.ArraySize - 1)
+	{
+		SCString msg;
+		msg.Format("Previous Session High Breakout: signal na %.2f, ale BuyEntry vratil chybu %d "
+			"(zkontroluj Trade >> Auto Trading Enabled Global/Chart, Trade Simulation Mode a Trade Service Log).",
+			entry, result);
+		sc.AddMessageToLog(msg, 1);
+	}
+
+	if (result > 0)
 	{
 		TradesSession++;
 		TradesDay++;

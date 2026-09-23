@@ -49,7 +49,7 @@ def win_key(day, t, s, e):
 
 def run(df, ref, trade, flatten, rr=1.0, max_sess=1, fill="live", close_eos=True):
     t = (df.dt.dt.hour * 3600 + df.dt.dt.minute * 60).to_numpy()
-    day = (df.dt.dt.normalize().astype("int64") // 86_400_000_000_000).to_numpy()
+    day = df.dt.to_numpy().astype("datetime64[D]").astype(np.int64)
     o, h, l, c = (df[x].to_numpy() for x in "ohlc")
     rs, re_ = hms(ref[0]), hms(ref[1])
     ts, te = hms(trade[0]), hms(trade[1])
@@ -169,6 +169,7 @@ CONFIGS = {
     "A2 overnight->RTH cely den": dict(ref=("18:00", "09:30"), trade=("09:30", "16:00"), flatten="15:55"),
     "B prvnich 30 min 10:00-12:00": dict(ref=("09:30", "10:00"), trade=("10:00", "12:00"), flatten="11:55"),
     "C predchozi RTH den": dict(ref=("09:30", "16:00"), trade=("09:30", "16:00"), flatten="15:55"),
+    "D Daily (session grafu 18:00-17:00)": dict(ref=("18:00", "17:00"), trade=("18:00", "17:00"), flatten="15:55"),
 }
 
 if __name__ == "__main__":
