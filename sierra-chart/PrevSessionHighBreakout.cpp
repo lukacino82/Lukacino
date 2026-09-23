@@ -291,7 +291,8 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		return;
 
 	// Limity poctu obchodu
-	if (TradesSession >= In_MaxSess.GetInt())
+	const int maxSess = In_MaxSess.GetInt() > 0 ? In_MaxSess.GetInt() : 1;
+	if (TradesSession >= maxSess)
 		return;
 	if (In_MaxDay.GetInt() > 0 && TradesDay >= In_MaxDay.GetInt())
 		return;
