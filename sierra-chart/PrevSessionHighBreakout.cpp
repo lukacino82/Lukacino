@@ -1,7 +1,9 @@
 // Previous-session-high breakout – jednoduchy automaticky system pro Sierra Chart (ACSIL)
 //
 // Logika:
-//   Entry:        Long, kdyz cena prorazi high predchozi session
+//   Entry:        Long, kdyz cena prorazi high predchozi session ZESPODU v ramci aktualni
+//                 session (predchozi bar teze session zavrel <= PSH nebo aktualni bar otevrel <= PSH).
+//                 Gap nad PSH na otevreni session neni pruraz.
 //   Stop Loss:    Low predchozi session
 //   Risk/Reward:  1:1 (nastavitelne)
 //   Exit:         Target / Stop / konec aktualni session (volitelne - input Close At End Of Session)
@@ -161,7 +163,7 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	double& EntryKey     = sc.GetPersistentDouble(1); // session, ve ktere byla otevrena pozice
 	int& RefValid        = sc.GetPersistentInt(1);
 	int& TradesSession   = sc.GetPersistentInt(2);    // pocet obchodu v aktualni session
-	int& BeenBelow       = sc.GetPersistentInt(3);    // cena byla v session pod PSH -> skutecny pruraz
+	int& RefPartial      = sc.GetPersistentInt(3);    // prvni referencni session na grafu neni kompletni
 	int& LastIndex       = sc.GetPersistentInt(4);
 	int& TradesDay       = sc.GetPersistentInt(5);    // pocet obchodu v aktualnim obchodnim dni
 	int& DayKey          = sc.GetPersistentInt(6);
@@ -197,23 +199,24 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		RefHigh = 0; RefHighBuild = -FLT_MAX;
 		RefLow = 0; RefLowBuild = FLT_MAX;
 		TargetPrice = 0; EntryKey = -1;
-		RefValid = 0; TradesSession = 0; BeenBelow = 0;
+		RefValid = 0; TradesSession = 0;
+		RefPartial = RefKey(sc.BaseDateTimeIn[0]) != -1 ? 1 : 0;  // data zacinaji uprostred session
 		LastIndex = -1; TradesDay = 0; DayKey = -1;
 	}
 
-	const long long kTrCur = TradeKey(sc.BaseDateTimeIn[i]);
+	const long long kTrCur  = TradeKey(sc.BaseDateTimeIn[i]);
+	const long long kTrPrev = i > 0 ? TradeKey(sc.BaseDateTimeIn[i - 1]) : -1;
 
 	// --- Zpracovani uzavreneho baru a prechodu mezi sessions (jednou za bar) ---
 	if (i != LastIndex)
 	{
 		const long long kRefCur = RefKey(sc.BaseDateTimeIn[i]);
-		long long kRefPrev = -1, kTrPrev = -1;
+		long long kRefPrev = -1;
 
 		if (i > 0)
 		{
 			const int p = i - 1;
 			kRefPrev = RefKey(sc.BaseDateTimeIn[p]);
-			kTrPrev  = TradeKey(sc.BaseDateTimeIn[p]);
 
 			if (kRefPrev != -1)
 			{
@@ -221,16 +224,17 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 				RefLowBuild  = min(RefLowBuild, sc.Low[p]);
 			}
 
-			if (kTrPrev != -1 && RefValid && sc.Close[p] <= RefHigh)
-				BeenBelow = 1;
-
 			// Predchozi session skoncila -> zafixuj jeji high a low
 			if (kRefPrev != -1 && kRefCur != kRefPrev)
 			{
-				RefHigh = RefHighBuild;
-				RefLow = RefLowBuild;
-				RefValid = 1;
-				BeenBelow = 0;
+				if (RefPartial)
+					RefPartial = 0;  // neuplnou session nepouzivej
+				else
+				{
+					RefHigh = RefHighBuild;
+					RefLow = RefLowBuild;
+					RefValid = 1;
+				}
 			}
 		}
 
@@ -243,7 +247,6 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 		if (kTrCur != -1 && kTrCur != kTrPrev)
 		{
 			TradesSession = 0;  // nova obchodni session -> vynuluj pocitadlo
-			BeenBelow = 0;
 		}
 
 		const int dayCur = sc.GetTradingDayDate(sc.BaseDateTimeIn[i]);
@@ -259,11 +262,26 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	// --- Aktualni bar ---
 	const int t = sc.BaseDateTimeIn[i].GetTimeInSeconds();
 
-	bool inFlatten = false;  // okno pred koncem dne, kdy se pozice zavira a nevstupuje se
+	// Okno pred koncem dne, kdy se pozice zavira a nevstupuje se.
+	// Flatten Time mimo obchodni session se ignoruje (jinak by blokoval vstupy skoro cely den).
+	const int flatT = In_Flatten.GetTime();
+	bool inFlatten = false;
+	if (mode == MODE_CUSTOM && InWindow(flatT, trS, trE))
+		inFlatten = InWindow(t, flatT, trE);
+	else if (mode == MODE_DAILY && InWindow(flatT, sc.StartTime1, sc.EndTime1 + 1))
+		inFlatten = InWindow(t, flatT, sc.EndTime1 + 1);
+
+	// Custom: okna se nesmi castecne prekryvat (obchodovalo by se podle stareho levelu,
+	// zatimco nova predchozi session jeste bezi). Povoleno: totozna okna nebo oddelena okna.
+	bool configOK = true;
 	if (mode == MODE_CUSTOM)
-		inFlatten = InWindow(t, In_Flatten.GetTime(), trE);
-	else if (mode == MODE_DAILY)
-		inFlatten = InWindow(t, In_Flatten.GetTime(), sc.EndTime1 + 1);
+	{
+		const bool same = refS == trS && refE == trE;
+		const bool overlap = InWindow(trS, refS, refE) || InWindow(refS, trS, trE);
+		configOK = same || !overlap;
+		if (!configOK && i == sc.ArraySize - 1 && sc.IsFullRecalculation)
+			sc.AddMessageToLog("Previous Session High Breakout: [Custom] Previous a Trading okno se castecne prekryvaji - obchodovani vypnuto.", 1);
+	}
 
 	if (RefValid)
 	{
@@ -294,7 +312,7 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	}
 
 	// Entry
-	if (!In_Enabled.GetYesNo() || !RefValid || kTrCur == -1 || inFlatten)
+	if (!In_Enabled.GetYesNo() || !configOK || !RefValid || kTrCur == -1 || inFlatten)
 		return;
 
 	// Limity poctu obchodu
@@ -304,7 +322,10 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	if (In_MaxDay.GetInt() > 0 && TradesDay >= In_MaxDay.GetInt())
 		return;
 
-	const bool breakout = (BeenBelow || sc.Open[i] <= RefHigh) && sc.Close[i] > RefHigh;
+	// Pruraz zespodu v ramci TETO session: predchozi bar stejne session zavrel pod/na PSH,
+	// nebo aktualni bar otevrel pod/na PSH. Gap nad PSH ani pokracovani nad PSH neni vstup.
+	const bool fromBelow = (kTrPrev == kTrCur && sc.Close[i - 1] <= RefHigh) || sc.Open[i] <= RefHigh;
+	const bool breakout = fromBelow && sc.Close[i] > RefHigh;
 	if (!breakout)
 		return;
 
@@ -327,7 +348,6 @@ SCSFExport scsf_PrevSessionHighBreakout(SCStudyInterfaceRef sc)
 	{
 		TradesSession++;
 		TradesDay++;
-		BeenBelow = 0;  // dalsi obchod az po novem prurazu zespodu
 		EntryKey = (double)kTrCur;
 		TargetPrice = Order.Target1Price;
 		SG_Target[i] = TargetPrice;
