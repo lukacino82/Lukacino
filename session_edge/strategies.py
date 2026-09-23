@@ -39,6 +39,7 @@ class Signal:
     ref_range: float  # referenční range (pro stop_mode="range")
     fill: Fill  # intrabar = stop order uvnitř baru, close = na close baru, open = na open
     tag: str = ""
+    target: Optional[float] = None  # „přirozený“ TP strategie (target_mode="strategy")
 
 
 def _window(day: pd.DataFrame, start: time, end: time) -> np.ndarray:
@@ -258,6 +259,7 @@ class GapFade(Strategy):
     confirm_end: time | str = "10:00"
     min_gap_atr: float = 0.3
     max_gap_atr: float = 1.5  # obří gapy (zprávy) nefadujeme
+    fill_fraction: float = 1.0  # TP pro target_mode="strategy": 1.0 = celé zavření gapu
 
     def __post_init__(self) -> None:
         self.session_open = parse_time(self.session_open)
@@ -281,7 +283,9 @@ class GapFade(Strategy):
         if d == 1 and c_end <= o:
             return []
         stop = day["high"].values[cpos].max() if d == -1 else day["low"].values[cpos].min()
-        return [Signal(cpos[-1], d, c_end, stop, abs(gap), "close", "gap_fade")]
+        # přirozený cíl hypotézy: zavření (části) gapu směrem k včerejšímu close
+        target = c_end + d * self.fill_fraction * abs(c_end - ctx.prev_close)
+        return [Signal(cpos[-1], d, c_end, stop, abs(gap), "close", "gap_fade", target)]
 
 
 # ---------------------------------------------------------------------------

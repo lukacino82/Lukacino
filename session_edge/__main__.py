@@ -79,7 +79,7 @@ def main(argv=None) -> None:
     g = ap.add_argument_group("risk management")
     g.add_argument("--stop-mode", default="strategy", choices=["strategy", "atr", "points", "range"])
     g.add_argument("--stop", type=float, default=1.0, help="hodnota stopu dle --stop-mode")
-    g.add_argument("--target-mode", default="rrr", choices=["rrr", "atr", "points", "none"])
+    g.add_argument("--target-mode", default="rrr", choices=["rrr", "atr", "points", "none", "strategy"])
     g.add_argument("--target", type=float, default=0.0)
     g.add_argument("--rrr", type=float, default=2.0)
     g.add_argument("--max-trades", type=int, default=1, help="max. obchodů za den")

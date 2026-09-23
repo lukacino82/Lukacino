@@ -11,7 +11,7 @@ from datetime import time
 from typing import Literal, Optional
 
 StopMode = Literal["strategy", "atr", "points", "range"]
-TargetMode = Literal["rrr", "atr", "points", "none"]
+TargetMode = Literal["rrr", "atr", "points", "none", "strategy"]
 
 
 def parse_time(value: Optional[str | time]) -> Optional[time]:
@@ -36,6 +36,7 @@ class RiskConfig:
         atr      – TP = target_value × denní ATR
         points   – pevný TP v bodech
         none     – bez TP, drží se do stopu / konce seance
+        strategy – TP navržený strategií (např. zavření gapu); jinak RRR
     """
 
     stop_mode: StopMode = "strategy"

@@ -12,7 +12,7 @@ Zásady:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable, Optional
 
 import numpy as np
@@ -89,7 +89,12 @@ def _simulate(
         return None
     entry = sig.entry
     stop = entry - direction * risk
-    tdist = _target_distance(risk, rc, ctx.atr)
+    if rc.target_mode == "strategy" and sig.target is not None \
+            and direction * (sig.target - entry) > 0:
+        tdist = abs(sig.target - entry)
+    else:
+        tdist = _target_distance(risk, replace(rc, target_mode="rrr")
+                                 if rc.target_mode == "strategy" else rc, ctx.atr)
     target = entry + direction * tdist if tdist is not None else None
 
     start = sig.bar_pos

@@ -9,6 +9,17 @@ import pandas as pd
 _TS_CANDIDATES = ("datetime", "timestamp", "time", "date", "gmt time", "local time")
 
 
+def _parse_stamp(stamp: pd.Series) -> pd.Series:
+    """Rychlé parsování běžných formátů, jinak obecný (pomalý) parser."""
+    for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y.%m.%d %H:%M:%S", "%Y%m%d %H%M%S",
+                "%Y/%m/%d %H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            return pd.to_datetime(stamp, format=fmt)
+        except (ValueError, TypeError):
+            continue
+    return pd.to_datetime(stamp, format="mixed")
+
+
 def _sniff(path: str) -> tuple[str, bool]:
     """Zjistí oddělovač a zda má soubor hlavičku."""
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -41,7 +52,8 @@ def load_csv(
         df = pd.read_csv(path, sep=sep, engine="python")
         df.columns = [str(c).strip().strip("<>").lower() for c in df.columns]
         if "date" in df.columns and "time" in df.columns:
-            ts = pd.to_datetime(df["date"].astype(str) + " " + df["time"].astype(str), format="mixed")
+            stamp = df["date"].astype(str).str.strip() + " " + df["time"].astype(str).str.strip()
+            ts = _parse_stamp(stamp)
         else:
             col = next((c for c in _TS_CANDIDATES if c in df.columns), df.columns[0])
             raw = df[col]
@@ -65,7 +77,7 @@ def load_csv(
         df = df.iloc[:, rest: rest + len(names)]
         df.columns = names
 
-    rename = {"vol": "volume", "tickvol": "volume", "tick_volume": "volume"}
+    rename = {"vol": "volume", "tickvol": "volume", "tick_volume": "volume", "last": "close"}
     df = df.rename(columns=rename)
     missing = {"open", "high", "low", "close"} - set(df.columns)
     if missing:
