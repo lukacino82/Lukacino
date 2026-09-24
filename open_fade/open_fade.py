@@ -28,6 +28,7 @@ class Params:
     last_entry: str = "15:59"   # do kdy smí limitka vstoupit
     session_close: str = "16:00"
     cost_pts: float = 0.0   # náklady na round-trip v bodech
+    mode: str = "fade"      # fade = limitka proti pohybu, momentum = stop order ve směru pohybu
 
 
 def load_bars(path: str) -> pd.DataFrame:
@@ -55,24 +56,27 @@ def load_bars(path: str) -> pd.DataFrame:
 
 
 def simulate_day(o, h, l, c, tm, p: Params, direction: int, optimistic: bool = False):
-    """Vrátí (výsledek, body) pro jeden směr jednoho dne, nebo None, pokud limitka nevstoupila.
-    direction +1 = long na open - X, -1 = short na open + X."""
+    """Vrátí (výsledek, body) pro jeden směr jednoho dne, nebo None, pokud příkaz nevstoupil.
+    fade:     long limitkou na open - X, short limitkou na open + X
+    momentum: long stop orderem na open + X, short stop orderem na open - X"""
     tp, sl = p.tp_ticks * TICK, p.sl_ticks * TICK
-    day_open = o[0]
-    level = day_open - direction * p.level
+    side = -direction if p.mode == "fade" else direction   # na které straně open je úroveň
+    level = o[0] + side * p.level
     last_entry = pd.Timestamp(p.last_entry).time()
     for i in range(len(o)):
         if tm[i] > last_entry:
             return None
-        touched = l[i] <= level if direction > 0 else h[i] >= level
-        if not touched:
+        if not (h[i] >= level if side > 0 else l[i] <= level):
             continue
-        # gap přes úroveň -> plnění na open baru (lepší cena)
-        entry = min(level, o[i]) if direction > 0 else max(level, o[i])
+        # gap přes úroveň -> plnění na open baru
+        entry = max(level, o[i]) if side > 0 else min(level, o[i])
         stop, target = entry - direction * sl, entry + direction * tp
         for j in range(i, len(o)):
             hit_sl = l[j] <= stop if direction > 0 else h[j] >= stop
-            hit_tp = (h[j] >= target if direction > 0 else l[j] <= target) and j > i
+            # vstupní bar: u limitky (fade) mohl TP nastat před vstupem -> nepočítat;
+            # u stop orderu (momentum) je extrém ve směru obchodu až po vstupu -> počítat
+            tp_ok = j > i or p.mode == "momentum"
+            hit_tp = tp_ok and (h[j] >= target if direction > 0 else l[j] <= target)
             if j > i:  # gap přes SL/TP na open baru
                 if (o[j] <= stop if direction > 0 else o[j] >= stop):
                     return "SL", direction * (o[j] - entry)
@@ -96,7 +100,8 @@ def run(df: pd.DataFrame, p: Params, optimistic: bool = False) -> pd.DataFrame:
         if g.index[-1].time() < pd.Timestamp("15:45").time():  # zkrácené seance (svátky)
             continue
         arr = (g.open.values, g.high.values, g.low.values, g.close.values, g.index.time)
-        for direction, name in ((1, "LONG open-X"), (-1, "SHORT open+X")):
+        names = (("LONG open-X", "SHORT open+X") if p.mode == "fade" else ("LONG open+X", "SHORT open-X"))
+        for direction, name in zip((1, -1), names):
             r = simulate_day(*arr, p, direction, optimistic)
             if r:
                 rows.append(dict(date=pd.Timestamp(d), side=name, result=r[0], pts=r[1] - p.cost_pts))
