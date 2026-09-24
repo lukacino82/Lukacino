@@ -45,6 +45,8 @@ struct SCStudyInterface{SCInputRef_ Input[64]; SCSubgraph_ Subgraph[60]; int Set
  double BuyEntry(s_SCNewOrder&o){return entry(o,1);} double SellEntry(s_SCNewOrder&o){return entry(o,-1);}
  const char* GetTradingErrorTextMessage(int){return "sim reject";}
  void bracket(int i){ if(!pos) return; bool L=pos>0; // SL první (pesimisticky)
+   if(L? Open[i]<=sl : Open[i]>=sl){close(Open[i],'S');return;}  // gap přes SL: fill na open
+   if(L? Open[i]>=tp : Open[i]<=tp){close(Open[i],'T');return;}
    if(L? Low[i]<=sl : High[i]>=sl){close(sl,'S');return;} if(L? High[i]>=tp : Low[i]<=tp) close(tp,'T');}
 };
 typedef SCStudyInterface& SCStudyInterfaceRef;
