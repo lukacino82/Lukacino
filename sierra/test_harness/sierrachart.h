@@ -10,7 +10,7 @@
 #define SCSFExport extern "C" void
 #define HMS_TIME(h,m,s) ((h)*3600+(m)*60+(s))
 #define RGB(r,g,b) ((r)|((g)<<8)|((b)<<16))
-enum {DRAWSTYLE_DASH,DRAWSTYLE_LINE,DRAWSTYLE_ARROW_UP,DRAWSTYLE_ARROW_DOWN};
+enum {DRAWSTYLE_DASH,DRAWSTYLE_LINE,DRAWSTYLE_ARROW_UP,DRAWSTYLE_ARROW_DOWN,DRAWSTYLE_HIDDEN};
 enum {SCT_ORDERTYPE_MARKET}; enum {SCT_TIF_GOOD_TILL_CANCELED};
 struct SCString{std::string s; SCString(){} SCString(const char*c):s(c){} SCString& operator=(const char*c){s=c;return *this;}
  int GetLength()const{return (int)s.size();} const char* GetChars()const{return s.c_str();}

@@ -50,6 +50,28 @@ Soubor: `Lukacino_OpenX_Range_RRR.cpp`. Jedna studie, dva typy vstupu,
 
 SL a TP se počítají od ceny vstupu a posílají jako offsety od fillu.
 
+### ATR: počítá se samo
+
+ATR ručně nevyplňujete. Studie ho každý den spočítá z dat v grafu:
+
+* **denní rozpětí** = high − low mezi Session Start a Flatten Time (9:30–15:55),
+* **ATR** = průměr denních rozpětí za posledních *ATR Length* uzavřených dní
+  (dnešek se nepočítá, ATR je známé už na open),
+* **SL** = ATR × *ATR SL Multiplier*, **TP** = SL × RRR.
+
+Příklad: ATR(14) = 63 b., násobek 0,25 → SL 15,75 b., RRR 2 → TP 31,5 b.
+Ve volatilním období se SL i TP samy zvětší, v klidném zmenší.
+
+Kde vidíte aktuální hodnoty (platí pro každý Exit Mode):
+* **v hlavičce studie v grafu** a v okně **Window >> Chart Values**:
+  `ATR (points)`, `SL distance (points)`, `TP distance (points)`,
+* **v Message Logu** jednou denně po open: `Lukacino: ATR(14) = … | SL = … | TP = …`.
+
+Graf musí mít načteno aspoň *ATR Length* + 1 dní (Chart Settings >>
+Days to Load). Do té doby se v módu RRR + ATR SL neobchoduje a log
+ukazuje, kolik dní ještě chybí. Když Flatten Time posunete za 16:00,
+počítá se do rozpětí i večerní seance a ATR bude o něco větší.
+
 ## Konflikty mezi inputy a jak jsou vyřešené
 
 1. **„Open +/- X“ bylo dvojznačné.** Long na open+X (průraz) nebo na

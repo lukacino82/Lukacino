@@ -81,6 +81,9 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
     SCSubgraphRef SG_Short      = sc.Subgraph[6];
     SCSubgraphRef SG_Stop       = sc.Subgraph[7];
     SCSubgraphRef SG_Target     = sc.Subgraph[8];
+    SCSubgraphRef SG_ATR        = sc.Subgraph[9];   // jen hodnota (název grafu, Chart Values)
+    SCSubgraphRef SG_SLDist     = sc.Subgraph[10];
+    SCSubgraphRef SG_TPDist     = sc.Subgraph[11];
 
     if (sc.SetDefaults)
     {
@@ -225,6 +228,19 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
         SG_Target.PrimaryColor = RGB(0, 255, 0);
         SG_Target.DrawZeros = false;
 
+        // Nekreslí se, jen ukazují aktuální ATR a vzdálenost SL/TP v bodech
+        SG_ATR.Name = "ATR (points)";
+        SG_ATR.DrawStyle = DRAWSTYLE_HIDDEN;
+        SG_ATR.DrawZeros = false;
+
+        SG_SLDist.Name = "SL distance (points)";
+        SG_SLDist.DrawStyle = DRAWSTYLE_HIDDEN;
+        SG_SLDist.DrawZeros = false;
+
+        SG_TPDist.Name = "TP distance (points)";
+        SG_TPDist.DrawStyle = DRAWSTYLE_HIDDEN;
+        SG_TPDist.DrawZeros = false;
+
         // ---- Trading nastavení ----
         sc.AllowMultipleEntriesInSameDirection = false;
         sc.MaximumPositionAllowed = 1;
@@ -318,6 +334,7 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
     int& EntryDate    = sc.GetPersistentInt(15);
     int& LoggedCfg    = sc.GetPersistentInt(16);
     int& LoggedLive   = sc.GetPersistentInt(17);
+    int& LoggedDay    = sc.GetPersistentInt(18);  // datum posledního denního výpisu ATR/SL/TP
 
     const int i = sc.Index;
     const int BarDate = sc.BaseDateTimeIn[i].GetDate();
@@ -331,7 +348,7 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
         ArmLong = ArmShort = AtrCount = AtrPos = SessValid = 0;
         EntryIndex = 0;
         LastIndex = -1;
-        LoggedCfg = LoggedLive = 0;
+        LoggedCfg = LoggedLive = LoggedDay = 0;
         DayPartial = t > tStart ? 1 : 0;
         CurDate = BarDate;
         // OwnPosition a EntryDate se při přepočtu nemažou: reálná pozice mohla
@@ -402,6 +419,37 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
         for (int k = 0; k < ATRDays; k++)
             ATR += sc.GetPersistentFloat(ATR_BUF_BASE + k);
         ATR /= ATRDays;
+    }
+
+    // Vzdálenost SL/TP podle Exit Mode (0 = zatím neznámá: ATR bez dost dní, range před koncem okna)
+    float Risk = 0;
+    switch (ExitMode)
+    {
+    case EXIT_FIXED:
+    case EXIT_RRR_FIXED_SL: Risk = SLpts; break;
+    case EXIT_RRR_ATR:      Risk = AtrCount >= ATRDays ? ATR * In_ATRMult.GetFloat() : 0; break;
+    case EXIT_RRR_RANGE:    Risk = RangeReady ? (RangeHigh - RangeLow) * In_RangeMult.GetFloat() : 0; break;
+    }
+    Risk = (float)sc.RoundToTickSize(Risk, Tick);
+    const float Reward = Risk > 0
+        ? (float)sc.RoundToTickSize(ExitMode == EXIT_FIXED ? TPpts : Risk * RRR, Tick) : 0;
+
+    if (ATR > 0)    SG_ATR[i]    = ATR;
+    if (Risk > 0)   SG_SLDist[i] = Risk;
+    if (Reward > 0) SG_TPDist[i] = Reward;
+
+    // Jednou denně (po otevření seance, a u range SL po konci range) vypiš do logu aktuální hodnoty
+    if (LiveBar && InSession && OpenValid && LoggedDay != BarDate
+        && (ExitMode != EXIT_RRR_RANGE || RangeReady))
+    {
+        SCString Msg;
+        if (AtrCount >= ATRDays)
+            Msg.Format("Lukacino: ATR(%d) = %.2f b. | SL = %.2f b. | TP = %.2f b.", ATRDays, ATR, Risk, Reward);
+        else
+            Msg.Format("Lukacino: ATR(%d) zatim nema dost dni (%d/%d) | SL = %.2f b. | TP = %.2f b.",
+                       ATRDays, AtrCount, ATRDays, Risk, Reward);
+        sc.AddMessageToLog(Msg, 0);
+        LoggedDay = BarDate;
     }
 
     // ---- Vstupní úrovně ----------------------------------------------
@@ -538,17 +586,7 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
         return;
     const int Signal = LongSig ? +1 : -1;
 
-    // ---- SL / TP ------------------------------------------------------
-    float Risk = 0;
-    switch (ExitMode)
-    {
-    case EXIT_FIXED:
-    case EXIT_RRR_FIXED_SL: Risk = SLpts; break;
-    case EXIT_RRR_ATR:      Risk = ATR * In_ATRMult.GetFloat(); break;
-    case EXIT_RRR_RANGE:    Risk = (RangeHigh - RangeLow) * In_RangeMult.GetFloat(); break;
-    }
-    Risk = (float)sc.RoundToTickSize(Risk, Tick);
-    const float Reward = (float)sc.RoundToTickSize(ExitMode == EXIT_FIXED ? TPpts : Risk * RRR, Tick);
+    // ---- SL / TP (spočítané výše podle Exit Mode) ----------------------
     if (Risk < Tick || Reward < Tick)
     {
         ArmLong = ArmShort = 0;
