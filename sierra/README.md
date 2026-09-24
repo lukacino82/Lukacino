@@ -115,6 +115,16 @@ Nevalidní kombinace vypne obchodování a zapíše důvod do **Message Logu**
   Max Trades.
 * `MaximumPositionAllowed = Position Size`: vyšší pozici Sierra odmítne.
 * Odmítnutý příkaz se zapíše do logu i s důvodem a neopakuje se každý tick.
+* **Osiřelé SL/TP:** když pozice zmizí jinak než přes bracket (ruční zavření,
+  reset nebo skok v Replay) a SL/TP zůstanou viset, studie je zruší. Jinak by
+  zásah takového GTC příkazu otevřel pozici opačným směrem.
+* **Pozice proti Direction** (short při Long only a naopak) studie nikdy
+  neotevře. Když na účtu je, dá jednou denně alert a zprávu do logu. Sama ji
+  nezavírá, protože může jít o ruční obchod.
+* **Replay:** před novým spuštěním Replay smažte staré simulované obchody
+  (v okně Replay Chart volba pro vymazání existujících simulovaných dat, nebo
+  Trade >> Flatten a Cancel All Orders). Staré pozice a GTC příkazy z předchozí
+  jízdy jinak v Sim účtu zůstanou.
 * Graf začínající uprostřed seance: tento den se neobchoduje (open by
   nebyl skutečný open).
 

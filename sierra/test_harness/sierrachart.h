@@ -37,9 +37,10 @@ struct SCStudyInterface{SCInputRef_ Input[64]; SCSubgraph_ Subgraph[60]; int Set
  void AddMessageToLog(const char*m,int e){logs++; if(e){errors++; if(errors<20) printf("LOG! %s\n",m);}}
  int SetAlert(int,const char*){alerts++;return 1;}
  float RoundToTickSize(float v,float t){return (float)(std::round(v/t)*t);}
- int GetTradePosition(s_SCPositionData&p){p.PositionQuantity=pos;p.WorkingOrdersExist=pos!=0;return 1;}
+ int GetTradePosition(s_SCPositionData&p){p.PositionQuantity=pos;p.WorkingOrdersExist=pos!=0||orphan;return 1;}
  void close(double px,char why){trades.push_back({ed,et,pos>0?1:-1,ent,px,BaseDateTimeIn[Index].dt,BaseDateTimeIn[Index].tm,why});pos=0;}
- double FlattenAndCancelAllOrders(){if(pos)close(Close[Index],'E');return 1;}
+ int orphan=0; double CancelAllOrders(){orphan=0;return 1;}
+ double FlattenAndCancelAllOrders(){orphan=0;if(pos)close(Close[Index],'E');return 1;}
  double entry(s_SCNewOrder&o,int dir){if(pos!=0||o.OrderQuantity>MaximumPositionAllowed)return -1;pos=dir*o.OrderQuantity;ent=Close[Index];
    sl=ent-dir*o.Stop1Offset;tp=ent+dir*o.Target1Offset;ed=BaseDateTimeIn[Index].dt;et=BaseDateTimeIn[Index].tm;return 1;}
  double BuyEntry(s_SCNewOrder&o){return entry(o,1);} double SellEntry(s_SCNewOrder&o){return entry(o,-1);}

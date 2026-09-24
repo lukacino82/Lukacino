@@ -335,6 +335,7 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
     int& LoggedCfg    = sc.GetPersistentInt(16);
     int& LoggedLive   = sc.GetPersistentInt(17);
     int& LoggedDay    = sc.GetPersistentInt(18);  // datum posledního denního výpisu ATR/SL/TP
+    int& LoggedWrongDir = sc.GetPersistentInt(19);  // datum varování o pozici proti Direction
 
     const int i = sc.Index;
     const int BarDate = sc.BaseDateTimeIn[i].GetDate();
@@ -348,7 +349,7 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
         ArmLong = ArmShort = AtrCount = AtrPos = SessValid = 0;
         EntryIndex = 0;
         LastIndex = -1;
-        LoggedCfg = LoggedLive = LoggedDay = 0;
+        LoggedCfg = LoggedLive = LoggedDay = LoggedWrongDir = 0;
         DayPartial = t > tStart ? 1 : 0;
         CurDate = BarDate;
         // OwnPosition a EntryDate se při přepočtu nemažou: reálná pozice mohla
@@ -499,6 +500,32 @@ SCSFExport scsf_Lukacino_OpenX_Range_RRR(SCStudyInterfaceRef sc)
         {
             OwnPosition = 0;
             TradeDir = 0;
+        }
+        // Pozice zmizela jinak než přes bracket (ruční zavření, reset Replay...), ale SL/TP
+        // zůstaly viset. Takový osiřelý GTC příkaz by po zásahu otevřel pozici opačným směrem.
+        // (i > EntryIndex + 1: market vstup z tohoto nebo minulého baru se ještě může plnit)
+        else if (OwnPosition && RealFlat && Pos.WorkingOrdersExist && i > EntryIndex + 1)
+        {
+            sc.CancelAllOrders();
+            sc.AddMessageToLog("Lukacino: pozice je zavrena, ale SL/TP prikazy zustaly - zruseny.", 1);
+            OwnPosition = 0;
+            TradeDir = 0;
+        }
+
+        // Pozice proti nastavenému směru (short při Long only a naopak) nikdy nevznikne ze studie.
+        // Nezavírá se automaticky (může být ruční), jen jednou denně varování.
+        const bool WrongDir = (Dir == DIR_LONG && Pos.PositionQuantity < 0)
+                           || (Dir == DIR_SHORT && Pos.PositionQuantity > 0);
+        if (WrongDir && LoggedWrongDir != BarDate)
+        {
+            SCString Msg;
+            Msg.Format("Lukacino: POZOR, na uctu je %s pozice %.0f, ale Direction = %s. Studie ji neotevrela "
+                       "(zbyly prikaz / rucni obchod). Zkontroluj Trade >> Trade Activity Log.",
+                       Pos.PositionQuantity < 0 ? "SHORT" : "LONG", Pos.PositionQuantity,
+                       Dir == DIR_LONG ? "Long only" : "Short only");
+            sc.AddMessageToLog(Msg, 1);
+            sc.SetAlert(1, Msg);
+            LoggedWrongDir = BarDate;
         }
     }
 
