@@ -1,0 +1,8 @@
+varianta,expozice_prum,body,sharpe,maxdd_b,vynos_dd,alfa_b_den,alfa_t,beta,sharpe_2016_21,sharpe_2022_26,alfa_t_2016_21
+Buy & hold 1 ES,1.0,4340.25,0.656,-1216.0,3.569,0.0,1.323,1.0,0.918,0.501,
+"Volatility timing (σ 20 dní, strop 2×, průměrná expozice 1×)",1.001,3379.346,0.697,-747.805,4.519,0.247,0.754,0.648,1.018,0.387,
+"Volatility timing σ 20 dní, zaokrouhleno na celé ES",1.095,2168.5,0.381,-1351.25,1.605,-0.302,-0.567,0.659,1.043,-0.189,
+"Volatility timing (σ 60 dní, strop 2×, průměrná expozice 1×)",1.001,3220.827,0.637,-937.48,3.436,0.081,0.273,0.699,0.87,0.4,
+"Volatility timing σ 60 dní, zaokrouhleno na celé ES",1.094,2536.0,0.417,-1361.5,1.863,-0.362,-0.765,0.775,0.635,0.245,
+Trend: long jen nad MA200,0.801,3170.75,0.672,-810.5,3.912,0.421,0.876,0.509,0.9,0.522,
+Volatility timing σ20 × trend MA200,0.881,2543.802,0.591,-730.64,3.482,0.294,0.628,0.431,0.82,0.344,
