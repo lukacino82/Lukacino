@@ -1,0 +1,88 @@
+{
+  "es_files": [
+    {
+      "path": "_extract/es/ES3000.txt",
+      "size": 220814352,
+      "sha256": "64c8ad3aee4c97b2e39b16f2068c400b7f2c2ae6ef86dbb0b588176111b6d7e9",
+      "first_lines": [
+        "Date, Time, Open, High, Low, Last, Volume, NumberOfTrades, BidVolume, AskVolume",
+        "2018/7/8, 18:00:00, 2762.00, 2764.75, 2761.75, 2764.50, 875, 508, 417, 458",
+        "2018/7/8, 18:01:00, 2764.50, 2765.50, 2764.00, 2764.50, 387, 266, 143, 244",
+        "2018/7/8, 18:02:00, 2764.75, 2765.00, 2764.25, 2764.25, 282, 181, 164, 118",
+        "2018/7/8, 18:03:00, 2764.25, 2764.25, 2763.25, 2763.75, 174, 139, 124, 50"
+      ],
+      "last_lines": [
+        "2026/9/23, 12:36:00, 7778.50, 7779.25, 7778.25, 7779.00, 1278, 1010, 603, 675",
+        "2026/9/23, 12:37:00, 7778.75, 7779.25, 7777.25, 7778.00, 1462, 1151, 742, 720",
+        "2026/9/23, 12:38:00, 7777.75, 7778.75, 7777.25, 7777.50, 1277, 983, 678, 599",
+        "2026/9/23, 12:39:00, 7777.75, 7777.75, 7776.00, 7777.00, 2055, 1601, 1097, 958",
+        "2026/9/23, 12:40:00, 7777.00, 7777.25, 7775.25, 7776.00, 1609, 1067, 799, 810"
+      ]
+    }
+  ],
+  "excel_files": [
+    {
+      "path": "_extract/excel/es mini data new 2 (2).xlsx",
+      "size": 49638076,
+      "sha256": "c946494b17269aceef1a084b5fa88c1215685f5aa6636f581b3cc13438c19ba2",
+      "xlsx_members": 54,
+      "sheets": [
+        {
+          "name": "List1",
+          "sheetId": "1",
+          "member": "xl/worksheets/sheet1.xml",
+          "dimension": "A1:J761362"
+        },
+        {
+          "name": "Statistiky",
+          "sheetId": "2",
+          "member": "xl/worksheets/sheet2.xml",
+          "dimension": "A1:K29"
+        },
+        {
+          "name": "Strategie",
+          "sheetId": "3",
+          "member": "xl/worksheets/sheet3.xml",
+          "dimension": "A1:G30"
+        },
+        {
+          "name": "Denní data",
+          "sheetId": "4",
+          "member": "xl/worksheets/sheet4.xml",
+          "dimension": "A1:AK2578"
+        },
+        {
+          "name": "Equity",
+          "sheetId": "5",
+          "member": "xl/worksheets/sheet5.xml",
+          "dimension": "A1:G2583"
+        },
+        {
+          "name": "RRR návrhy",
+          "sheetId": "7",
+          "member": "xl/worksheets/sheet6.xml",
+          "dimension": "A1:R64"
+        },
+        {
+          "name": "RRR kalkulačka",
+          "sheetId": "8",
+          "member": "xl/worksheets/sheet7.xml",
+          "dimension": "A1:N84"
+        },
+        {
+          "name": "Simulátor",
+          "sheetId": "6",
+          "member": "xl/worksheets/sheet8.xml",
+          "dimension": "A1:T2578"
+        },
+        {
+          "name": "0DTE Butterfly",
+          "sheetId": "9",
+          "member": "xl/worksheets/sheet9.xml",
+          "dimension": "A1:H58"
+        }
+      ],
+      "shared_strings_count": 369
+    }
+  ]
+}
