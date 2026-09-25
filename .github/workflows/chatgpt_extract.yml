@@ -1,0 +1,85 @@
+name: Extract ES inputs
+on:
+  push:
+    branches: [chatgpt-es-load]
+permissions:
+  contents: write
+jobs:
+  extract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Extract archives and build manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full
+          rm -rf _extract
+          mkdir -p _extract/es _extract/excel
+          7z x "ES3000.zip" -o_extract/es -y
+          7z x "es mini data new 2 (2).zip" -o_extract/excel -y
+          python - <<'PY'
+          import os, json, zipfile, hashlib, csv
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+
+          root=Path('_extract')
+          out=Path('chatgpt_extract')
+          out.mkdir(exist_ok=True)
+          manifest={'es_files':[],'excel_files':[]}
+
+          for p in sorted((root/'es').rglob('*')):
+              if p.is_file():
+                  rec={'path':str(p),'size':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+                  try:
+                      with p.open('r',encoding='utf-8',errors='replace') as f:
+                          first=[next(f).rstrip('\n') for _ in range(5)]
+                      with p.open('rb') as f:
+                          f.seek(max(0,p.stat().st_size-65536))
+                          tail=f.read().decode('utf-8','replace').splitlines()[-5:]
+                      rec['first_lines']=first; rec['last_lines']=tail
+                  except Exception as e:
+                      rec['text_preview_error']=str(e)
+                  manifest['es_files'].append(rec)
+
+          for p in sorted((root/'excel').rglob('*')):
+              if p.is_file():
+                  rec={'path':str(p),'size':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+                  if p.suffix.lower()=='.xlsx':
+                      with zipfile.ZipFile(p) as z:
+                          names=z.namelist()
+                          rec['xlsx_members']=len(names)
+                          wbxml=ET.fromstring(z.read('xl/workbook.xml'))
+                          ns={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main','r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+                          relroot=ET.fromstring(z.read('xl/_rels/workbook.xml.rels'))
+                          relns={'p':'http://schemas.openxmlformats.org/package/2006/relationships'}
+                          relmap={x.attrib['Id']:x.attrib['Target'] for x in relroot.findall('p:Relationship',relns)}
+                          sheets=[]
+                          for s in wbxml.find('m:sheets',ns):
+                              rid=s.attrib['{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id']
+                              target=relmap[rid]
+                              member='xl/'+target.lstrip('/')
+                              sx=ET.fromstring(z.read(member))
+                              dim=sx.find('m:dimension',ns)
+                              sheets.append({'name':s.attrib['name'],'sheetId':s.attrib['sheetId'],'member':member,'dimension':dim.attrib.get('ref') if dim is not None else None})
+                          rec['sheets']=sheets
+                          # shared strings count
+                          if 'xl/sharedStrings.xml' in names:
+                              ss=ET.fromstring(z.read('xl/sharedStrings.xml'))
+                              rec['shared_strings_count']=len(ss)
+                  manifest['excel_files'].append(rec)
+
+          (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'README.txt').write_text('Generated extraction manifest for ChatGPT analysis. Original archives remain untouched.\n',encoding='utf-8')
+          PY
+      - name: Commit manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chatgpt_extract
+          git commit -m "Extract ES input manifests" || exit 0
+          git push origin HEAD:chatgpt-es-load
