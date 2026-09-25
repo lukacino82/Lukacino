@@ -20,12 +20,17 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <cstdlib>
 #include "sierrachart.h"
 
 SCDLLName("Lukacino Multi-System")
 
 namespace
 {
+    // vlastní min/max: sestavení v Sierře (MinGW) nemá makra min/max z windows.h
+    template <class T> inline T LMax(T a, T b) { return a > b ? a : b; }
+    template <class T> inline T LMin(T a, T b) { return a < b ? a : b; }
+
     enum { SYS_RSI = 0, SYS_LC, SYS_VAL, SYS_CAP, SYS_ABS, NSYS };
     const char* SYS_NAME[NSYS] = { "RSI(2)", "Lower Closes", "VAL Swing", "Capitulation", "Absorption" };
 
@@ -394,7 +399,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
         if (pt >= tStart && pt < tDec)
         {
             if (st->DayBars == 0) { st->DH = sc.High[p]; st->DL = sc.Low[p]; }
-            st->DH = max(st->DH, sc.High[p]); st->DL = min(st->DL, sc.Low[p]); st->DC = sc.Close[p];
+            st->DH = LMax(st->DH, sc.High[p]); st->DL = LMin(st->DL, sc.Low[p]); st->DC = sc.Close[p];
             st->DV += sc.Volume[p]; st->DD += sc.AskVolume[p] - sc.BidVolume[p];
             st->DayBars++; st->LastRthTime = pt;
             // profil: objem baru rovnoměrně na ticky mezi low a high (stejně jako v testu)
@@ -478,7 +483,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
         // --- účet: equity, drawdown, brzdy
         const double equity = In_Account.GetFloat() + realized() + openPnL(c);
         if (st->Peak <= 0) st->Peak = equity;
-        st->Peak = max(st->Peak, equity);
+        st->Peak = LMax(st->Peak, equity);
         const double dd = st->Peak > 0 ? (equity / st->Peak - 1.0) * 100.0 : 0;
         double mult = 1.0;
         if (In_DD1.GetFloat() < 0 && dd <= In_DD1.GetFloat()) mult = In_DD1M.GetFloat();
@@ -505,7 +510,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
                 case SYS_RSI:
                 {
                     const int tl = In_R_Trend.GetInt(); const double ma = SMA(C, k, tl);
-                    if (k < max(tl, rl) + 1 || k < In_R_ExitMA.GetInt()) break;
+                    if (k < LMax(tl, rl) + 1 || k < In_R_ExitMA.GetInt()) break;
                     sig = rsi < In_R_Thr.GetFloat() && (tl == 0 || c > ma);
                 } break;
                 case SYS_LC:
@@ -538,7 +543,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
                     const int tr = In_A_Trend.GetIndex(), tl = In_A_TrendMA.GetInt();
                     if (tr != TREND_ANY && k + 1 < tl) break;
                     const double ma = tr != TREND_ANY ? SMA(C, k, tl) : 0;
-                    sig = c < C[k - 1] && st->D[k] > max(0.0f, In_A_MinD.GetFloat())
+                    sig = c < C[k - 1] && st->D[k] > LMax(0.0f, In_A_MinD.GetFloat())
                           && (tr == TREND_ANY || (tr == TREND_ABOVE ? c > ma : c < ma));
                 } break;
                 }
@@ -555,10 +560,10 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
                 // nemohla zotavit a systém by stál navždy).
                 int qty = In_SizeMode.GetIndex() == SIZE_FIXED ? (int)floor(SysSize[s] + 1e-9)
                                                                 : (int)floor(equity * SysSize[s] / (c * PointValue));
-                if (qty >= 1 && mult < 1.0) qty = max(1, (int)floor(qty * mult + 1e-9));
+                if (qty >= 1 && mult < 1.0) qty = LMax(1, (int)floor(qty * mult + 1e-9));
                 const int cur = netVirtual();
                 const int room = dir > 0 ? MaxTotal - cur : MaxTotal + cur;   // kolik ještě smí přibýt v tomto směru
-                qty = min(qty, max(0, room));
+                qty = LMin(qty, LMax(0, room));
                 if (qty < 1)
                 {
                     SCString m;
@@ -606,12 +611,12 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
         const bool tpHit = y.TP > 0 && (y.Dir > 0 ? hiP >= y.TP : loP <= y.TP);
         if (slHit)
         {
-            const float fill = y.Dir > 0 ? min(op, y.SL) : max(op, y.SL);
+            const float fill = y.Dir > 0 ? LMin(op, y.SL) : LMax(op, y.SL);
             closeSys(s, fill, "SL", -1);
         }
         else if (tpHit)
         {
-            const float fill = y.Dir > 0 ? max(op, y.TP) : min(op, y.TP);
+            const float fill = y.Dir > 0 ? LMax(op, y.TP) : LMin(op, y.TP);
             closeSys(s, fill, "TP", -1);
         }
     }
@@ -624,7 +629,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             const bool hit = !newer && (nv > 0 ? sc.Low[i] <= st->EmergLevel : sc.High[i] >= st->EmergLevel);
             if (hit)
             {
-                const float fill = nv > 0 ? min(sc.Open[i], st->EmergLevel) : max(sc.Open[i], st->EmergLevel);
+                const float fill = nv > 0 ? LMin(sc.Open[i], st->EmergLevel) : LMax(sc.Open[i], st->EmergLevel);
                 for (int s = 0; s < NSYS; s++) if (st->S[s].Active) closeSys(s, fill, "EMERGENCY", -1);
                 st->EmergLevel = 0;
                 if (Realtime) { sc.AddMessageToLog("Lukacino MS: EMERGENCY STOP zasazen - vsechny systemy zavreny.", 1); if (!FullAuto) sc.SetAlert(In_AlertNo.GetInt(), "Lukacino MS: EMERGENCY STOP - zavri celou pozici!"); }
@@ -690,8 +695,8 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             const int diff = target - actual;
             s_SCNewOrder o; o.OrderType = SCT_ORDERTYPE_MARKET; o.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED; o.TextTag = "LukacinoMS";
             int res = 0, expect = actual;
-            if (actual > 0 && diff < 0)      { o.OrderQuantity = min(-diff, actual); res = (int)sc.SellExit(o); expect = actual - o.OrderQuantity; }
-            else if (actual < 0 && diff > 0) { o.OrderQuantity = min(diff, -actual); res = (int)sc.BuyExit(o);  expect = actual + o.OrderQuantity; }
+            if (actual > 0 && diff < 0)      { o.OrderQuantity = LMin(-diff, actual); res = (int)sc.SellExit(o); expect = actual - o.OrderQuantity; }
+            else if (actual < 0 && diff > 0) { o.OrderQuantity = LMin(diff, -actual); res = (int)sc.BuyExit(o);  expect = actual + o.OrderQuantity; }
             else if (diff > 0)               { o.OrderQuantity = diff;  res = (int)sc.BuyEntry(o);  expect = actual + diff; }
             else                             { o.OrderQuantity = -diff; res = (int)sc.SellEntry(o); expect = actual + diff; }
             if (res > 0) { st->Pending = 1; st->PendingCalls = 0; st->PendingTarget = expect; }
@@ -731,7 +736,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             SCString txt, row;
             const float px = sc.Close[i];
             const double eq = In_Account.GetFloat() + realized() + openPnL(px);
-            const double ddp = st->Peak > 0 ? (min(eq, st->Peak) / st->Peak - 1) * 100 : 0;
+            const double ddp = st->Peak > 0 ? (LMin(eq, st->Peak) / st->Peak - 1) * 100 : 0;
             const int k = (int)st->C.size() - 1;
             const double atr = k >= 0 ? ATRk(*st, k, AtrLen) : NAN;
             txt.Format("Lukacino Multi-System | %s%s | net %d (cil) | DD %.1f %% | ATR %.1f%s\n",

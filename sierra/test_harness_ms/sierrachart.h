@@ -14,8 +14,6 @@
 #define SCSFExport extern "C" void
 #define HMS_TIME(h,m,s) ((h)*3600+(m)*60+(s))
 #define RGB(r,g,b) ((r)|((g)<<8)|((b)<<16))
-template<class T> T max(T a, T b){return a>b?a:b;}
-template<class T> T min(T a, T b){return a<b?a:b;}
 enum {DRAWSTYLE_DASH,DRAWSTYLE_LINE,DRAWSTYLE_ARROW_UP,DRAWSTYLE_ARROW_DOWN,DRAWSTYLE_POINT,DRAWSTYLE_HIDDEN};
 enum {SCT_ORDERTYPE_MARKET=0, SCT_ORDERTYPE_STOP=2}; enum {SCT_TIF_GOOD_TILL_CANCELED=2};
 enum {SCT_OSC_OPEN=1, SCT_OSC_FILLED=2, SCT_OSC_CANCELED=3, SCT_OSC_ERROR=4};
