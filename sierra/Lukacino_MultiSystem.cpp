@@ -79,7 +79,7 @@ namespace
         int   StopID = 0, StopQty = 0; float StopPrice = 0;
         int   Pending = 0, PendingCalls = 0, PendingTarget = 0, StopCancelCalls = 0, LastErrTarget = 99999, LastErrActual = 99999;
         int   FirstLiveDone = 0, OrdersBlocked = 0;
-        int   LoggedCfg = 0, LoggedDelta = 0, LoggedSize = 0;
+        int   LoggedCfg = 0, LoggedDelta = 0, LoggedSize = 0, LoggedStopErr = 0;
     };
 
     // --- pomocné výpočty nad denní historií (k = index dne) --------------
@@ -710,8 +710,9 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             const int diff = target - actual;
             s_SCNewOrder o; o.OrderType = SCT_ORDERTYPE_MARKET; o.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED; o.TextTag = "LukacinoMS";
             int res = 0, expect = actual;
-            if (actual > 0 && diff < 0)      { o.OrderQuantity = LMin(-diff, actual); res = (int)sc.SellExit(o); expect = actual - o.OrderQuantity; }
-            else if (actual < 0 && diff > 0) { o.OrderQuantity = LMin(diff, -actual); res = (int)sc.BuyExit(o);  expect = actual + o.OrderQuantity; }
+            // zmenšení pozice přes SellOrder/BuyOrder (bez pravidel Exit funkcí, množství max. do nuly)
+            if (actual > 0 && diff < 0)      { o.OrderQuantity = LMin(-diff, actual); res = (int)sc.SellOrder(o); expect = actual - o.OrderQuantity; }
+            else if (actual < 0 && diff > 0) { o.OrderQuantity = LMin(diff, -actual); res = (int)sc.BuyOrder(o);  expect = actual + o.OrderQuantity; }
             else if (diff > 0)               { o.OrderQuantity = diff;  res = (int)sc.BuyEntry(o);  expect = actual + diff; }
             else                             { o.OrderQuantity = -diff; res = (int)sc.SellEntry(o); expect = actual + diff; }
             if (res > 0) { st->Pending = 1; st->PendingCalls = 0; st->PendingTarget = expect; st->LastErrTarget = 99999; }
@@ -737,8 +738,13 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             {
                 s_SCNewOrder o; o.OrderType = SCT_ORDERTYPE_STOP; o.Price1 = px; o.OrderQuantity = abs(actual);
                 o.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED; o.TextTag = "LukacinoMS Emergency";
-                const int res = (int)(actual > 0 ? sc.SellExit(o) : sc.BuyExit(o));
-                if (res > 0) { st->StopID = o.InternalOrderID; st->StopQty = abs(actual); st->StopPrice = px; st->StopCancelCalls = 0; }
+                const int res = (int)(actual > 0 ? sc.SellOrder(o) : sc.BuyOrder(o));
+                if (res > 0) { st->StopID = o.InternalOrderID; st->StopQty = abs(actual); st->StopPrice = px; st->StopCancelCalls = 0; st->LoggedStopErr = 0; }
+                else if (!st->LoggedStopErr)
+                {
+                    SCString m; m.Format("Lukacino MS: Emergency Stop NEODESLAN (%s) @ %.2f. Zkontroluj Trade Service Log.", sc.GetTradingErrorTextMessage(res), px);
+                    sc.AddMessageToLog(m, 1); st->LoggedStopErr = 1;
+                }
             }
         }
     }

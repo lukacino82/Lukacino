@@ -64,6 +64,7 @@ struct SCStudyInterface{
    fill(side,o.OrderQuantity,Open[Index],"mkt"); s_SCTradeOrder t; t.InternalOrderID=id; t.OrderStatusCode=SCT_OSC_FILLED; t.AvgFillPrice=Open[Index]; orders[id]=t; return 1;}
  double BuyEntry(s_SCNewOrder&o){return market(o,1,false);} double SellEntry(s_SCNewOrder&o){return market(o,-1,false);}
  double BuyExit(s_SCNewOrder&o){return market(o,1,true);} double SellExit(s_SCNewOrder&o){return market(o,-1,true);}
+ double BuyOrder(s_SCNewOrder&o){ if(getenv("NO_EXIT")) return 0; return market(o,1,false);} double SellOrder(s_SCNewOrder&o){ if(getenv("NO_EXIT")) return 0; return market(o,-1,false);}
  int CancelOrder(int id){ if(orders.count(id)&&orders[id].OrderStatusCode==SCT_OSC_OPEN) orders[id].OrderStatusCode=SCT_OSC_CANCELED; return 1;}
  int GetOrderByOrderID(int id,s_SCTradeOrder&o){ if(!orders.count(id)) return 0; o=orders[id]; return 1;}
  int GetTradePosition(s_SCPositionData&p){p.PositionQuantity=pos; p.WorkingOrdersExist=0; for(auto&kv:orders) if(kv.second.OrderStatusCode==SCT_OSC_OPEN) p.WorkingOrdersExist=1; return 1;}
