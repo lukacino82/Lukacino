@@ -16,7 +16,7 @@ int main(int argc,char**argv){
   sc.IsFullRecalculation=0;
   for(int i=warm;i<N;i++){ sc.ArraySize=i+1; sc.IndexOfLastVisibleBar=i; sc.IndexOfFirstVisibleBar=std::max(0,i-500);
     if(i>0){sc.Index=i-1; scsf_Lukacino_MultiSystem(sc);}
-    sc.checkStops(i); sc.Index=i; scsf_Lukacino_MultiSystem(sc);}
+    sc.checkStops(i); sc.Index=i; int ticks=getenv("TICKS")?atoi(getenv("TICKS")):1; for(int k=0;k<ticks;k++) scsf_Lukacino_MultiSystem(sc);}
   { State* st=(State*)sc.pp[1]; if(st) printf("dni rozhodnuto %zu, prvni %d, posledni %d\n", st->C.size(), st->Date.empty()?0:st->Date.front(), st->Date.empty()?0:st->Date.back()); }
   sc.LastCallToFunction=1; std::string panel=sc.lastPanel; scsf_Lukacino_MultiSystem(sc);
   printf("virt. obchodů %zu | fills %zu | pozice %d | broker realized %.1f b. | rejects %d | alerts %d | errors %d\n",

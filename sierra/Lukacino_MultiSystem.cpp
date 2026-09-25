@@ -77,7 +77,7 @@ namespace
         int   LastIndex = -1;
         // příkazy
         int   StopID = 0, StopQty = 0; float StopPrice = 0;
-        int   Pending = 0, PendingCalls = 0, PendingTarget = 0;
+        int   Pending = 0, PendingCalls = 0, PendingTarget = 0, StopCancelCalls = 0, LastErrTarget = 99999, LastErrActual = 99999;
         int   FirstLiveDone = 0, OrdersBlocked = 0;
         int   LoggedCfg = 0, LoggedDelta = 0, LoggedSize = 0;
     };
@@ -684,13 +684,28 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
                 st->StopID = 0;
         }
 
+        // Emergency Stop pryč? Pokud ne, pošle zrušení (opakovaně po 50 voláních) a vrátí false.
+        // Sierra odmítne exit, když working exit příkazy (stop) už kryjí celou pozici.
+        auto stopGone = [&]() -> bool
+        {
+            if (!st->StopID) return true;
+            s_SCTradeOrder ord;
+            if (!sc.GetOrderByOrderID(st->StopID, ord) || ord.OrderStatusCode == SCT_OSC_CANCELED
+                || ord.OrderStatusCode == SCT_OSC_ERROR || ord.OrderStatusCode == SCT_OSC_FILLED)
+            { st->StopID = 0; st->StopCancelCalls = 0; return true; }
+            if (st->StopCancelCalls++ % 50 == 0) sc.CancelOrder(st->StopID);
+            return false;
+        };
+
         const int target = netTarget();
         if (st->Pending)
         {
             st->PendingCalls++;
             if (actual == st->PendingTarget || st->PendingCalls > 50) st->Pending = 0;
         }
-        if (!st->Pending && !st->OrdersBlocked && actual != target)
+        // zmenšení pozice (exit) jen bez working Emergency Stopu; přidání do pozice hned
+        const bool reducing = (actual > 0 && target < actual) || (actual < 0 && target > actual);
+        if (!st->Pending && !st->OrdersBlocked && actual != target && (!reducing || stopGone()))
         {
             const int diff = target - actual;
             s_SCNewOrder o; o.OrderType = SCT_ORDERTYPE_MARKET; o.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED; o.TextTag = "LukacinoMS";
@@ -699,12 +714,16 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             else if (actual < 0 && diff > 0) { o.OrderQuantity = LMin(diff, -actual); res = (int)sc.BuyExit(o);  expect = actual + o.OrderQuantity; }
             else if (diff > 0)               { o.OrderQuantity = diff;  res = (int)sc.BuyEntry(o);  expect = actual + diff; }
             else                             { o.OrderQuantity = -diff; res = (int)sc.SellEntry(o); expect = actual + diff; }
-            if (res > 0) { st->Pending = 1; st->PendingCalls = 0; st->PendingTarget = expect; }
+            if (res > 0) { st->Pending = 1; st->PendingCalls = 0; st->PendingTarget = expect; st->LastErrTarget = 99999; }
             else
             {
-                SCString m; m.Format("Lukacino MS: prikaz NEODESLAN (%s), cil %d, ucet %d. Zkontroluj Auto Trading Enabled a Trade Service Log.",
-                                     sc.GetTradingErrorTextMessage(res), target, actual);
-                sc.AddMessageToLog(m, 1); st->Pending = 1; st->PendingCalls = 0; st->PendingTarget = expect;
+                if (target != st->LastErrTarget || actual != st->LastErrActual)   // do logu jen jednou pro stejný stav
+                {
+                    SCString m; m.Format("Lukacino MS: prikaz NEODESLAN (%s), cil %d, ucet %d. Zkontroluj Auto Trading Enabled a Trade Service Log.",
+                                         sc.GetTradingErrorTextMessage(res), target, actual);
+                    sc.AddMessageToLog(m, 1); st->LastErrTarget = target; st->LastErrActual = actual;
+                }
+                st->Pending = 1; st->PendingCalls = 0; st->PendingTarget = expect;
             }
         }
         // Emergency Stop jako GTC příkaz na celou pozici
@@ -713,15 +732,13 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             const bool want = actual != 0 && st->EmergLevel > 0 && In_Emerg.GetFloat() > 0;
             const float px = (float)sc.RoundToTickSize(st->EmergLevel, Tick);
             if (st->StopID && (!want || st->StopQty != abs(actual) || fabs(st->StopPrice - px) > Tick / 2))
-            {
-                sc.CancelOrder(st->StopID); st->StopID = 0;   // nový stop se pošle v dalším volání
-            }
+                stopGone();                                   // zrušit; nový stop až po potvrzeném zrušení
             else if (!st->StopID && want)
             {
                 s_SCNewOrder o; o.OrderType = SCT_ORDERTYPE_STOP; o.Price1 = px; o.OrderQuantity = abs(actual);
                 o.TimeInForce = SCT_TIF_GOOD_TILL_CANCELED; o.TextTag = "LukacinoMS Emergency";
                 const int res = (int)(actual > 0 ? sc.SellExit(o) : sc.BuyExit(o));
-                if (res > 0) { st->StopID = o.InternalOrderID; st->StopQty = abs(actual); st->StopPrice = px; }
+                if (res > 0) { st->StopID = o.InternalOrderID; st->StopQty = abs(actual); st->StopPrice = px; st->StopCancelCalls = 0; }
             }
         }
     }

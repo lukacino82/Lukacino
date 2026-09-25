@@ -111,6 +111,8 @@ Log Detail (Signals only / Everything = i virtuální obchody na historii ve for
   čeká se na nový signál. Jiná pozice → příkazy se pozastaví a přijde alert
   (srovnat ručně a přepočítat studii).
 * Emergency Stop vyplněný u brokera vynuluje všechny systémy.
+* Před zmenšením pozice studie nejdřív zruší Emergency Stop a teprve po potvrzení pošle exit
+  (Sierra odmítne exit, když working stop už kryje celou pozici). Pak stop pošle znovu na novou pozici.
 
 ## Ověření (emulace Replay na ES 07/2016–07/2026)
 

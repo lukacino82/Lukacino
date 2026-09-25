@@ -56,6 +56,8 @@ struct SCStudyInterface{
    pos=np; if(pos==0) avg=0; fills.push_back({BaseDateTimeIn[Index].dt,BaseDateTimeIn[Index].tm,side,q,px,tag}); }
  int market(s_SCNewOrder&o,int side,bool exit){ if(o.OrderQuantity<=0) {rejects++;return -1;}
    if(exit && (pos==0 || (pos>0)==(side>0) || o.OrderQuantity>std::abs(pos))) {rejects++;return -2;}
+   if(exit && getenv("STRICT_EXIT")){ int w=0; for(auto&kv:orders) if(kv.second.OrderStatusCode==SCT_OSC_OPEN && stopSide[kv.first]==side) w+=kv.second.OrderQuantity;
+     if(w+o.OrderQuantity>std::abs(pos)) {rejects++;return -4;} } // Sierra: exit + working exit orders nesmí překročit pozici
    if(!exit && std::abs(pos+side*o.OrderQuantity)>MaximumPositionAllowed) {rejects++;return -3;}
    int id=nextId++; o.InternalOrderID=id;
    if(o.OrderType==SCT_ORDERTYPE_STOP){ s_SCTradeOrder t; t.InternalOrderID=id; t.OrderStatusCode=SCT_OSC_OPEN; t.Price1=o.Price1; t.OrderQuantity=o.OrderQuantity; orders[id]=t; stopSide[id]=side; return 1;}
