@@ -1,0 +1,391 @@
+<title>ES Alpha Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES mini futures · 1min data 2018–2026 + volume bary 2016–2026</div>
+  <h1>ES Alpha Audit</h1>
+  <p class="lede">Nezávislý přepočet všech strategií z „alpha brainstorm“ (Phase 1–4) a tvého systému Open ± X na surových datech. Každá strategie prošla stejným sítem sedmi testů robustnosti. Žádná neprošla všemi. Tři si zaslouží paper trading, zbytek doporučuji odložit.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section id="verdict">
+  <div class="eyebrow">Závěr</div>
+  <h2>Co z toho reálně použít</h2>
+  <div class="callout"><p id="verdictText"></p></div>
+  <div class="grid3" id="watchCards"></div>
+</section>
+
+<section id="bench">
+  <div class="eyebrow">Kontext</div>
+  <h2>Strategie vs. prosté držení ES</h2>
+  <p class="sub">Kumulativní body na 1 kontrakt, čistě po nákladech 0,5 bodu na obchod. Buy &amp; hold (back-adjusted, bez rollovacích mezer) je měřítko, které musí intradenní alpha přidat navíc, ne nahradit.</p>
+  <div class="panel"><div class="legend" id="lgBench"></div><div class="chart" id="chBench"></div></div>
+</section>
+
+<section id="all">
+  <div class="eyebrow">Všech 29 strategií</div>
+  <h2>Výsledky a síto robustnosti</h2>
+  <p class="sub">Čtverečky = testy G1 až G7 (zelená = prošla). Hodnoty v bodech na obchod, čistě po 0,5 b. nákladů, data ES3000. Kliknutím na řádek zobrazíš equity křivku.</p>
+  <div class="filters" role="group" aria-label="Filtr verdiktu">
+    <button type="button" id="f-all" aria-pressed="true" data-f="all">Vše</button>
+    <button type="button" id="f-watch" aria-pressed="false" data-f="SLEDOVAT (paper)">Sledovat</button>
+    <button type="button" id="f-no" aria-pressed="false" data-f="ZAMÍTNOUT">Zamítnout</button>
+  </div>
+  <div class="tablewrap"><table id="tbl"></table></div>
+  <div class="panel"><div class="legend" id="lgOne"></div><div class="chart" id="chOne"></div></div>
+</section>
+
+<section id="openx">
+  <div class="eyebrow">Tvůj systém z poznámek</div>
+  <h2>Open ± X bodů s pevným TP/SL</h2>
+  <p class="sub" id="oxText"></p>
+  <div class="grid2">
+    <div class="panel"><h3>Fade long: nákup limitem na Open − X</h3><p class="small">Čistá expectancy v bodech na obchod. Řádky = X, sloupce = TP/SL v bodech.</p><div class="tablewrap" style="border:0"><table class="heat" id="hFL"></table></div></div>
+    <div class="panel"><h3>Fade short: prodej limitem na Open + X</h3><p class="small">Stejná mřížka pro short stranu.</p><div class="tablewrap" style="border:0"><table class="heat" id="hFS"></table></div></div>
+    <div class="panel"><h3>Obrácená logika: breakout long (buy stop na Open + X)</h3><p class="small">Kontrola, jestli nefunguje opačný směr.</p><div class="tablewrap" style="border:0"><table class="heat" id="hBL"></table></div></div>
+    <div class="panel"><h3>Breakout short (sell stop na Open − X)</h3><p class="small">Kontrola druhé strany.</p><div class="tablewrap" style="border:0"><table class="heat" id="hBS"></table></div></div>
+  </div>
+</section>
+
+<section id="ranges">
+  <div class="eyebrow">Denní rozsah RTH</div>
+  <h2>Pevné body, nebo ATR?</h2>
+  <p class="sub" id="rgText"></p>
+  <div class="grid2">
+    <div class="panel"><h3>Rozdělení denního rozsahu High − Low</h3><p class="small">ES3000, RTH 9:30–16:00, 5bodové koše.</p><div class="chart" id="chHist"></div></div>
+    <div class="panel"><h3>Průměrný rozsah podle roku</h3><p class="small">Tentýž „průměrný den“ má v roce 2019 a 2025 úplně jinou velikost.</p><div class="chart" id="chYear"></div></div>
+  </div>
+</section>
+
+<section id="lessons">
+  <div class="eyebrow">Proč většina neprošla</div>
+  <h2>Tři důvody</h2>
+  <div class="grid3">
+    <div class="card"><h3>Edge je jen od roku 2023</h3><p class="why" id="lesson1"></p></div>
+    <div class="card"><h3>Příliš mnoho zkoušení</h3><p class="why" id="lesson2"></p></div>
+    <div class="card"><h3>Původní čísla se nereplikují</h3><p class="why">Phase 1 hlásila u „Bull + 2 lower closes + negative delta“ +1,46 b./obchod, Phase 2 u „Morning VWAP + Volume“ +9,75 b. Při přesném přepočtu vychází −0,56 b. a −2,27 b. Phase 4 audit sám přiznal, že nové definice změnily pořadí. Čísla z reportů ChatGPT proto neber jako ověřená.</p></div>
+  </div>
+</section>
+
+<section id="next">
+  <div class="eyebrow">Doporučený postup</div>
+  <h2>Jak s tím naložit dál</h2>
+  <ol class="steps">
+    <li><p><b>Paper trading tří kandidátů</b> (Deep Gap + VWAP + delta divergence, DD2 PDL sweep, Bull 10–12 delta divergence) s exity v ATR, 1 kontrakt, minimálně 3–6 měsíců. Předem si zapiš podmínku zastavení: když expectancy po 60 obchodech klesne pod 0, končíš.</p></li>
+    <li><p><b>Žádné zvyšování páky podle drawdownu od ATH.</b> Phase 4 to sama zamítla a v datech 2016–2018 kandidáti prodělávali.</p></li>
+    <li><p><b>Open ± X nepoužívat</b> jako fade systém. Pokud chceš denní systém od Open, jediná smysluplná varianta je breakout long s ATR škálováním, a ta je statisticky na hraně (t ≈ 1,6).</p></li>
+    <li><p><b>Na Sierra Chart (ACSIL) převádět jen kandidáty</b>, kteří projdou paper tradingem. Engine v <span class="mono">research/alpha_test</span> dává přesné časy signálů, podle kterých se ověří parita.</p></li>
+  </ol>
+</section>
+
+<section id="method">
+  <div class="eyebrow">Metodika</div>
+  <h2>Jak se testovalo</h2>
+  <div class="grid2">
+    <div class="card"><h3>Data a exekuce</h3><ul class="why">
+      <li><b>ES3000.txt</b>: 2 895 557 minutových barů, 9. 7. 2018 – 23. 9. 2026, Bid/Ask volume. Hlavní dataset.</li>
+      <li><b>Excel List1</b>: 761 361 volume barů po 5 000 kontraktech, 20. 7. 2016 – 17. 7. 2026. Období 2016–2018 slouží jako nezávislý test (PRE), 2018–2026 jako kontrola parity.</li>
+      <li>Signál na uzavřeném 5min RTH baru, vstup na open dalšího baru, SL má přednost, když se TP i SL trefí v jednom baru, časový stop 120 min, exit nejpozději v 16:00, max. 1 obchod denně na strategii.</li>
+      <li>Náklady 0,5 bodu na obchod (stres 1,0 b.). Rollover dny vyřazeny z úrovní předchozího dne, režim (MA200, ATH, gap) z back-adjusted řady.</li>
+      <li>Open ± X: limitní vstup na přesné ceně, v baru plnění se počítá jen SL (konzervativně), exit TP/SL nebo 16:00.</li>
+    </ul></div>
+    <div class="card"><h3>Síto robustnosti</h3><ul class="why" id="gateList"></ul>
+      <p class="small">„Náhodný long“ = long vstup v každém 5min baru stejných dnů (stejný režim) se stejnými exity. Odečte se tím čistý long bias trhu, takže zbyde jen to, co přidává samotný signál.</p></div>
+  </div>
+  <p class="small">Phase 4 strategie jsou implementované přesně podle <span class="mono">codex_astra_strategy_spec.json</span>. U Phase 1 a 2 reporty neuváděly všechny detaily (časové okno, TP/SL některých variant); tam jsem použil nejbližší zveřejněnou definici, uvedenou u každé strategie v tabulce.</p>
+</section>
+
+<footer>Zdrojový kód a tabulky: <span class="mono">research/alpha_test/</span> (engine.py, strategies.py, run.py, finalize.py, out/*.csv) ve větvi <span class="mono">claude/alpha-brainstorm-trading-zttwoc</span>. Výsledky jsou historický backtest, ne záruka budoucích výnosů.</footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 2) => v == null ? "–" : v.toLocaleString("cs-CZ", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+const cls = v => v == null ? "" : v < 0 ? "neg" : "";
+const PER = ["DISC 2018–22", "VAL 2023–24", "OOS 2025–26"];
+const GATE_TXT = [
+  "G1 · čistě kladná po 0,5 i po 1,0 b. nákladů",
+  "G2 · kladná ve všech třech obdobích 2018–22, 2023–24, 2025–26",
+  "G3 · kladná v nezávislých datech 2016–2018 (Excel, min. 15 obchodů)",
+  "G4 · převyšuje náhodný long se stejnými exity, t ≥ 2",
+  "G5 · plató: ≥ 60 % variant TP/SL okolo je kladných",
+  "G6 · walk-forward (parametry vybírané jen z minulosti) je kladný",
+  "G7 · parita: kladná i na Excel volume barech"];
+const S = DATA.strats, byName = Object.fromEntries(S.map(s => [s.name, s]));
+const watch = S.filter(s => s.verdict === "SLEDOVAT (paper)");
+const pillClass = v => v === "NASADIT" ? "go" : v.startsWith("SLEDOVAT") ? "watch" : "no";
+const pillText = v => v === "NASADIT" ? "Nasadit" : v.startsWith("SLEDOVAT") ? "Sledovat" : "Zamítnout";
+
+/* ---------- KPIs + verdict ---------- */
+const best = S.reduce((a, b) => (b.net ?? -1e9) > (a.net ?? -1e9) ? b : a);
+const bhEnd = DATA.bench.bh.at(-1)[1];
+$("#kpis").innerHTML = [
+  [S.length + " + " + DATA.ox.n, "strategií a variant Open ± X otestováno"],
+  [S.filter(s => s.passed === 7).length + " / " + S.length, "prošlo všemi 7 testy robustnosti"],
+  [watch.length, "kandidáti na paper trading"],
+  ["+" + fmt(bhEnd, 0), "bodů buy & hold 1 ES, 2018–2026"],
+  ["+" + fmt(best.net, 0), "bodů nejlepší strategie (" + best.name + ")"],
+].map(([b, s]) => `<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+const ps = DATA.portstats.stats, pp = DATA.portstats.per;
+$("#verdictText").innerHTML = `Žádnou strategii nelze na základě těchto dat označit za prokázanou dlouhodobou alphu. Nejlepší výsledky mají tři strategie ze sledovacího seznamu níže. Společně dávají ${fmt(ps.n,0)} obchodních dní, +${fmt(ps.net,0)} bodů, PF ${fmt(ps.pf)} a max. drawdown ${fmt(ps.maxdd,0)} bodů. Skoro všechen zisk ale přišel po roce 2023 (průměr na den: 2018–22 ${sgn(pp["DISC 2018-22"])} b., 2023–24 ${sgn(pp["VAL 2023-24"])} b., 2025–26 ${sgn(pp["OOS 2025-26"])} b.) a v datech 2016–2018 byly ztrátové. To odpovídá spíš režimu posledních let, kdy se propady rychle vykupují, než stabilnímu edge. Jsou vhodné na paper trading, ne na ostré peníze.`;
+
+const reasons = {
+  "Q_DeepGap_VWAP_DeltaDiv": "Jediná strategie s edge nad náhodným longem t ≥ 2. V letech 2018–22 ale nulová a v PRE 2016–18 ztrátová (12 obchodů). Vysoký drawdown 430 b.",
+  "DD2_AboveMA200_PDL_Sweep": "Kladná ve všech třech obdobích 2018–2026, 100 % plató, nejlepší walk-forward. Na Excel datech t = 2,2. V PRE 2016–18 ale −1,0 b./obchod (40 obchodů).",
+  "Q_Bull_10_12_DeltaDiv": "Kladná ve všech třech obdobích, ale jen 101 obchodů (~12 ročně) a edge t = 1,5. V datech 2016–18 jen 3 obchody, takže nezávislý test chybí."
+};
+$("#watchCards").innerHTML = watch.map(s => `<div class="card">
+  <div class="head"><h3 class="mono" style="font-size:15px">${s.name}</h3><span class="pill watch">Sledovat</span></div>
+  <p class="small">${s.rule} · exit ${s.exit.replace("atr","ATR")}</p>
+  <dl><dt>Obchodů</dt><dd>${s.n}</dd><dt>Čistě / obchod</dt><dd>${sgn(s.exp)} b.</dd><dt>Po stresu 1,0 b.</dt><dd>${sgn(s.exps)} b.</dd>
+  <dt>PF · max DD</dt><dd>${fmt(s.pf)} · ${fmt(s.dd,0)} b.</dd><dt>Edge vs. náhodný long</dt><dd>${sgn(s.edge)} b. (t ${fmt(s.tedge)})</dd>
+  <dt>ATR/obch. 18–22 · 23–24 · 25–26</dt><dd>${s.R.map(v => sgn(v,3)).join(" / ")}</dd>
+  <dt>PRE 2016–18</dt><dd>${s.pre_n} obch. · ${sgn(s.pre)} b.</dd></dl>
+  <p class="why">${reasons[s.name] || ""}</p></div>`).join("");
+
+/* ---------- line chart ---------- */
+const BANDS = [["2018-07-01","2022-12-31","DISC"],["2023-01-01","2024-12-31","VAL"],["2025-01-01","2026-12-31","OOS"]];
+function lineChart(host, series, opt = {}) {
+  const W = 1000, H = opt.h || 360, m = {l: 58, r: 16, t: 14, b: 28};
+  const all = series.flatMap(s => s.pts.map(p => [new Date(p[0]).getTime(), p[1]]));
+  if (!all.length) { host.innerHTML = '<p class="small">Bez obchodů.</p>'; return; }
+  let x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+  let y0 = Math.min(0, ...all.map(p => p[1])), y1 = Math.max(0, ...all.map(p => p[1]));
+  const pad = (y1 - y0) * .06; y0 -= pad; y1 += pad;
+  const X = t => m.l + (t - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => m.t + (y1 - v) / (y1 - y0) * (H - m.t - m.b);
+  const step = niceStep((y1 - y0) / 5);
+  let g = "";
+  BANDS.forEach(([a, b, n], i) => { const xa = Math.max(X(+new Date(a)), m.l), xb = Math.min(X(+new Date(b)), W - m.r);
+    if (xb > xa) g += `<rect x="${xa}" y="${m.t}" width="${xb - xa}" height="${H - m.t - m.b}" fill="${i % 2 ? "transparent" : css("--band")}"/>
+    <text x="${xa + 6}" y="${m.t + 12}" fill="${css("--muted")}" font-size="11" font-family="IBM Plex Mono,monospace">${n}</text>`; });
+  for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step)
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 0 ? css("--muted") : css("--grid")}" stroke-width="1"/>
+      <text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end" class="axt">${fmt(v, 0)}</text>`;
+  for (let y = new Date(x0).getFullYear() + 1; y <= new Date(x1).getFullYear(); y++) {
+    const t = +new Date(y + "-01-01"); g += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" class="axt">${y}</text>`; }
+  series.forEach(s => {
+    const d = s.pts.map((p, i) => (i ? "L" : "M") + X(+new Date(p[0])).toFixed(1) + "," + Y(p[1]).toFixed(1)).join("");
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w || 2}" ${s.dash ? 'stroke-dasharray="5 4"' : ""} stroke-linejoin="round"/>`;
+  });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${opt.label || "equity"}"><g class="axis">${g.replaceAll('class="axt"', `fill="${css("--muted")}" font-size="11" font-family="IBM Plex Mono,monospace"`)}</g>
+    <line id="xh" y1="${m.t}" y2="${H - m.b}" stroke="${css("--ink2")}" stroke-width="1" opacity="0"/><g id="dots"></g>
+    <rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" class="hit"/></svg><div class="tip" hidden></div>`;
+  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), xh = svg.querySelector("#xh"), dots = svg.querySelector("#dots");
+  const idx = series.map(s => s.pts.map(p => +new Date(p[0])));
+  const move = ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width * W;
+    const t = x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+    let rows = [], dd = "";
+    series.forEach((s, k) => { const a = idx[k]; if (!a.length || t < a[0]) return; let lo = 0, hi = a.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; a[mid] <= t ? lo = mid : hi = mid - 1; }
+      rows.push([s, s.pts[lo]]); });
+    if (!rows.length) { tip.hidden = true; xh.setAttribute("opacity", 0); dots.innerHTML = ""; return; }
+    xh.setAttribute("x1", px); xh.setAttribute("x2", px); xh.setAttribute("opacity", .35);
+    dots.innerHTML = rows.map(([s, p]) => `<circle cx="${X(+new Date(p[0]))}" cy="${Y(p[1])}" r="4.5" fill="${s.color}" stroke="${css("--surface")}" stroke-width="2"/>`).join("");
+    tip.innerHTML = `<div class="d">${new Date(t).toLocaleDateString("cs-CZ")}</div>` + rows.map(([s, p]) =>
+      `<div class="row"><span><i style="background:${s.color}"></i>${s.name}</span><b class="num">${sgn(p[1], 0)}</b></div>`).join("");
+    tip.hidden = false;
+    const hw = host.clientWidth, left = (px / W) * hw;
+    tip.style.left = Math.min(Math.max(left + 12, 0), hw - tip.offsetWidth - 4) + "px"; tip.style.top = "8px";
+  };
+  const hit = svg.querySelector(".hit");
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("opacity", 0); dots.innerHTML = ""; });
+}
+function niceStep(r) { const p = Math.pow(10, Math.floor(Math.log10(r))), f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+const legend = (el, ss) => el.innerHTML = ss.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+
+function drawBench() {
+  const col = [css("--s1"), css("--s2"), css("--s3")];
+  const ss = [{name: "Buy & hold 1 ES", pts: DATA.bench.bh, color: css("--bh"), dash: 1},
+              {name: "Sledovací portfolio (3 strategie)", pts: DATA.port, color: css("--s4"), w: 2.5},
+              ...watch.map((s, i) => ({name: s.name, pts: s.eq, color: col[i]}))];
+  legend($("#lgBench"), ss); lineChart($("#chBench"), ss, {label: "Equity vs buy and hold"});
+}
+
+/* ---------- table ---------- */
+let filt = "all", sel = watch[0]?.name || S[0].name;
+function drawTable() {
+  const rows = S.filter(s => filt === "all" || s.verdict === filt);
+  $("#tbl").innerHTML = `<thead><tr><th>Strategie</th><th>Verdikt</th><th>Testy</th><th>Obch.</th><th>b./obch.</th><th>Stres 1,0</th><th>PF</th><th>Max DD</th>
+    <th>Edge t</th><th>${PER[0]}</th><th>${PER[1]}</th><th>${PER[2]}</th><th>PRE 16–18</th><th>Walk-fwd</th></tr></thead><tbody>` +
+    rows.map(s => `<tr data-n="${s.name}" style="cursor:pointer${s.name === sel ? ";background:var(--band)" : ""}" tabindex="0">
+      <td class="name">${s.name}<small>${s.phase} · ${s.rule} · ${s.exit.replace("atr","ATR")}</small></td>
+      <td><span class="pill ${pillClass(s.verdict)}">${pillText(s.verdict)}</span></td>
+      <td><span class="gates" title="${s.gates.map((g,i)=>(g?"✓ ":"✗ ")+GATE_TXT[i]).join("\n")}">${s.gates.map(g => `<span class="${g ? "on" : ""}"></span>`).join("")}</span></td>
+      <td class="num">${s.n}</td><td class="num ${cls(s.exp)}">${sgn(s.exp)}</td><td class="num ${cls(s.exps)}">${sgn(s.exps)}</td>
+      <td class="num">${fmt(s.pf)}</td><td class="num">${fmt(s.dd,0)}</td><td class="num ${cls(s.tedge)}">${fmt(s.tedge)}</td>
+      ${s.per.map(v => `<td class="num ${cls(v)}">${sgn(v)}</td>`).join("")}
+      <td class="num ${cls(s.pre)}">${s.pre_n >= 15 ? sgn(s.pre) : `<span class="small">n=${s.pre_n}</span>`}</td>
+      <td class="num ${cls(s.wf)}">${sgn(s.wf,0)}</td></tr>`).join("") + "</tbody>";
+  $("#tbl").querySelectorAll("tr[data-n]").forEach(tr => {
+    const go = () => { sel = tr.dataset.n; drawTable(); drawOne(); };
+    tr.addEventListener("click", go); tr.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  });
+}
+function drawOne() {
+  const s = byName[sel];
+  const ss = [{name: s.name + " (čistě po 0,5 b.)", pts: s.eq, color: css("--s1")}];
+  legend($("#lgOne"), ss); lineChart($("#chOne"), ss, {h: 300, label: "Equity " + s.name});
+}
+document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+  filt = b.dataset.f; document.querySelectorAll(".filters button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawTable(); }));
+
+/* ---------- Open ± X ---------- */
+const bl = DATA.base.long, bs = DATA.base.short;
+$("#oxText").innerHTML = `Tvůj základní případ (X = 20 bodů, TP 15 / SL 10 bodů = 60/40 ticků) na datech 2018–2026: long na Open − 20 se naplnil ve ${fmt(bl.fill*100,0)} % dní (${bl.n} obchodů). TP přišel dřív než SL jen ve ${fmt(bl.tpr*100,0)} % případů, SL v ${fmt(bl.slr*100,0)} %. Výsledek ${sgn(bl.exp)} b./obchod, celkem ${sgn(bl.net,0)} b. Short na Open + 20: ${sgn(bs.exp)} b./obchod, celkem ${sgn(bs.net,0)} b. Ze všech ${DATA.ox.n} variant (X 10/15/20/40 bodů i v ATR, 10 poměrů TP/SL, fade i breakout, obě datové sady) nemá žádná t-statistiku nad 2 (maximum ${fmt(DATA.ox.max_t)}). Fade proti pohybu od Open je systematicky ztrátový. Mírně kladný je jen breakout long, tedy obchod po směru trhu s long biasem.`;
+function heat(el, M) {
+  const Xs = [10, 15, 20, 40], lim = 2;
+  const col = v => { if (v == null) return css("--mid"); const a = Math.min(Math.abs(v) / lim, 1);
+    return `color-mix(in oklab, ${v > 0 ? css("--pos") : css("--neg")} ${Math.round(a * 85)}%, ${css("--mid")})`; };
+  el.innerHTML = `<thead><tr><th>X \\ TP/SL</th>${DATA.rr.map(r => `<th>${r}</th>`).join("")}</tr></thead><tbody>` +
+    M.map((row, i) => `<tr><td class="rowh">${Xs[i]} b.</td>${row.map((c, j) => { const a = Math.min(Math.abs(c.exp ?? 0) / lim, 1);
+      return `<td style="background:${col(c.exp)};color:${a > .55 ? "#fff" : "var(--ink)"}" title="X=${Xs[i]}, TP/SL ${DATA.rr[j]}: ${sgn(c.exp)} b./obchod, ${c.n} obchodů, TP první ${fmt(c.tpr*100,0)} %, t=${fmt(c.t)}">${sgn(c.exp, 1)}</td>`; }).join("")}</tr>`).join("") + "</tbody>";
+}
+
+/* ---------- ranges ---------- */
+const R1 = DATA.ranges.es1m, R2 = DATA.ranges.esvol;
+$("#rgText").innerHTML = `Průměrný denní rozsah RTH je ${fmt(R1.mean,1)} bodu (2018–2026, ES3000) a ${fmt(R2.mean,1)} bodu (2016–2026, Excel). Tvých 44,18 b. odpovídá delší řadě. Rozdělení ale není Gaussova křivka: je silně zešikmené doprava (šikmost ${fmt(R1.skew,1)}), medián je jen ${fmt(R1.median,1)} b., ${fmt(R1.below_mean*100,0)} % dní má rozsah pod průměrem a v pásmu ±1 směrodatná odchylka leží ${fmt(R1.within_1sd*100,0)} % dní. Hlavně se ale průměr mění po letech: v roce 2019 ${fmt(R1.by_year["2019"],1)} b., v roce 2025 ${fmt(R1.by_year["2025"],1)} b. Pevné TP/SL v bodech proto znamenají v každém roce jiný obchod. Relativní rozptyl klesne z ${fmt(R1.cv_points*100,0)} % (body) na ${fmt(R1.cv_atr*100,0)} % (v násobcích ATR20). Proto doporučuji TP, SL i vzdálenost X škálovat podle ATR20 předchozích dnů. Samotné ATR ale ztrátový fade systém nezachrání, jen zpřesní velikost obchodu.`;
+function hist() {
+  const H = DATA.hist, W = 1000, Hh = 300, m = {l: 48, r: 12, t: 12, b: 30};
+  const n = H.counts.length, mx = Math.max(...H.counts), bw = (W - m.l - m.r) / n;
+  const Y = v => m.t + (1 - v / mx) * (Hh - m.t - m.b);
+  let g = "";
+  for (let v = 0; v <= mx; v += niceStep(mx / 4)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" font-size="11" font-family="IBM Plex Mono,monospace">${v}</text>`;
+  H.counts.forEach((c, i) => { const x = m.l + i * bw, y = Y(c);
+    g += `<rect x="${x + 1}" y="${y}" width="${bw - 2}" height="${Hh - m.b - y}" rx="2" fill="${css("--s1")}"><title>${H.edges[i]}–${H.edges[i + 1]} b.: ${c} dní</title></rect>`;
+    if (i % 4 === 0) g += `<text x="${x}" y="${Hh - 10}" fill="${css("--muted")}" font-size="11" font-family="IBM Plex Mono,monospace">${H.edges[i]}</text>`; });
+  const xm = m.l + R1.mean / 5 * bw, xmed = m.l + R1.median / 5 * bw;
+  g += `<line x1="${xm}" x2="${xm}" y1="${m.t}" y2="${Hh - m.b}" stroke="${css("--s2")}" stroke-width="2"/><text x="${xm + 5}" y="${m.t + 12}" fill="${css("--ink2")}" font-size="12">průměr ${fmt(R1.mean,1)}</text>`;
+  g += `<line x1="${xmed}" x2="${xmed}" y1="${m.t + 22}" y2="${Hh - m.b}" stroke="${css("--ink2")}" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${xmed - 5}" y="${m.t + 34}" text-anchor="end" fill="${css("--ink2")}" font-size="12">medián ${fmt(R1.median,1)}</text>`;
+  g += `<text x="${W - m.r}" y="${Hh - 10}" text-anchor="end" fill="${css("--muted")}" font-size="11">200+ b.: ${H.over} dní</text>`;
+  $("#chHist").innerHTML = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Histogram denního rozsahu">${g}</svg>`;
+}
+function years() {
+  const ys = Object.keys(R2.by_year), W = 1000, Hh = 300, m = {l: 48, r: 12, t: 12, b: 30};
+  const mx = Math.max(...Object.values(R2.by_year)) * 1.1, bw = (W - m.l - m.r) / ys.length;
+  const Y = v => m.t + (1 - v / mx) * (Hh - m.t - m.b);
+  let g = "";
+  for (let v = 0; v <= mx; v += 20) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" font-size="11" font-family="IBM Plex Mono,monospace">${v}</text>`;
+  ys.forEach((y, i) => { const v = R2.by_year[y], x = m.l + i * bw + bw * .2, w = bw * .6, yy = Y(v);
+    g += `<rect x="${x}" y="${yy}" width="${w}" height="${Hh - m.b - yy}" rx="3" fill="${css("--s1")}"><title>${y}: ${fmt(v,1)} b.</title></rect>
+      <text x="${x + w / 2}" y="${yy - 6}" text-anchor="middle" fill="${css("--ink2")}" font-size="12" font-family="IBM Plex Mono,monospace">${fmt(v,0)}</text>
+      <text x="${x + w / 2}" y="${Hh - 10}" text-anchor="middle" fill="${css("--muted")}" font-size="11" font-family="IBM Plex Mono,monospace">${y}</text>`; });
+  $("#chYear").innerHTML = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Průměrný rozsah podle roku">${g}</svg>`;
+}
+
+/* ---------- lessons & gates ---------- */
+$("#lesson1").innerHTML = `Když se zisk přepočítá na násobky ATR (aby období s ES na 2 800 a na 7 700 šla porovnat), mají všichni tři kandidáti v letech 2018–2022 expectancy prakticky nulovou: ${watch.map(s => sgn(s.R[0],3)).join(", ")} ATR na obchod. Kladná čísla dělají roky 2023–2026 a v nezávislých datech 2016–2018 byly ztrátové. Může jít o nový režim trhu, ale také o náhodu.`;
+$("#lesson2").innerHTML = `Při ${DATA.yard.n_strategies} strategiích bez jakékoliv skutečné výhody by nejlepší z nich měla t-statistiku kolem ${fmt(DATA.yard.median_max_t)} jen náhodou (95. percentil ${fmt(DATA.yard.p95_max_t)}). Nejlepší naměřená hodnota je ${fmt(Math.max(...S.map(s => s.tedge ?? -9)))}. Výsledky jako celek se tedy od čisté náhody neodlišují. Brainstorm přitom prošel přes 17 000 kombinací, takže jeho „nejlepší“ výsledky jsou výběrem šťastlivců.`;
+$("#gateList").innerHTML = GATE_TXT.map(t => `<li>${t}</li>`).join("") + `<li><b>Nasadit</b> = všech 7. <b>Sledovat</b> = min. 5 testů, G1 a G6 splněny, edge t ≥ 1,5, min. 60 obchodů.</li>`;
+
+function drawAll() { drawBench(); drawTable(); drawOne(); heat($("#hFL"), DATA.heat.fade_long); heat($("#hFS"), DATA.heat.fade_short);
+  heat($("#hBL"), DATA.heat.break_long); heat($("#hBS"), DATA.heat.break_short); hist(); years(); }
+drawAll();
+new MutationObserver(drawAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+</script>
