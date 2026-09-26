@@ -1,0 +1,88 @@
+{
+  "_help": "enabled: yes/no zapina system do knihy; contracts: ES (0.1 = 1 MES); core_buy_and_hold: yes = drzet 1 ES trvale + swing systemy nad tim",
+  "cost_pts": 0.5,
+  "max_contracts": null,
+  "core_buy_and_hold": "no",
+  "systems": [
+    {
+      "id": "C1",
+      "name": "C1 Connors RSI(2)<10 >SMA200, exit C>SMA5",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C1 Connors RSI(2)<10 >SMA200, exit C>SMA5"
+    },
+    {
+      "id": "C2",
+      "name": "C2 Cum.RSI(2) 2d<35 >SMA200, exit RSI2>65",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C2 Cum.RSI(2) 2d<35 >SMA200, exit RSI2>65"
+    },
+    {
+      "id": "C3",
+      "name": "C3 Double 7s >SMA200, exit 7d high close",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C3 Double 7s >SMA200, exit 7d high close"
+    },
+    {
+      "id": "C4",
+      "name": "C4 4 down closes >SMA200, exit C>SMA5",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C4 4 down closes >SMA200, exit C>SMA5"
+    },
+    {
+      "id": "C5",
+      "name": "C5 %b<0.2 3 days >SMA200, exit %b>0.8",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C5 %b<0.2 3 days >SMA200, exit %b>0.8"
+    },
+    {
+      "id": "C6",
+      "name": "C6 IBS<0.2, exit C>prev high",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C6 IBS<0.2, exit C>prev high"
+    },
+    {
+      "id": "C7",
+      "name": "C7 Turnaround Monday->Tuesday",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C7 Turnaround Monday->Tuesday"
+    },
+    {
+      "id": "C8",
+      "name": "C8 Turn-of-month (d-1 .. +3)",
+      "enabled": "yes",
+      "contracts": 1,
+      "canonical": "C8 Turn-of-month (d-1 .. +3)"
+    },
+    {
+      "id": "C9",
+      "name": "C9 Pre-holiday day",
+      "enabled": "no",
+      "contracts": 1,
+      "canonical": "C9 Pre-holiday day"
+    },
+    {
+      "id": "T1",
+      "name": "T1 Faber trend: long while C>SMA200",
+      "enabled": "no",
+      "contracts": 1,
+      "canonical": "T1 Faber trend: long while C>SMA200"
+    },
+    {
+      "id": "G1",
+      "name": "grid example: close below weekly VWAP -1.5sd, trend filter",
+      "enabled": "no",
+      "contracts": 1,
+      "setup": "C<wvwap-1.5sd",
+      "regime": "sma50>sma200",
+      "side": 1,
+      "exit": "x:SL1.0ATR_RRR1.5"
+    }
+  ]
+}

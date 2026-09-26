@@ -1,0 +1,78 @@
+{
+  "cost_pts": 0.5,
+  "max_contracts": null,
+  "systems": [
+    {
+      "id": "S1_LMT_RSI2<25_-0.5ATR",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "LMT_RSI2<25_-0.5ATR",
+      "regime": "sma50>sma200",
+      "side": 1,
+      "exit": "x:Trail1.0ATR_act0.0R_T20"
+    },
+    {
+      "id": "S2_TOM_d-1",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "TOM_d-1",
+      "regime": "sma50>sma200",
+      "side": 1,
+      "exit": "x:SL2.0ATR_RRR0.5"
+    },
+    {
+      "id": "S3_LowSweep_prev_wvwap",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "LowSweep_prev_wvwap",
+      "regime": "sma50>sma200",
+      "side": 1,
+      "exit": "x:SL0.75ATR_RRR2.0"
+    },
+    {
+      "id": "S4_C<wvwap-1.5sd",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "C<wvwap-1.5sd",
+      "regime": "sma50>sma200",
+      "side": 1,
+      "exit": "x:SL1.0ATR_RRR1.5"
+    },
+    {
+      "id": "S5_LMT@mvwap-2.0sd",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "LMT@mvwap-2.0sd",
+      "regime": "c>sma200&dd<10",
+      "side": 1,
+      "exit": "x:SL1.5ATR_RRR3.0_BE1R"
+    },
+    {
+      "id": "S6_STOP@20dHigh",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "STOP@20dHigh",
+      "regime": "c>sma200&dd<10",
+      "side": 1,
+      "exit": "x:SL1.5ATR_RRR1.0"
+    },
+    {
+      "id": "S7_BigDown>1.0ATR",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "BigDown>1.0ATR",
+      "regime": "c>sma200",
+      "side": 1,
+      "exit": "x:Trail1.0ATR_act1.0R_T20"
+    },
+    {
+      "id": "S8_C<dvwap-2.0sd",
+      "enabled": "yes",
+      "contracts": 1,
+      "setup": "C<dvwap-2.0sd",
+      "regime": "sma50>sma200",
+      "side": 1,
+      "exit": "x:C>PrevHigh+SL3.0ATR"
+    }
+  ]
+}

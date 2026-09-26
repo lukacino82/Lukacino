@@ -1,0 +1,4 @@
+swing_lab/data/
+swing_lab/results/*.parquet
+__pycache__/
+*.pyc
