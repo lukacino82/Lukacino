@@ -1,0 +1,91 @@
+{
+ "created": "2026-09-27, before any run on 2008-2016 data",
+ "window": [
+  "2008-05-05",
+  "2016-06-30"
+ ],
+ "note": "All candidates were selected exclusively on the legacy 2016-2026 sample. 2008-2016H1 has never been used. Nothing below may be changed after the first run.",
+ "costs": {
+  "base": 0.5,
+  "stress": 1.5,
+  "stress_slippage_ticks_each_side": 1
+ },
+ "pass_rules_single": {
+  "trades_min": 20,
+  "calendar_trades_min": 15,
+  "pf_min": 1.15,
+  "expectancy_after_stress": ">0"
+ },
+ "pass_rules_book": {
+  "sharpe_gt": [
+   "buy_and_hold",
+   "long_above_sma200"
+  ],
+  "alpha_t": ">0 reported",
+  "mdd": "reported"
+ },
+ "candidates": {
+  "canonical": "canonical.py C1..C9, T1; book = C1..C8 1 ES each",
+  "legacy_insample_book": "results/book_full.json",
+  "legacy_wf_book_v3": "results/book_wf.json",
+  "family_ensembles": "results/ensemble_spec_full.json (5 families, equal weight, 1 ES per family)",
+  "audit_candidates": [
+   {
+    "id": "A1",
+    "setup": "LMT@mvwap-2.0sd",
+    "regime": "c>sma200",
+    "exit": "x:SL0.5ATR_RRR0.5",
+    "side": 1
+   },
+   {
+    "id": "A2",
+    "setup": "LMT@wvwap-2.0sd",
+    "regime": "c>sma200",
+    "exit": "x:SL0.5ATR_RRR0.5",
+    "side": 1
+   },
+   {
+    "id": "A3",
+    "setup": "LMT_RSI2<25_-0.5ATR",
+    "regime": "sma50>sma200",
+    "exit": "x:Trail1.0ATR_act0.0R_T20",
+    "side": 1
+   },
+   {
+    "id": "A4",
+    "setup": "TOM_d-1",
+    "regime": "sma50>sma200",
+    "exit": "x:SL2.0ATR_RRR0.5",
+    "side": 1
+   },
+   {
+    "id": "A5",
+    "setup": "LowSweep_prev_wvwap",
+    "regime": "sma50>sma200",
+    "exit": "x:SL0.75ATR_RRR2.0",
+    "side": 1
+   },
+   {
+    "id": "A6",
+    "setup": "C<wvwap-1.5sd",
+    "regime": "sma50>sma200",
+    "exit": "x:SL1.0ATR_RRR1.5",
+    "side": 1
+   },
+   {
+    "id": "A7",
+    "setup": "LMT@prevWeekVAL",
+    "regime": "c>sma200",
+    "exit": "x:SL3.0ATR_RRR1.5",
+    "side": 1
+   },
+   {
+    "id": "A8",
+    "setup": "STOP@20dHigh",
+    "regime": "sma50>sma200",
+    "exit": "x:SL3.0ATR_RRR0.5",
+    "side": 1
+   }
+  ]
+ }
+}
