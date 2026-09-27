@@ -1,0 +1,13 @@
+total,ann,mdd,sharpe,mar,beta,alpha_ir,name,alpha_t,beats_bh,beats_sma200
+1438.0,190.2,279.8,0.8,0.68,1.0,-0.8,Buy & Hold,,False,True
+822.2,108.8,258.8,0.6,0.42,0.59,-0.04,Long above SMA200 (T1),-0.1,False,False
+4179.8,552.9,1178.0,0.87,0.47,1.98,0.41,Canonical book C1-C8,1.14,True,True
+1083.9,143.4,940.4,0.31,0.15,1.34,-0.33,Audit candidates A1-A8,-0.92,False,False
+2129.0,281.6,740.6,0.58,0.38,1.59,-0.07,Legacy book_full,-0.18,False,False
+1772.9,234.5,501.9,0.53,0.47,1.28,-0.03,Legacy book_wf,-0.08,False,False
+212.6,28.1,56.2,0.67,0.5,0.09,0.29,Family: LMT_Down#_#ATR [short_term],0.79,False,True
+79.6,10.5,91.1,0.22,0.12,0.12,-0.33,Family: DeltaZ<# [short_term],-0.91,False,False
+252.3,33.4,151.0,0.41,0.22,0.24,-0.23,Family: TurnaroundMon [short_term],-0.63,False,False
+232.6,30.8,109.6,0.56,0.28,0.13,0.14,Family: C<prev_qvwap [short_term],0.39,False,False
+544.0,72.0,106.2,0.88,0.68,0.27,0.4,Family: IBS<# [short_term],1.11,True,True
+1321.2,174.8,377.1,0.74,0.46,0.86,0.1,Family ensembles (5),0.27,False,True

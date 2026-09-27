@@ -15,7 +15,8 @@ Entry modes (signal known at RTH close of day d):
 Exit rules (optional, first touched wins):
   sl_d[d]   stop-loss distance in points (np.inf = none)
   tp_d[d]   take-profit distance in points (np.inf = none)
-  tr_d[d]   chandelier trailing distance from best price since entry (np.inf = none),
+  tr_d[d]   chandelier trailing distance from best price since entry (np.inf = none), updated
+            bar by bar on 30-min bars (never inside a bar: stop uses the previous bars' best),
             active once MFE >= tr_act * initial SL distance (tr_act = 0 -> from entry)
   be_r      move stop to entry(+cost) once MFE >= be_r * SL distance (0 = off)
   max_days  time stop: exit at RTH close after N sessions in the trade (0 = off)
@@ -58,6 +59,64 @@ def _walk(side, stop, tp, k0, k1, bo, bh, bl):
             best = min(best, bl[k])
             worst = max(worst, bh[k])
     return 0.0, 0, best, worst
+
+
+@njit(cache=True)
+def _eff_stop(side, ep, stop, best, trail, trail_on, be_r, sl0, cost):
+    """effective protective stop from initial stop, chandelier trail and breakeven -> (price, reason)"""
+    eff = stop
+    rs = 1
+    if trail_on and trail < 1e17:
+        ts = best - side * trail
+        if side * (ts - eff) > 0:
+            eff = ts
+            rs = 3
+    if be_r > 0.0 and side * (best - ep) >= be_r * sl0:
+        bp = ep + side * cost
+        if side * (bp - eff) > 0:
+            eff = bp
+            rs = 6
+    return eff, rs
+
+
+@njit(cache=True)
+def _walk_dyn(side, ep, stop, tp, trail, trail_on, tr_act, be_r, sl0, cost, best, worst,
+              k0, k1, first_is_fill, bo, bh, bl):
+    """Replay 30-min bars k0..k1-1 with stops updated bar by bar (conservative).
+    Bar k0 is the fill bar when first_is_fill: its open precedes the fill, so only a stop touch
+    is checked there (a take-profit in the fill bar is ignored - order unknown).
+    Inside one bar the stop uses the best price of *previous* bars and is assumed to hit first.
+    -> (exit_price, code, best, worst, trail_on)"""
+    for k in range(k0, k1):
+        eff, rs = _eff_stop(side, ep, stop, best, trail, trail_on, be_r, sl0, cost)
+        fill_bar = first_is_fill and k == k0
+        if side > 0:
+            if not fill_bar:
+                if bo[k] <= eff:
+                    return bo[k], rs, best, min(worst, bo[k]), trail_on
+                if bo[k] >= tp:
+                    return bo[k], 2, max(best, bo[k]), worst, trail_on
+            if bl[k] <= eff:
+                return min(eff, ep) if fill_bar and eff > ep else eff, rs, best, min(worst, eff), trail_on
+            if (not fill_bar) and bh[k] >= tp:
+                return tp, 2, tp, min(worst, bl[k]), trail_on
+            best = max(best, bh[k])
+            worst = min(worst, bl[k])
+        else:
+            if not fill_bar:
+                if bo[k] >= eff:
+                    return bo[k], rs, best, max(worst, bo[k]), trail_on
+                if bo[k] <= tp:
+                    return bo[k], 2, min(best, bo[k]), worst, trail_on
+            if bh[k] >= eff:
+                return max(eff, ep) if fill_bar and eff < ep else eff, rs, best, max(worst, eff), trail_on
+            if (not fill_bar) and bl[k] <= tp:
+                return tp, 2, tp, max(worst, bh[k]), trail_on
+            best = min(best, bl[k])
+            worst = max(worst, bh[k])
+        if (not trail_on) and tr_act > 0.0 and side * (best - ep) >= tr_act * sl0:
+            trail_on = True
+    return 0.0, 0, best, worst, trail_on
 
 
 @njit(cache=True)
@@ -125,7 +184,7 @@ def run(side_sig, emode, lim, sl_d, tp_d, tr_d, tr_act, be_r, max_days, xsig, xm
                                 fill = max(p_lim, bo[k]) if sgn > 0 else min(p_lim, bo[k])
                             filled = True
                             first_seg = seg
-                            fill_k = k + 1   # fill bar itself: assume no further touch (bar order unknown)
+                            fill_k = k       # fill bar is replayed: stop checked first (conservative)
                             break
                     if filled:
                         break
@@ -154,68 +213,47 @@ def run(side_sig, emode, lim, sl_d, tp_d, tr_d, tr_act, be_r, max_days, xsig, xm
                     px = O[d]
                     code = 5
                     break
-                eff = stop
-                rs = 1
-                if trail_on and trail < 1e17:
-                    ts = best - side * trail
-                    if side * (ts - eff) > 0:
-                        eff = ts
-                        rs = 3
-                if be_r > 0.0 and side * (best - ep) >= be_r * sl0:
-                    bp = ep + side * cost
-                    if side * (bp - eff) > 0:
-                        eff = bp
-                        rs = 6
+                eff, rs = _eff_stop(side, ep, stop, best, trail, trail_on, be_r, sl0, cost)
                 k0 = bstart[d * 2 + seg]
                 k1 = bend[d * 2 + seg]
-                if seg == first_seg and fill_k >= 0:
+                fill_seg = seg == first_seg and fill_k >= 0
+                if fill_seg:
                     k0 = fill_k
                 if seg == 0:
                     so, sh, sl_ = oO[d], oH[d], oL[d]
                 else:
                     so, sh, sl_ = O[d], H[d], L[d]
-                if seg == first_seg and fill_k >= 0:
-                    # partial segment after a resting-order fill: walk bars
-                    px, c2, b2, w2 = _walk(side, eff, tp, k0, k1, bo, bh, bl)
-                    if side * (b2 - best) > 0 and abs(b2) < 1e17:
-                        best = b2
-                    if side * (worst - w2) > 0 and abs(w2) < 1e17:
-                        worst = w2
-                    if c2 != 0:
-                        code = rs if c2 == 1 else 2
+                dynamic = trail < 1e17 or be_r > 0.0
+                hs = (sl_ <= eff) if side > 0 else (sh >= eff)
+                ht = (sh >= tp) if side > 0 else (sl_ <= tp)
+                if fill_seg or dynamic or (hs and ht):
+                    # bar-by-bar: fill bar replayed (stop first), trailing/breakeven updated per bar
+                    px, code, best, worst, trail_on = _walk_dyn(
+                        side, ep, stop, tp, trail, trail_on, tr_act, be_r, sl0, cost, best, worst,
+                        k0, k1, fill_seg, bo, bh, bl)
+                    if code != 0:
                         break
                 else:
-                    hs = (sl_ <= eff) if side > 0 else (sh >= eff)
-                    ht = (sh >= tp) if side > 0 else (sl_ <= tp)
-                    if hs and ht:
-                        px, c2, b2, w2 = _walk(side, eff, tp, k0, k1, bo, bh, bl)
-                        if c2 == 0:
-                            px = eff
-                            c2 = 1
-                        code = rs if c2 == 1 else 2
-                    elif hs:
+                    if hs:
                         px = min(so, eff) if side > 0 else max(so, eff)
                         code = rs
-                    elif ht:
+                        if side * (worst - px) > 0:
+                            worst = px
+                        break
+                    if ht:
                         px = max(so, tp) if side > 0 else min(so, tp)
                         code = 2
-                    if code == 0:
-                        hi_fav = sh if side > 0 else sl_
-                        hi_adv = sl_ if side > 0 else sh
-                    elif code == 2:
-                        hi_fav = px
-                        hi_adv = worst
-                    else:
-                        hi_fav = best
-                        hi_adv = px
+                        if side * (px - best) > 0:
+                            best = px
+                        break
+                    hi_fav = sh if side > 0 else sl_
+                    hi_adv = sl_ if side > 0 else sh
                     if side * (hi_fav - best) > 0:
                         best = hi_fav
                     if side * (worst - hi_adv) > 0:
                         worst = hi_adv
-                    if code != 0:
-                        break
-                if (not trail_on) and tr_act > 0.0 and side * (best - ep) >= tr_act * sl0:
-                    trail_on = True
+                    if (not trail_on) and tr_act > 0.0 and side * (best - ep) >= tr_act * sl0:
+                        trail_on = True
             if code == 0:
                 held += 1
                 pnl[d] += side * (C[d] - mark)

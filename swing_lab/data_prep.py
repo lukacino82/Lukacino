@@ -123,7 +123,43 @@ def estimate_rolls(es: pd.DataFrame, xl: pd.DataFrame) -> pd.DataFrame:
     return r
 
 
+SIERRA_PARTS = ["ES2008.z01", "ES2008.z02", "ES2008.z03", "ES2008.z04", "ES2008.zip"]
+
+
 def build(force: bool = False) -> pd.DataFrame:
+    """Primary source: Sierra Chart export ES2008 (1-min, back-adjusted, 2008-05 .. 2026-09)."""
+    if all((ROOT / p).exists() for p in SIERRA_PARTS):
+        return build_sierra2008(force)
+    return build_legacy(force)
+
+
+def build_sierra2008(force: bool = False) -> pd.DataFrame:
+    """ES2008: one consistent Sierra feed, continuous contract back-adjusted by Sierra, ET time.
+    Bid/Ask volume is empty 2008-05 .. 2010 -> Delta is NaN there (never reconstructed)."""
+    DATA.mkdir(exist_ok=True)
+    out = DATA / "es1m_adj.parquet"
+    if out.exists() and not force:
+        return pd.read_parquet(out)
+    raw = _extract_split_zip([ROOT / p for p in SIERRA_PARTS])
+    df = pd.read_csv(io.BytesIO(raw), skipinitialspace=True)
+    df.columns = [c.strip() for c in df.columns]
+    df["dt"] = pd.to_datetime(df["Date"] + " " + df["Time"], format="%Y/%m/%d %H:%M:%S")
+    df = df.drop(columns=["Date", "Time"]).set_index("dt").rename(columns={"Last": "Close"})
+    df["Delta"] = (df["AskVolume"] - df["BidVolume"]).astype(float)
+    no_flow = (df["AskVolume"] + df["BidVolume"]) == 0
+    # a whole day without bid/ask split = no order-flow data (2008-2010), not zero delta
+    day = df.index.normalize()
+    day_has_flow = (~no_flow).groupby(day).transform("any")
+    df.loc[~day_has_flow, "Delta"] = np.nan
+    df["src"] = 2
+    df = df[["Open", "High", "Low", "Close", "Volume", "BidVolume", "AskVolume", "Delta", "src"]]
+    df.to_parquet(out)
+    print(f"ES2008 sierra feed: {len(df)} bars {df.index[0]} .. {df.index[-1]}")
+    return df
+
+
+def build_legacy(force: bool = False) -> pd.DataFrame:
+    """Legacy 2016-2026 series: Excel volume bars + ES3000 with calibrated roll adjustment."""
     DATA.mkdir(exist_ok=True)
     out = DATA / "es1m_adj.parquet"
     if out.exists() and not force:

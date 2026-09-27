@@ -115,7 +115,7 @@ def build_daily(force: bool = False):
 
     g = m.groupby(["di", "seg"])
     agg = g.agg(o=("Open", "first"), h=("High", "max"), l=("Low", "min"), c=("Close", "last"),
-                v=("Volume", "sum"), dl=("Delta", "sum"))
+                v=("Volume", "sum"), dl=("Delta", lambda x: x.sum(min_count=1)))
     rt = agg.xs(1, level="seg").reindex(range(len(days)))
     on = agg.xs(0, level="seg").reindex(range(len(days)))
 
@@ -137,7 +137,7 @@ def build_daily(force: bool = False):
         d[c_] = d[c_].fillna(d.open)
     d["eth_high"] = np.fmax(d.high, d.on_high)
     d["eth_low"] = np.fmin(d.low, d.on_low)
-    d["eth_delta"] = d.delta + d.on_delta.fillna(0)
+    d["eth_delta"] = d.delta + d.on_delta.fillna(0)   # NaN where the feed has no bid/ask split
     d["cumdelta"] = d.eth_delta.cumsum()
 
     # ---------------- VWAPs (ETH, anchored to calendar period of the trading day) ----------------
@@ -212,6 +212,18 @@ def build_daily(force: bool = False):
     d["pw_poc"] = prevw.poc.reindex(wk).values
     d["pw_vah"] = prevw.vah.reindex(wk).values
     d["pw_val"] = prevw.val.reindex(wk).values
+
+    # prior-month profile (completed month)
+    mk = days.to_period("M").asi8
+    mkm = mk[di]
+    mrows = {}
+    for mm in np.unique(mk):
+        sel = mkm == mm
+        mrows[mm] = value_area(px[sel], vv[sel])
+    mdf = pd.DataFrame(mrows, index=["poc", "vah", "val"]).T.sort_index().shift()
+    d["pm_poc"] = mdf.poc.reindex(mk).values
+    d["pm_vah"] = mdf.vah.reindex(mk).values
+    d["pm_val"] = mdf.val.reindex(mk).values
 
     # ---------------- 30-min bars for intraday path resolution ----------------
     b = m.copy()
@@ -289,7 +301,29 @@ def add_indicators(d: pd.DataFrame) -> pd.DataFrame:
     third_fri = [(p.start_time + pd.offsets.WeekOfMonth(week=2, weekday=4)) for p in mon]
     d["opex_week"] = [abs((x - tf).days) <= 4 and x <= tf for x, tf in zip(idx, third_fri)]
     d["year"] = idx.year
-    return d
+    # weekly structure: previous completed week high/low, inside / narrow-range week at week end
+    wk = idx.to_period("W")
+    wh = h.groupby(wk).max()
+    wl = l.groupby(wk).min()
+    d["pw_high"] = wk.map(wh.shift()).values
+    d["pw_low"] = wk.map(wl.shift()).values
+    d["wk_high"] = h.groupby(wk).cummax().values        # week-to-date
+    d["wk_low"] = l.groupby(wk).cummin().values
+    last_of_week = pd.Series(wk, index=idx) != pd.Series(wk, index=idx).shift(-1)
+    d["week_end"] = last_of_week.values
+    wr = (d.wk_high - d.wk_low)
+    d["inside_week"] = d.week_end & (d.wk_high < d.pw_high) & (d.wk_low > d.pw_low)
+    wrng = wh - wl
+    nr7w = wrng <= wrng.rolling(7).min()                  # narrowest weekly range of the last 7 weeks
+    d["nr_week"] = d.week_end & wk.map(nr7w).fillna(False).astype(bool).values
+    d["atr_ratio"] = d.atr5 / d.atr50                  # < 1 = compression
+    d["hi20_dd_atr"] = (d.highN20 - c) / d.atr20       # drawdown from 20d high in ATR
+    d["hi50_dd_atr"] = (d.highN50 - c) / d.atr20
+    d["dist_wvwap_atr"] = (c - d.wvwap) / d.atr20
+    d["dist_mvwap_atr"] = (c - d.mvwap) / d.atr20
+    d["wvwap_up"] = d.wvwap > d.prev_wvwap
+    d["cd_low10"] = d.cumdelta.rolling(10).min().shift()
+    return d.copy()
 
 
 if __name__ == "__main__":

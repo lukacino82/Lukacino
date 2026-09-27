@@ -157,6 +157,63 @@ def setups(d: pd.DataFrame):
     # --- I. multi-day drawdown from ATH buckets (structural buy-the-dip)
     for a, b in ((-0.03, -0.06), (-0.06, -0.10), (-0.10, -0.20)):
         add(f"ATH_DD{int(-a*100)}-{int(-b*100)}&Down", (d.dd_ath <= a) & (d.dd_ath > b) & (d.ret < 0), None)
+    out += protocol_setups(d)
+    return out
+
+
+def protocol_setups(d: pd.DataFrame):
+    """Families pre-registered in the ES Multi-Swing research protocol (2026-09-27), prefix P_ / S_.
+    Every family states its economic hypothesis; thresholds are coarse and fixed before testing."""
+    c, h, l = d.close, d.high, d.low
+    no = np.zeros(len(d), bool)
+    out = []
+
+    def add(name, lsig, ssig=None, emode=0, llim=None, slim=None):
+        out.append((name, np.asarray(pd.Series(lsig).fillna(False), bool),
+                    None if ssig is None else np.asarray(pd.Series(ssig).fillna(False), bool), emode,
+                    None if llim is None else np.asarray(llim, float), None if slim is None else np.asarray(slim, float)))
+
+    # H1 long mean reversion: forced selling stretches price below the weekly / monthly volume-weighted
+    #    fair value; in a bull regime liquidity providers pull it back.
+    for n in (2, 3, 4, 5, 6):
+        for k in (0.5, 1.0, 1.5):
+            add(f"P_Down{n}&BelowW{k}ATR", (d.downdays >= n) & (d.dist_wvwap_atr < -k))
+            add(f"P_Down{n}&BelowM{k}ATR", (d.downdays >= n) & (d.dist_mvwap_atr < -k))
+    # H2 pullback depth from a recent high + short-term oversold confirmation
+    for hn in (20, 50):
+        for k in (1.0, 2.0, 3.0):
+            dd = d[f"hi{hn}_dd_atr"] > k
+            add(f"P_Hi{hn}DD>{k}&RSI2<10", dd & (d.rsi2 < 10))
+            add(f"P_Hi{hn}DD>{k}&RSI2<25", dd & (d.rsi2 < 25))
+            add(f"P_Hi{hn}DD>{k}&IBS<0.25", dd & (d.ibs < 0.25))
+            add(f"P_Hi{hn}DD>{k}&%b<0.2", dd & (d.bb_pctb < 0.2))
+    # H3 failed auction below last month's value area (Dalton): rejection of lower prices
+    add("P_SweepPrevMonthVAL", (l < d.pm_val) & (c > d.pm_val))
+    add("P_LMT@prevMonthVAL", c > d.pm_val, emode=2, llim=d.pm_val)
+    # H4 continuation: volatility compression precedes expansion; breakouts from quiet bases persist
+    for n in (20, 50):
+        for th in (0.7, 0.85):
+            comp = d.atr_ratio.shift() < th
+            add(f"P_Breakout{n}d&Compress<{th}", d[f"hh{n}"] & comp)
+            add(f"P_STOP@{n}dHigh&Compress<{th}", comp & (c > d.sma50), emode=3, llim=d[f"highN{n}"])
+    # H5 pullback to a rising weekly VWAP = institutions defend their average cost in an uptrend
+    add("P_PullbackRisingWVWAP", (l <= d.wvwap) & (c > d.wvwap) & d.wvwap_up)
+    add("P_LMT@RisingWVWAP", (c > d.wvwap) & d.wvwap_up, emode=2, llim=d.wvwap)
+    # H6 inside / narrow-range week -> stop entry above the week's high (range expansion)
+    add("P_InsideWeek_BuyStop", d.inside_week, emode=3, llim=d.wk_high)
+    add("P_NRWeek_BuyStop", d.nr_week & (c > d.sma50), emode=3, llim=d.wk_high)
+    # H7 order flow as a filter: price falls while aggressive buyers accumulate (absorption)
+    for n in (3, 5, 10):
+        add(f"P_PriceDown{n}d&CDup", (c < c.shift(n)) & (d[f"cd{n}"] > 0))
+    add("P_NewLow10&NoCDLow", d.ll10 & (d.cumdelta > d.cd_low10))
+    for z in (-1.0, -1.5, -2.0):
+        add(f"P_DeltaClimax<{z}&CloseHigh", (d.delta_z < z) & (d.ibs > 0.6))
+    # S  crisis short module (short side only; must earn its place by portfolio drawdown reduction)
+    add("S_Breakdown20dLow_bear", no, (c < d.sma200) & (c < d.lowN20.shift()))
+    add("S_Breakdown50dLow_bear", no, (c < d.sma200) & (c < d.lowN50.shift()))
+    add("S_FailedRallyMVWAP_bear", no, (c < d.sma200) & (h >= d.mvwap) & (c < d.mvwap))
+    add("S_FailedRallySMA50_bear", no, (c < d.sma200) & (h >= d.sma50) & (c < d.sma50))
+    add("S_VolExp_LostPrevWeekLow", no, (c < d.pw_low) & (d.atr5 > 1.2 * d.atr20))
     return out
 
 
@@ -192,12 +249,11 @@ def exits(d: pd.DataFrame):
     for md in (1, 2, 3, 4, 5, 7, 10, 15, 20):
         E.append((f"x:Time{md}", dict(kind="time", max_days=md)))
     # fixed points TP/SL and RRR
-    for sl in (20, 30, 40, 60, 80, 100, 150):
-        for rrr in (0.5, 1.0, 1.5, 2.0, 3.0, 5.0):
-            E.append((f"x:SL{sl}pt_RRR{rrr}", dict(kind="bracket", sl_pts=sl, tp_pts=sl * rrr, max_days=20)))
+    # fixed-point brackets removed from the grid: ES ATR grew ~5x 2009->2026, so point stops are
+    # not stationary (walk-forward failure documented in README). Use ATR brackets instead.
     # ATR brackets
     for sl in (0.5, 0.75, 1.0, 1.5, 2.0, 3.0):
-        for rrr in (0.5, 1.0, 1.5, 2.0, 3.0):
+        for rrr in (0.5, 1.0, 1.5, 2.0, 3.0, 4.0):
             E.append((f"x:SL{sl}ATR_RRR{rrr}", dict(kind="bracket", sl_atr=sl, tp_atr=sl * rrr, max_days=20)))
     # trailing stops (chandelier) with initial ATR stop, optional time stop
     for tr in (1.0, 1.5, 2.0, 3.0, 4.0):
@@ -208,7 +264,9 @@ def exits(d: pd.DataFrame):
     # breakeven + RRR
     for sl in (1.0, 1.5):
         for rrr in (2.0, 3.0):
-            E.append((f"x:SL{sl}ATR_RRR{rrr}_BE1R", dict(kind="bracket", sl_atr=sl, tp_atr=sl * rrr, be_r=1.0, max_days=20)))
+            for be in (0.5, 1.0, 1.5):
+                E.append((f"x:SL{sl}ATR_RRR{rrr}_BE{be}R",
+                          dict(kind="bracket", sl_atr=sl, tp_atr=sl * rrr, be_r=be, max_days=20)))
     return E
 
 

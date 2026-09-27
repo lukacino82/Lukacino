@@ -23,14 +23,22 @@ warnings.filterwarnings("ignore")
 
 POINT_USD = 50.0
 DEFAULT_COST = 0.5          # points per round trip (commission + slippage), stress-tested at 1.0 / 1.5
-# walk-forward selection window: choose systems on 2016-2021 only, then test blind on 2022-2026
-WF_END = "2021-12-31"
-WF_PERIODS = {
-    "disc": ("2016-07-01", "2018-12-31"),
-    "val": ("2019-01-01", "2020-06-30"),
-    "oos": ("2020-07-01", "2021-12-31"),
+# ES2008 feed (2008-05 .. 2026-09). 2008-2016H1 was never used before -> confirmation window for
+# everything selected on the legacy 2016-2026 sample. 2016H2-2026 is already consumed.
+FRESH_END = "2016-06-30"
+PERIODS = {                 # Discovery / Validation / OOS (OOS 2022+ already seen -> not a clean test)
+    "disc": ("2008-01-01", "2016-06-30"),
+    "val": ("2016-07-01", "2021-12-31"),
+    "oos": ("2022-01-01", "2026-12-31"),
 }
-PERIODS = {                 # Discovery / Validation / true out-of-sample
+# walk-forward selection window (legacy name kept): select on data up to WF_END only
+WF_END = "2016-06-30"
+WF_PERIODS = {
+    "disc": ("2008-01-01", "2011-06-30"),
+    "val": ("2011-07-01", "2013-12-31"),
+    "oos": ("2014-01-01", "2016-06-30"),
+}
+LEGACY_PERIODS = {          # periods used on the 2016-2026 legacy sample (report v1)
     "disc": ("2016-07-01", "2021-12-31"),
     "val": ("2022-01-01", "2023-12-31"),
     "oos": ("2024-01-01", "2026-12-31"),
@@ -65,7 +73,9 @@ class Lab:
         p = np.zeros(self.n)
         p[self.start_i + 1:] = np.diff(c[self.start_i:])
         # quarterly roll cost ~ 0.5 pt round trip (spread + commissions)
-        rolls = pd.read_csv(self._rolls_path(), parse_dates=["roll_time"]).roll_time
+        # roll weekends: Sunday of expiry week (3rd Friday - 5 days) of Mar/Jun/Sep/Dec
+        rolls = [pd.Timestamp(tf) - pd.Timedelta(days=5) for tf in pd.date_range(
+            self.idx[0], self.idx[-1] + pd.Timedelta(days=100), freq="WOM-3FRI") if tf.month in (3, 6, 9, 12)]
         for t in rolls:
             j = np.searchsorted(self.idx.values, np.datetime64(t.normalize()))
             if self.start_i < j < self.n:
@@ -146,6 +156,8 @@ class Lab:
             yk = max(len(pm) / 252.0, 1e-9)
             out[f"{k}_ann"] = pm.sum() / yk
         yp = pd.Series(pnl[s0:s1]).groupby(self.years[s0:s1]).sum()
+        for y_, v_ in yp.items():
+            out[f"y{y_}"] = float(v_)          # per-year P&L, used by the expanding walk-forward
         out["years_pos"] = int((yp > 0).sum())
         out["years"] = int(len(yp))
         out["worst_year"] = float(yp.min())
