@@ -5,7 +5,17 @@ masivní grid, vícestupňové síto, walk-forward, kanonické publikované syst
 
 Report: `results/ES_SWING_LAB_REPORT.html`
 
-## Data
+## Verze 2 (ES2008, 18 let) – hlavní zjištění
+- Data: Sierra export ES2008 (1min, back-adjusted, 2008-05 → 2026-09) je jediný zdroj; bid/ask volume od 2011.
+- Engine: stop ve vstupním baru limit/stop příkazu se počítá (dřív přeskočen), trailing a breakeven po 30min barech;
+  unit testy `python -m pytest tests`.
+- Předregistrovaný test na nikdy neviděných letech 2009–2016 (`confirm_2008.py`, commit a2807bf):
+  kanonické C1–C6 prošly, kniha C1–C8 Sharpe 0,87 vs B&H 0,80; datově vytěžené knihy a kandidáti auditu selhali.
+- Protokol (`protocol_sieve.py`): 300 160 systémů, PBO 0,38, žádný DSR ≥ 0,9. Nové robustní rodiny: drawdown od 20/50d
+  high + RSI2/IBS/%b, N down dnů pod W/M VWAP v ATR, nové low bez nového low delty. Continuation a inside/NR week ne.
+- Short krizový modul: sám neutrální, v letech 2018 a 2022 v zisku; overlay k B&H zvedá Sharpe 0,77 → 0,79.
+
+## Data (verze 1)
 - `ES3000` (1min, 2018-07 → 2026-09, bid/ask) – neupravené kontrakty, roll gapy každé čtvrtletí.
 - Excel `List1` (volume bary, 2016-07 → 2026-07, back-adjusted) – slouží ke kalibraci rollů a jako historie 2016–2018.
 - Roll prémie = skok rozdílu Excel − ES3000 přes rollový víkend (přesně, víkendový pohyb se odečte). Aditivní back-adjust ke

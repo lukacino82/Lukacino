@@ -1,0 +1,204 @@
+<title>ES Swing Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#15191d; --ink2:#4a5057; --muted:#7a8088; --rule:#dcdfd9;
+  --grid:#e7e9e4; --accent:#1f6fd1; --bh:#6d7278; --s1:#2a78d6; --s2:#eb6834; --good:#1a8a4f; --bad:#c43d3c; --warn:#b77800;
+  --good-bg:#e4f3ea; --bad-bg:#f8e5e4; --warn-bg:#f8efdc; --chip:#eceee9;
+  --display:"Archivo",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#121417; --panel:#1a1d21; --ink:#eef0ee; --ink2:#b9bec3; --muted:#8a9097; --rule:#2d3237; --grid:#262a2f;
+  --accent:#5d9bea; --bh:#9aa0a6; --s1:#3987e5; --s2:#d95926; --good:#3fb877; --bad:#e66767; --warn:#d9a13a;
+  --good-bg:#15301f; --bad-bg:#3a1c1c; --warn-bg:#35290f; --chip:#23272c;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#121417; --panel:#1a1d21; --ink:#eef0ee; --ink2:#b9bec3; --muted:#8a9097; --rule:#2d3237; --grid:#262a2f;
+  --accent:#5d9bea; --bh:#9aa0a6; --s1:#3987e5; --s2:#d95926; --good:#3fb877; --bad:#e66767; --warn:#d9a13a;
+  --good-bg:#15301f; --bad-bg:#3a1c1c; --warn-bg:#35290f; --chip:#23272c;}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--body);}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:flex;flex-direction:column;gap:44px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(30px,5vw,46px);font-weight:800;line-height:1.05}
+h2{font-size:24px;font-weight:700}
+h3{font-size:16px;font-weight:700}
+p{margin:0;max-width:70ch;color:var(--ink2)}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.head{display:flex;flex-direction:column;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:22px}
+.meta{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 12px var(--mono);background:var(--chip);color:var(--ink2);padding:3px 9px;border-radius:4px}
+.verdict{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:20px 22px;display:grid;gap:14px}
+.verdict ul{margin:0;padding-left:20px;display:grid;gap:8px;max-width:78ch}
+.verdict li{color:var(--ink2)} .verdict b{color:var(--ink)}
+.funnel{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.funnel div{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.funnel .n{font:600 26px var(--mono);font-variant-numeric:tabular-nums}
+.funnel .l{font-size:13px;color:var(--ink2)}
+.funnel .z .n{color:var(--bad)}
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th{font:500 11.5px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel);position:sticky;top:0}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.t,th.t{text-align:left;font-family:var(--body);white-space:normal;min-width:220px}
+tr:last-child td{border-bottom:0}
+tr.ref td{background:var(--chip)}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.pill{display:inline-block;font:500 11px var(--mono);padding:2px 7px;border-radius:3px}
+.pill.ok{background:var(--good-bg);color:var(--good)} .pill.no{background:var(--bad-bg);color:var(--bad)} .pill.mid{background:var(--warn-bg);color:var(--warn)}
+.bar{position:relative;display:inline-block;width:64px;height:8px;background:var(--grid);border-radius:4px;vertical-align:middle;margin-left:6px}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--s1)}
+.chart{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 8px;position:relative}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--ink2);padding:0 4px 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:16px;height:2px;display:inline-block}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font:12px/1.45 var(--mono);padding:7px 9px;border-radius:4px;white-space:nowrap}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.card p{font-size:14px}
+code{font:13px var(--mono);background:var(--chip);padding:1px 5px;border-radius:3px}
+pre{font:12.5px/1.55 var(--mono);background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px;overflow-x:auto;margin:0}
+.note{font-size:13px;color:var(--muted)}
+</style>
+<div class="wrap">
+<header class="head">
+  <div class="eyebrow">ES futures · swing výzkum · verze 2 · 18 let dat</div>
+  <h1>Multi-swing laboratoř ES: co přežilo 18 let a slepý test</h1>
+  <p>Sierra Chart feed ES2008: 1min bary, back-adjusted, 4. 5. 2008 – 25. 9. 2026. Kandidáti z první verze byli předregistrováni a otestováni na letech 2009–2016, které jsem předtím nikdy neviděl. Poté 300 160 systémů včetně nových rodin z výzkumného protokolu.</p>
+  <div class="meta"><span class="chip">4 744 obchodních dní</span><span class="chip">signály od 10. 2. 2009 (SMA200)</span><span class="chip">stres 1,5 b. + 1 tick na každé straně</span><span class="chip">exekuce na 30min barech, SL první</span></div>
+</header>
+
+<section>
+  <div class="eyebrow">Verdikt</div>
+  <div class="verdict">
+    <h2>Reálná edge na obchod, alfa vůči B&amp;H zatím statisticky neprokázaná</h2>
+    <ul>
+      <li><b>Předregistrovaný slepý test 2009–2016:</b> všech šest kanonických dip-buying systémů C1–C6 prošlo (PF 1,9–8,4, kladné i po zátěži 2 b./obchod). Kniha C1–C8 měla <b>Sharpe 0,87 vs B&amp;H 0,80</b> a jako jediná porazila B&amp;H i long nad SMA200.</li>
+      <li><b>Datově vytěžené výběry selhaly:</b> in-sample kniha, walk-forward kniha i 8 kandidátů z auditu (A1, A2, A5 ztrátové). Parametry vybrané z gridu se nepřenesly, parametry publikované autory ano.</li>
+      <li><b>Nové rodiny z protokolu:</b> drawdown od 20/50denního high + RSI(2)/IBS/%b drží v 96–99 % variant. Continuation (breakout po kompresi, inside/NR week) na ES nefunguje. Order-flow filtr „nové low bez nového low delty" je slibný (96 % variant, delta až od 2011).</li>
+      <li><b>Short krizový modul</b> samostatně nevydělává, ale vydělal v roce 2022 (+488 b.) a 2018 (+99 b.). Jako pojistka k B&amp;H zvedne Sharpe z 0,77 na 0,79.</li>
+      <li><b>Multiple testing:</b> PBO = 0,38 (výběr má reálnou, ale omezenou skill). Žádný jednotlivý systém nemá DSR ≥ 0,9 (max 0,40). Alfa t-stat nejlepších systémů 1,3–1,4, práh je 2.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Předregistrovaný potvrzovací test · okno 2009-02 až 2016-06, nikdy předtím neviděné</div>
+  <h2>Jednotlivé systémy</h2>
+  <div class="tbl"><table id="cs"></table></div>
+  <h2>Knihy vs benchmarky</h2>
+  <div class="tbl"><table id="cb"></table></div>
+  <p class="note">Předregistrace: results/preregistration_2008_2016.json, commit a2807bf vytvořený před prvním během. Pravidla: ≥ 20 obchodů (kalendář ≥ 15), PF &gt; 1,15, expectancy &gt; 0 po 2 b. nákladech.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Celých 18 let · procenta na konstantní notional</div>
+  <h2>Porovnání s Buy &amp; Hold</h2>
+  <div class="tbl"><table id="pct"></table></div>
+  <div class="chart" id="ch1"></div>
+  <p class="note">Křivky v bodech na 1 ES. Procentní tabulka odstraňuje zkreslení růstem ceny ES z 1 400 na 7 800 bodů.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Síto podle protokolu · 300 160 systémů</div>
+  <div class="funnel">
+    <div><span class="n">300 160</span><span class="l">otestováno (232 setupů × 128 exitů × režimy, long + short)</span></div>
+    <div><span class="n">162 191</span><span class="l">≥ 80 obchodů, ≥ 20 v každém období</span></div>
+    <div><span class="n">61 649</span><span class="l">PF &gt; 1,15 v Discovery, Validation i OOS</span></div>
+    <div><span class="n">61 544</span><span class="l">parametrové plato ≥ 60 % sousedů</span></div>
+    <div><span class="n">19 639</span><span class="l">alfa &gt; 0 a Sharpe nebo MAR &gt; B&amp;H</span></div>
+    <div><span class="n">400 / 400</span><span class="l">top 400: stres 2 b., bootstrap P(ztráta) &lt; 5 %, náhodný vstup &lt; 95. percentil, všechny terciály volatility</span></div>
+    <div class="z"><span class="n">0</span><span class="l">Deflated Sharpe ≥ 0,9 (N<sub>eff</sub> = 2 345)</span></div>
+    <div class="z"><span class="n">0,38</span><span class="l">PBO (CSCV, 1 896 pokusů, 924 kombinací)</span></div>
+  </div>
+  <p class="note">Periody: Discovery 2008–2016H1, Validation 2016H2–2021, OOS 2022–2026 (už dříve viděné, takže není čistý test). Shorty: žádný neprošel pravidlem počtu obchodů a PF.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Nové rodiny z protokolu · podíl všech variant v zisku po nákladech</div>
+  <h2>Co lze přidat a co ne</h2>
+  <div class="tbl"><table><thead><tr><th class="t">Rodina</th><th>směr</th><th>variant</th><th>v zisku</th><th>prošlo pravidly 1–5</th><th>medián PF</th></tr></thead><tbody id="pf"></tbody></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Expanding walk-forward · každý rok nový výběr 5 rodin z předchozích let</div>
+  <h2>Roční výsledky mimo výběr</h2>
+  <div class="tbl"><table id="wf"></table></div>
+  <p>Výběr podle předchozích let vydělal víc bodů než B&amp;H (s 5 kontrakty), ale roky 2018 a 2022 byly výrazně ztrátové. Risk-adjusted B&amp;H nepřekonal.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Doporučení</div>
+  <h2>Co použít dál</h2>
+  <div class="cols">
+    <div class="card"><h3>Jádro · potvrzeno slepě</h3><p>C1 RSI(2), C2 kumulativní RSI, C6 IBS. Nejlepší alfa t-stat (1,1–1,4), prošly předregistrovaným testem i 18 lety. C3–C5 jako doplněk s menší vahou.</p></div>
+    <div class="card"><h3>Kandidáti pro forward test</h3><p>Rodina „drawdown od 20denního high ≥ 1–3 ATR + RSI(2) &lt; 25" a order-flow „nové 10denní low bez nového low kumulativní delty". Obchodovat jako ensemble variant přes MES, ne jeden parametr.</p></div>
+    <div class="card"><h3>Pojistka</h3><p>Short modul (breakdown 20denního low + volatility expansion pod týdenním low, jen při SMA50 &lt; SMA200) jako krizový overlay k B&amp;H, ne jako samostatný systém.</p></div>
+    <div class="card"><h3>Nepoužívat</h3><p>Continuation breakouty, inside/NR week, kalendář po nákladech (TOM, Turnaround, pre-holiday), pevné body TP/SL a jakýkoli „nejlepší" parametr vybraný z gridu.</p></div>
+  </div>
+</section>
+</div>
+<script>
+const D = /*DATA*/;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d=0) => v==null ? "–" : v.toLocaleString("cs-CZ",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+function lineChart(el, dates, series, h=320){
+  const W = 1000, H = h, m = {l:58,r:16,t:10,b:28};
+  const all = series.flatMap(s=>s.y);
+  let lo = Math.min(0,...all), hi = Math.max(...all);
+  const step = niceStep((hi-lo)/5); lo = Math.floor(lo/step)*step; hi = Math.ceil(hi/step)*step;
+  const x = i => m.l + i/(dates.length-1)*(W-m.l-m.r);
+  const y = v => m.t + (hi-v)/(hi-lo)*(H-m.t-m.b);
+  let g = "";
+  for(let v=lo; v<=hi+1e-9; v+=step){ g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`+
+    `<text x="${m.l-8}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono">${fmt(v)}</text>`; }
+  g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+  let lastYear = "";
+  dates.forEach((d,i)=>{ const yr=d.slice(0,4); if(yr!==lastYear && d.slice(5,7)<="01"){ lastYear=yr;
+    g += `<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono">${yr}</text>`; } else if(yr!==lastYear){lastYear=yr;} });
+  const paths = series.map(s=>`<path d="${s.y.map((v,i)=>(i?"L":"M")+x(i).toFixed(1)+","+y(v).toFixed(1)).join("")}" fill="none" stroke="${s.c}" stroke-width="2" ${s.dash?'stroke-dasharray="6 4"':''} stroke-linejoin="round"/>`).join("");
+  el.innerHTML = `<div class="legend">${series.map(s=>`<span><i style="background:${s.c}"></i>${s.n}</span>`).join("")}</div>`+
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${series.map(s=>s.n).join(", ")}">${g}${paths}<line class="xh" y1="${m.t}" y2="${H-m.b}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/><rect x="${m.l}" y="${m.t}" width="${W-m.l-m.r}" height="${H-m.t-m.b}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh");
+  svg.addEventListener("mousemove", e=>{
+    const r = svg.getBoundingClientRect(), px = (e.clientX-r.left)/r.width*W;
+    const i = Math.max(0,Math.min(dates.length-1,Math.round((px-m.l)/(W-m.l-m.r)*(dates.length-1))));
+    xh.setAttribute("x1",x(i)); xh.setAttribute("x2",x(i)); xh.setAttribute("visibility","visible");
+    tip.hidden = false; tip.innerHTML = `${dates[i]}<br>`+series.map(s=>`<span style="color:${s.c}">■</span> ${fmt(s.y[i])} b.`).join("<br>");
+    const cr = el.getBoundingClientRect(); let left = e.clientX-cr.left+14; if(left>cr.width-180) left -= 200;
+    tip.style.left = left+"px"; tip.style.top = (e.clientY-cr.top-10)+"px";
+  });
+  svg.addEventListener("mouseleave", ()=>{tip.hidden=true; xh.setAttribute("visibility","hidden");});
+}
+function niceStep(r){ const p = Math.pow(10,Math.floor(Math.log10(r))); const f = r/p; return (f<1.5?1:f<3?2:f<7?5:10)*p; }
+
+
+function draw(){
+  lineChart(document.getElementById("ch1"), D.dates, [
+    {n:"Kniha C1–C6 (6 systémů, 1 ES každý)", y:D.curves.core, c:css("--s1")},
+    {n:"B&H + C1–C6 (1/6)", y:D.curves.core_bh, c:css("--s2")},
+    {n:"Buy & Hold 1 ES", y:D.curves.bh, c:css("--bh")}]);
+}
+draw();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+const esc=t=>String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const cls=v=>v>0?"pos":v<0?"neg":"";
+const pill=b=>b?'<span class="pill ok">prošel</span>':'<span class="pill no">neprošel</span>';
+document.getElementById("cs").innerHTML='<thead><tr><th class="t">Systém</th><th>obchodů</th><th>win</th><th>b./obchod</th><th>po zátěži</th><th>PF</th><th>celkem b.</th><th>Sharpe</th><th>výsledek</th></tr></thead><tbody>'+
+ D.confirm_singles.map(r=>`<tr><td class="t">${esc(r.name)}</td><td>${fmt(r.trades)}</td><td>${fmt(r.win*100)} %</td><td class="${cls(r.avg)}">${fmt(r.avg,1)}</td><td class="${cls(r.avg_stress)}">${fmt(r.avg_stress,1)}</td><td>${fmt(r.pf,2)}</td><td class="${cls(r.total)}">${fmt(r.total)}</td><td>${fmt(r.sharpe,2)}</td><td>${pill(r.passed)}</td></tr>`).join("")+'</tbody>';
+document.getElementById("cb").innerHTML='<thead><tr><th class="t">Kniha</th><th>celkem b.</th><th>max DD</th><th>Sharpe</th><th>beta</th><th>alfa t</th><th>&gt; B&amp;H</th><th>&gt; SMA200</th></tr></thead><tbody>'+
+ D.confirm_books.map(r=>`<tr><td class="t">${esc(r.name)}</td><td class="${cls(r.total)}">${fmt(r.total)}</td><td>${fmt(r.mdd)}</td><td>${fmt(r.sharpe,2)}</td><td>${fmt(r.beta,2)}</td><td>${r.alpha_t==null||isNaN(r.alpha_t)?"–":fmt(r.alpha_t,2)}</td><td>${r.beats_bh?"✓":"–"}</td><td>${r.beats_sma200?"✓":"–"}</td></tr>`).join("")+'</tbody>';
+const names={C1:"C1 Connors RSI(2)",C2:"C2 kumulativní RSI(2)",C3:"C3 Double 7s",C4:"C4 4 down dny",C5:"C5 %b",C6:"C6 IBS",C7:"C7 Turnaround Monday",C8:"C8 Turn-of-month"};
+document.getElementById("pct").innerHTML='<thead><tr><th class="t">Strategie (2009–2026)</th><th>CAGR</th><th>max DD</th><th>Sharpe</th><th>beta</th><th>alfa t</th></tr></thead><tbody>'+
+ Object.entries(D.pct).map(([k,r])=>`<tr class="${k.startsWith("Buy")?"ref":""}"><td class="t">${names[k]||k}</td><td class="${cls(r.cagr)}">${fmt(r.cagr,1)} %</td><td>${fmt(r.maxdd,1)} %</td><td>${fmt(r.sharpe,2)}</td><td>${fmt(r.beta,2)}</td><td>${k.startsWith("Buy")?"–":fmt(r.alpha_t,2)}</td></tr>`).join("")+'</tbody>';
+const lab=f=>f.replace(/#/g,"x").replace(/^P_/,"").replace(/^S_/,"SHORT ");
+const bar=v=>`${fmt(v*100)} %<span class="bar"><i style="width:${v*100}%"></i></span>`;
+document.getElementById("pf").innerHTML=D.protocol_families.map(r=>`<tr><td class="t">${esc(lab(r.family))}</td><td>${r.side>0?"long":"short"}</td><td>${fmt(r.n)}</td><td>${bar(r.pos)}</td><td>${fmt(r.passed)}</td><td>${fmt(r.med_pf,2)}</td></tr>`).join("");
+document.getElementById("wf").innerHTML='<thead><tr><th class="t">Rok</th>'+D.wf.map(r=>`<th>${r.year}</th>`).join("")+'<th>Součet</th></tr></thead><tbody>'+
+ `<tr><td class="t">WF výběr (5 ES)</td>${D.wf.map(r=>`<td class="${cls(r.book)}">${fmt(r.book)}</td>`).join("")}<td>${fmt(D.wf.reduce((a,r)=>a+r.book,0))}</td></tr>`+
+ `<tr class="ref"><td class="t">Buy &amp; Hold 1 ES</td>${D.wf.map(r=>`<td class="${cls(r.bh)}">${fmt(r.bh)}</td>`).join("")}<td>${fmt(D.wf.reduce((a,r)=>a+r.bh,0))}</td></tr></tbody>`;
+</script>

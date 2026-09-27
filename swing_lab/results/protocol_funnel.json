@@ -1,0 +1,20 @@
+{
+ "tested": 300160,
+ "long": 226816,
+ "short": 73344,
+ "trades_rule": 162191,
+ "pf_all_periods": 61649,
+ "periods_positive": 61649,
+ "plateau_60": 61544,
+ "alpha_vs_bh": 19639,
+ "stage3_checked": 400,
+ "stress_ok": 400,
+ "bootstrap_ok": 400,
+ "random_entry_95": 400,
+ "all_vol_terciles": 400,
+ "final": 400,
+ "dsr_09": 0,
+ "n_eff": 2345,
+ "pbo": 0.379,
+ "pbo_trials": 1896
+}

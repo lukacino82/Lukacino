@@ -1,0 +1,380 @@
+{
+ "2013": [
+  {
+   "setup": "P_Hi20DD>3.0&IBS<0.25",
+   "regime": "sma50>sma200",
+   "exit": "x:C>SMA3+SL3.0ATR+T10"
+  },
+  {
+   "setup": "RSI2<20",
+   "regime": "c>sma50",
+   "exit": "x:Time2"
+  },
+  {
+   "setup": "LMT@wvwap-0.0sd",
+   "regime": "sma50>sma200",
+   "exit": "x:C>SMA10+SL3.0ATR"
+  },
+  {
+   "setup": "IBS<0.3",
+   "regime": "any",
+   "exit": "x:SL0.75ATR_RRR3.0"
+  },
+  {
+   "setup": "C<qvwap-0.0sd",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act0.0R"
+  }
+ ],
+ "2014": [
+  {
+   "setup": "P_Hi20DD>3.0&IBS<0.25",
+   "regime": "sma50>sma200",
+   "exit": "x:C>SMA3+SL3.0ATR+T10"
+  },
+  {
+   "setup": "IBS<0.2",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act0.0R"
+  },
+  {
+   "setup": "C<dvwap-0.5sd",
+   "regime": "any",
+   "exit": "x:SL1.5ATR_RRR1.0"
+  },
+  {
+   "setup": "C<wvwap-1.0sd",
+   "regime": "any",
+   "exit": "x:IBS>0.8"
+  },
+  {
+   "setup": "LMT_RSI3<20_-0.75ATR",
+   "regime": "c>sma200",
+   "exit": "x:SL2.0ATR_RRR1.5"
+  }
+ ],
+ "2015": [
+  {
+   "setup": "IBS<0.3",
+   "regime": "any",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "C<dvwap-0.5sd",
+   "regime": "any",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "P_Hi20DD>3.0&IBS<0.25",
+   "regime": "sma50>sma200",
+   "exit": "x:C>SMA3+SL3.0ATR"
+  },
+  {
+   "setup": "C<prev_wvwap",
+   "regime": "any",
+   "exit": "x:C>SMA3+SL2.0ATR"
+  },
+  {
+   "setup": "GapDownWeak>0.6ATR",
+   "regime": "c>sma100",
+   "exit": "x:C>SMA10"
+  }
+ ],
+ "2016": [
+  {
+   "setup": "GapDownWeak>0.6ATR",
+   "regime": "c>sma100",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "C<dvwap-1.0sd",
+   "regime": "c>qvwap",
+   "exit": "x:IBS>0.8+T10"
+  },
+  {
+   "setup": "IBS<0.2",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act0.0R"
+  },
+  {
+   "setup": "CumRSI2x3<90",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  },
+  {
+   "setup": "P_Down3&BelowW0.5ATR",
+   "regime": "sma50>sma200",
+   "exit": "x:C>SMA10+SL3.0ATR+T10"
+  }
+ ],
+ "2017": [
+  {
+   "setup": "C<dvwap-1.0sd",
+   "regime": "c>qvwap",
+   "exit": "x:IBS>0.8+T10"
+  },
+  {
+   "setup": "IBS<0.3",
+   "regime": "any",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "CumRSI2x3<90",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  },
+  {
+   "setup": "C<prevWeekVAL",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R"
+  },
+  {
+   "setup": "GapDownWeak>0.6ATR",
+   "regime": "c>sma100",
+   "exit": "x:C>SMA10"
+  }
+ ],
+ "2018": [
+  {
+   "setup": "C<dvwap-1.0sd",
+   "regime": "c>qvwap",
+   "exit": "x:IBS>0.8+T10"
+  },
+  {
+   "setup": "IBS<0.3",
+   "regime": "any",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "GapDownWeak>0.6ATR",
+   "regime": "c>sma100",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "C<prevWeekVAL",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R"
+  },
+  {
+   "setup": "RSI5<30",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R"
+  }
+ ],
+ "2019": [
+  {
+   "setup": "RSI2<15",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  },
+  {
+   "setup": "LMT_Down3_-0.25ATR",
+   "regime": "c>sma200",
+   "exit": "x:IBS>0.8"
+  },
+  {
+   "setup": "P_Down3&BelowW0.5ATR",
+   "regime": "sma50>sma200",
+   "exit": "x:C>PrevHigh+SL3.0ATR"
+  },
+  {
+   "setup": "ConnorsRSI<10",
+   "regime": "any",
+   "exit": "x:Time15"
+  },
+  {
+   "setup": "P_Down3&BelowM1.0ATR",
+   "regime": "c>sma100",
+   "exit": "x:RSI2>90"
+  }
+ ],
+ "2020": [
+  {
+   "setup": "RSI2<15",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  },
+  {
+   "setup": "P_Down3&BelowW0.5ATR",
+   "regime": "sma50>sma200",
+   "exit": "x:C>PrevHigh+SL3.0ATR+T10"
+  },
+  {
+   "setup": "P_Down3&BelowM1.0ATR",
+   "regime": "c>sma100",
+   "exit": "x:Time20"
+  },
+  {
+   "setup": "C<prevWeekVAL",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  },
+  {
+   "setup": "OpexWeekMon",
+   "regime": "c>qvwap",
+   "exit": "x:RSI2>90"
+  }
+ ],
+ "2021": [
+  {
+   "setup": "P_Down3&BelowW0.5ATR",
+   "regime": "sma50>sma200",
+   "exit": "x:C>PrevHigh+SL3.0ATR"
+  },
+  {
+   "setup": "LowerLows>=3",
+   "regime": "c>sma100",
+   "exit": "x:RSI2>90"
+  },
+  {
+   "setup": "LMT_Down3_-0.25ATR",
+   "regime": "c>sma200",
+   "exit": "x:C>PrevHigh+SL3.0ATR+T10"
+  },
+  {
+   "setup": "RSI2<20",
+   "regime": "any",
+   "exit": "x:SL2.0ATR_RRR1.5"
+  },
+  {
+   "setup": "Reclaim_wvwap",
+   "regime": "any",
+   "exit": "x:Time7"
+  }
+ ],
+ "2022": [
+  {
+   "setup": "RSI2<20",
+   "regime": "any",
+   "exit": "x:SL2.0ATR_RRR1.5"
+  },
+  {
+   "setup": "Reclaim_wvwap",
+   "regime": "any",
+   "exit": "x:Time7"
+  },
+  {
+   "setup": "C<wvwap-1.0sd",
+   "regime": "any",
+   "exit": "x:SL2.0ATR_RRR2.0"
+  },
+  {
+   "setup": "P_Hi20DD>3.0&RSI2<25",
+   "regime": "any",
+   "exit": "x:SL1.5ATR_RRR2.0_BE1.5R"
+  },
+  {
+   "setup": "C<dvwap-1.0sd",
+   "regime": "any",
+   "exit": "x:SL2.0ATR_RRR2.0"
+  }
+ ],
+ "2023": [
+  {
+   "setup": "RSI2<15",
+   "regime": "c>qvwap",
+   "exit": "x:C>PrevHigh"
+  },
+  {
+   "setup": "P_Hi50DD>2.0&RSI2<25",
+   "regime": "c>prev_mvwap",
+   "exit": "x:SL0.5ATR_RRR2.0"
+  },
+  {
+   "setup": "ConnorsRSI<25",
+   "regime": "c>qvwap",
+   "exit": "x:FirstUpClose+SL3.0ATR"
+  },
+  {
+   "setup": "LowSweep_prev_qvwap",
+   "regime": "c>sma50",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "CloseAt7dLow",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  }
+ ],
+ "2024": [
+  {
+   "setup": "RSI2<15",
+   "regime": "c>qvwap",
+   "exit": "x:C>wvwap+SL3.0ATR"
+  },
+  {
+   "setup": "P_Hi50DD>2.0&RSI2<25",
+   "regime": "c>prev_mvwap",
+   "exit": "x:SL0.5ATR_RRR2.0"
+  },
+  {
+   "setup": "LowSweep_prev_qvwap",
+   "regime": "c>sma50",
+   "exit": "x:C>SMA10"
+  },
+  {
+   "setup": "P_Hi20DD>3.0&IBS<0.25",
+   "regime": "sma50>sma200",
+   "exit": "x:Time7"
+  },
+  {
+   "setup": "CloseAt7dLow",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R_T20"
+  }
+ ],
+ "2025": [
+  {
+   "setup": "P_Hi50DD>2.0&RSI2<25",
+   "regime": "c>prev_mvwap",
+   "exit": "x:SL0.5ATR_RRR2.0"
+  },
+  {
+   "setup": "RSI2<15",
+   "regime": "c>qvwap",
+   "exit": "x:C>wvwap+SL3.0ATR+T10"
+  },
+  {
+   "setup": "ConnorsRSI<25",
+   "regime": "c>qvwap",
+   "exit": "x:FirstUpClose+SL3.0ATR"
+  },
+  {
+   "setup": "GapDownWeak>0.3ATR",
+   "regime": "any",
+   "exit": "x:IBS>0.8"
+  },
+  {
+   "setup": "LowSweep_prev_qvwap",
+   "regime": "c>sma50",
+   "exit": "x:C>SMA10+T10"
+  }
+ ],
+ "2026": [
+  {
+   "setup": "P_Hi50DD>2.0&RSI2<25",
+   "regime": "c>prev_mvwap",
+   "exit": "x:SL0.5ATR_RRR2.0"
+  },
+  {
+   "setup": "P_Hi50DD>3.0&IBS<0.25",
+   "regime": "any",
+   "exit": "x:RSI2>90"
+  },
+  {
+   "setup": "RSI2<20",
+   "regime": "any",
+   "exit": "x:Time15"
+  },
+  {
+   "setup": "C<prev_wvwap",
+   "regime": "c>qvwap",
+   "exit": "x:Time15"
+  },
+  {
+   "setup": "CloseAt7dLow",
+   "regime": "any",
+   "exit": "x:Trail1.5ATR_act1.0R"
+  }
+ ]
+}
