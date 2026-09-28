@@ -5,6 +5,16 @@ masivní grid, vícestupňové síto, walk-forward, kanonické publikované syst
 
 Report: `results/ES_SWING_LAB_REPORT.html`
 
+## Verze 3 (korekční alfa) – hlavní zjištění
+- 209 nových strategií z `CORRECTION_ALPHA_BLUEPRINT.md` (`correction.py`, `correction_systems.py`), 508 032 konfigurací.
+- Rodinné ensembly (`winners.py`, `final_analysis.py`): 12 ze 155 rodin porazilo B&H na Sharpe i MAR.
+  Skupina 12 rodin při stejné volatilitě: CAGR 12,95 % vs 9,66 %, max DD −20,3 % vs −27,6 %, alfa t = 2,73.
+- Slepý test (`wf_families.py`): výběr top 10 rodin jen z 2009–2017 → 2018–2026 Sharpe 0,78 vs B&H 0,65,
+  vol-matched CAGR 11,6 % vs 9,3 %. Přenositelné, ale alfa t = 1,33 (pod prahem 2).
+- Delta exhaustion jako samostatný důvod vstupu má zápornou alfu. Hazard model korekcí (`correction_model.py`)
+  nemá mimo vzorek žádnou predikční schopnost (AUC 0,45–0,53); edge je v hloubce drawdownu, ne ve výběru korekce.
+- Report: `results/ES_CORRECTION_ALPHA.html`
+
 ## Verze 2 (ES2008, 18 let) – hlavní zjištění
 - Data: Sierra export ES2008 (1min, back-adjusted, 2008-05 → 2026-09) je jediný zdroj; bid/ask volume od 2011.
 - Engine: stop ve vstupním baru limit/stop příkazu se počítá (dřív přeskočen), trailing a breakeven po 30min barech;

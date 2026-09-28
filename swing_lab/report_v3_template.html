@@ -1,0 +1,232 @@
+<title>ES Correction Alpha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#15191d; --ink2:#4a5057; --muted:#7a8088; --rule:#dcdfd9;
+  --grid:#e7e9e4; --accent:#1f6fd1; --bh:#6d7278; --s1:#2a78d6; --s2:#eb6834; --good:#1a8a4f; --bad:#c43d3c; --warn:#b77800;
+  --good-bg:#e4f3ea; --bad-bg:#f8e5e4; --warn-bg:#f8efdc; --chip:#eceee9;
+  --display:"Archivo",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#121417; --panel:#1a1d21; --ink:#eef0ee; --ink2:#b9bec3; --muted:#8a9097; --rule:#2d3237; --grid:#262a2f;
+  --accent:#5d9bea; --bh:#9aa0a6; --s1:#3987e5; --s2:#d95926; --good:#3fb877; --bad:#e66767; --warn:#d9a13a;
+  --good-bg:#15301f; --bad-bg:#3a1c1c; --warn-bg:#35290f; --chip:#23272c;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#121417; --panel:#1a1d21; --ink:#eef0ee; --ink2:#b9bec3; --muted:#8a9097; --rule:#2d3237; --grid:#262a2f;
+  --accent:#5d9bea; --bh:#9aa0a6; --s1:#3987e5; --s2:#d95926; --good:#3fb877; --bad:#e66767; --warn:#d9a13a;
+  --good-bg:#15301f; --bad-bg:#3a1c1c; --warn-bg:#35290f; --chip:#23272c;}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--body);}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:flex;flex-direction:column;gap:44px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(30px,5vw,46px);font-weight:800;line-height:1.05}
+h2{font-size:24px;font-weight:700}
+h3{font-size:16px;font-weight:700}
+p{margin:0;max-width:70ch;color:var(--ink2)}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:16px}
+.head{display:flex;flex-direction:column;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:22px}
+.meta{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 12px var(--mono);background:var(--chip);color:var(--ink2);padding:3px 9px;border-radius:4px}
+.verdict{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:20px 22px;display:grid;gap:14px}
+.verdict ul{margin:0;padding-left:20px;display:grid;gap:8px;max-width:78ch}
+.verdict li{color:var(--ink2)} .verdict b{color:var(--ink)}
+.funnel{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.funnel div{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.funnel .n{font:600 26px var(--mono);font-variant-numeric:tabular-nums}
+.funnel .l{font-size:13px;color:var(--ink2)}
+.funnel .z .n{color:var(--bad)}
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th{font:500 11.5px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel);position:sticky;top:0}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.t,th.t{text-align:left;font-family:var(--body);white-space:normal;min-width:220px}
+tr:last-child td{border-bottom:0}
+tr.ref td{background:var(--chip)}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.pill{display:inline-block;font:500 11px var(--mono);padding:2px 7px;border-radius:3px}
+.pill.ok{background:var(--good-bg);color:var(--good)} .pill.no{background:var(--bad-bg);color:var(--bad)} .pill.mid{background:var(--warn-bg);color:var(--warn)}
+.bar{position:relative;display:inline-block;width:64px;height:8px;background:var(--grid);border-radius:4px;vertical-align:middle;margin-left:6px}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--s1)}
+.chart{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 8px;position:relative}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--ink2);padding:0 4px 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:16px;height:2px;display:inline-block}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font:12px/1.45 var(--mono);padding:7px 9px;border-radius:4px;white-space:nowrap}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.card p{font-size:14px}
+code{font:13px var(--mono);background:var(--chip);padding:1px 5px;border-radius:3px}
+pre{font:12.5px/1.55 var(--mono);background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px;overflow-x:auto;margin:0}
+.note{font-size:13px;color:var(--muted)}
+</style>
+<style>
+.wide{overflow-x:auto}
+table.dense td,table.dense th{padding:6px 8px;font-size:12.5px}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.kpi div{background:var(--panel);padding:14px 16px;display:flex;flex-direction:column;gap:3px}
+.kpi .n{font:600 24px var(--mono);font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12.5px;color:var(--ink2);line-height:1.35}
+.kpi .good .n{color:var(--good)} .kpi .bad .n{color:var(--bad)}
+</style>
+
+<div class="wrap">
+<header class="head">
+  <div class="eyebrow">ES futures · korekční alfa · verze 3 · 2009–2026</div>
+  <h1>Obchodování slabosti na ES: co skutečně poráží Buy &amp; Hold</h1>
+  <p>209 nových strategií z Correction Alpha Blueprintu — série ztrátových dnů, anatomie korekcí, delta exhaustion, VWAP kotvy, value area a kombinované enginy. Celkem 508 tisíc otestovaných konfigurací na 18 letech minutových dat. Hlavní otázka: která z nich porazí prostý nákup a držení.</p>
+  <div class="meta"><span class="chip">441 setupů</span><span class="chip">155 rodin</span><span class="chip">4 744 dní</span><span class="chip">výnos v % notional, ne v bodech</span><span class="chip">stres 2 b./obchod</span></div>
+</header>
+
+<section>
+  <div class="eyebrow">Hlavní výsledek</div>
+  <div class="verdict">
+    <h2>Dvanáct rodin poráží B&amp;H a výběr se přenesl i naslepo</h2>
+    <ul>
+      <li><b>12 ze 155 rodin</b> porazilo Buy &amp; Hold zároveň na Sharpe i MAR. Všechny jsou typu „kup potvrzenou slabost": limitní vstup po oversold RSI, close pod VWAP pásmem, drawdown od N-denního high s potvrzením, IBS a %R extrémy.</li>
+      <li><b>Slepý test prošel.</b> Deset nejlepších rodin vybraných jen z let 2009–2017 vydělalo v letech 2018–2026 při stejné volatilitě <b>11,6 % ročně proti 9,3 % u B&amp;H</b>, Sharpe 0,78 vs 0,65. Testovací období obsahuje rok 2018, krach 2020 i medvědí trh 2022.</li>
+      <li><b>Klíč je průměrovat celou rodinu, ne vybrat nejlepší parametr.</b> Každá rodina je rovnoměrný průměr všech svých variant, takže v ní není žádný výběr parametru. Tím zmizel overfitting, na který doplácely dřívější verze.</li>
+      <li><b>Delta exhaustion zklamala.</b> Role „delta exhaustion" má zápornou alfu (−0,19 % ročně, t = −0,79). Effort-without-result a delta climax jsou na úrovni náhody.</li>
+      <li><b>Hazard model korekcí neumí předpovídat.</b> 36 příznaků, logistická regrese i k-NN analog engine dávají mimo vzorek AUC 0,45–0,53. Edge není v tom „poznat tu správnou korekci", ale v tom, že korekce hlubší než 2 % samy o sobě posouvají šance.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Srovnání při stejné volatilitě · 2009–2026</div>
+  <h2>Kolik vydělá stejné riziko</h2>
+  <div class="kpi" id="kpi"></div>
+  <p class="note">Swingový systém je mimo trh většinu času, takže s jedním kontraktem nikdy neporazí B&amp;H v absolutním výnosu a s libovolnou pákou ho porazí vždy. Proto každou knihu škáluji na stejnou roční volatilitu jako B&amp;H (13,2 %). Teprve pak jsou celkové výnosy porovnatelné.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Equity křivky · kumulativní výnos v % notional</div>
+  <h2>Rodiny, které porážejí B&amp;H</h2>
+  <div class="chart" id="ch1"></div>
+  <p class="note">Křivky jsou v měřítku 1 ES na signál, proto jsou ploché proti B&amp;H — rodina je v trhu jen část času. Důležitý je tvar: hladký růst s malými propady. Škálované srovnání je v tabulce výše.</p>
+  <h2>Skupiny a core + overlay</h2>
+  <div class="chart" id="ch2"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Slepý test · výběr jen z let 2009–2017, obchodováno 2018–2026</div>
+  <h2>Přenesl se výběr rodin do neznámého období?</h2>
+  <div class="cols">
+    <div class="chart" id="ch3"></div>
+    <div class="tbl"><table class="dense" id="wf"></table></div>
+  </div>
+  <p>Testovací období obsahuje tři různé propady. Výběr top 10 rodin porazil B&amp;H i samotný průměr všech rodin, takže hodnocení podle alfa t-statistiky má jistou přenositelnou hodnotu. Alfa t = 1,33 v testu ale nedosahuje prahu 2, takže jde o slibný, nikoli prokázaný výsledek.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Všech 155 rodin · rovnoměrný průměr variant, žádný výběr parametru</div>
+  <h2>Kompletní žebříček</h2>
+  <div class="tbl wide"><table class="dense" id="fam"></table></div>
+  <p class="note">vm CAGR = výnos po škálování na volatilitu B&amp;H. exp = podíl dní v trhu. Rodiny se zápornou stranou (−1) jsou shorty.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Anatomie korekcí · P(zisk 1 ATR dřív než ztráta 1 ATR) do 20 seancí</div>
+  <h2>Kde se šance skutečně mění</h2>
+  <div class="cols">
+    <div class="tbl"><table class="dense" id="bk"></table></div>
+    <div class="tbl"><table class="dense" id="cd"></table></div>
+  </div>
+  <p>Mělká slabost do 2 % nic nemění: šance zůstává na 50–52 %. Od drawdownu 2 % výš se posouvá na 57–66 %. Série čtyř a pěti ztrátových dnů a decelerující korekce šance zvedají, akcelerující výprodej je naopak snižuje na 47 % — potvrzení pravidla, že se nechytá padající nůž.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Doporučení</div>
+  <h2>Co zapojit do multi-swing skriptu</h2>
+  <div class="cols">
+    <div class="card"><h3>Jádro knihy · 6 rolí</h3><p>Limitní vstup po oversold RSI, close pod denním a týdenním VWAP pásmem, drawdown od 20/50d high s RSI potvrzením, IBS, %R a N-denní low. Každou roli obchodovat jako průměr 3–5 variant přes MES, nikdy jeden parametr.</p></div>
+    <div class="card"><h3>Vstupní pravidlo</h3><p>Nevstupovat během akcelerace poklesu. Čekat na decelerace, reclaim krátké MA nebo limitní příkaz 0,25–0,5 ATR pod close. Toto potvrzení je v datech rozdíl mezi 47 % a 60 % úspěšností.</p></div>
+    <div class="card"><h3>Sizing podle hloubky</h3><p>Do drawdownu 2 % nic. Od 2 % základní velikost, od 5 % 1,5×, od 10 % 2×, s pevným celkovým stropem. Hlubší koše mají v 18 letech málo nezávislých epizod, takže strop je nutný.</p></div>
+    <div class="card"><h3>Co vyřadit</h3><p>Delta exhaustion jako samostatný důvod vstupu, effort-without-result, delta climax, hazard model korekcí a všechny continuation breakouty. Value area zatím jen jako aproximace z minutových dat.</p></div>
+  </div>
+</section>
+</div>
+<script>
+const D = /*DATA*/;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d=0) => v==null ? "–" : v.toLocaleString("cs-CZ",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+function lineChart(el, dates, series, h=320){
+  const W = 1000, H = h, m = {l:58,r:16,t:10,b:28};
+  const all = series.flatMap(s=>s.y);
+  let lo = Math.min(0,...all), hi = Math.max(...all);
+  const step = niceStep((hi-lo)/5); lo = Math.floor(lo/step)*step; hi = Math.ceil(hi/step)*step;
+  const x = i => m.l + i/(dates.length-1)*(W-m.l-m.r);
+  const y = v => m.t + (hi-v)/(hi-lo)*(H-m.t-m.b);
+  let g = "";
+  for(let v=lo; v<=hi+1e-9; v+=step){ g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`+
+    `<text x="${m.l-8}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono">${fmt(v)}</text>`; }
+  g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+  let lastYear = "";
+  dates.forEach((d,i)=>{ const yr=d.slice(0,4); if(yr!==lastYear && d.slice(5,7)<="01"){ lastYear=yr;
+    g += `<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono">${yr}</text>`; } else if(yr!==lastYear){lastYear=yr;} });
+  const paths = series.map(s=>`<path d="${s.y.map((v,i)=>(i?"L":"M")+x(i).toFixed(1)+","+y(v).toFixed(1)).join("")}" fill="none" stroke="${s.c}" stroke-width="2" ${s.dash?'stroke-dasharray="6 4"':''} stroke-linejoin="round"/>`).join("");
+  el.innerHTML = `<div class="legend">${series.map(s=>`<span><i style="background:${s.c}"></i>${s.n}</span>`).join("")}</div>`+
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${series.map(s=>s.n).join(", ")}">${g}${paths}<line class="xh" y1="${m.t}" y2="${H-m.b}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/><rect x="${m.l}" y="${m.t}" width="${W-m.l-m.r}" height="${H-m.t-m.b}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = el.querySelector(".xh");
+  svg.addEventListener("mousemove", e=>{
+    const r = svg.getBoundingClientRect(), px = (e.clientX-r.left)/r.width*W;
+    const i = Math.max(0,Math.min(dates.length-1,Math.round((px-m.l)/(W-m.l-m.r)*(dates.length-1))));
+    xh.setAttribute("x1",x(i)); xh.setAttribute("x2",x(i)); xh.setAttribute("visibility","visible");
+    tip.hidden = false; tip.innerHTML = `${dates[i]}<br>`+series.map(s=>`<span style="color:${s.c}">■</span> ${fmt(s.y[i])} b.`).join("<br>");
+    const cr = el.getBoundingClientRect(); let left = e.clientX-cr.left+14; if(left>cr.width-180) left -= 200;
+    tip.style.left = left+"px"; tip.style.top = (e.clientY-cr.top-10)+"px";
+  });
+  svg.addEventListener("mouseleave", ()=>{tip.hidden=true; xh.setAttribute("visibility","hidden");});
+}
+function niceStep(r){ const p = Math.pow(10,Math.floor(Math.log10(r))); const f = r/p; return (f<1.5?1:f<3?2:f<7?5:10)*p; }
+
+
+
+const esc=t=>String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const cls=v=>v>0?"pos":v<0?"neg":"";
+function draw(){
+  const C=D.curves;
+  lineChart(document.getElementById("ch1"), C.dates, [
+    {n:"Limit RSI + ATR", y:C["FAM LMT_RSI#<#_#ATR"], c:css("--s1")},
+    {n:"Close pod týdenním VWAP", y:C["FAM C<wvwap#sd"], c:css("--s2")},
+    {n:"IBS", y:C["FAM IBS<#"], c:css("--good")},
+    {n:"Drawdown + RSI", y:C["FAM P_Hi#DD>#&RSI#<#"], c:css("--warn")}], 300);
+  lineChart(document.getElementById("ch2"), C.dates, [
+    {n:"Core + 2x overlay", y:C["Core + 2x blueprint overlay"], c:css("--s2")},
+    {n:"Buy & Hold", y:C["Buy & Hold"], c:css("--bh")},
+    {n:"Skupina 12 vítězných rodin (1 ES)", y:C["Winners group (12 families, selected)"], c:css("--s1")}], 320);
+  const W=D.wf_curves;
+  lineChart(document.getElementById("ch3"), W.dates, [
+    {n:"Top 10 rodin z 2009–17", y:W.top10, c:css("--s1")},
+    {n:"Průměr všech rodin", y:W.all_families, c:css("--s2")},
+    {n:"Buy & Hold", y:W.buy_hold, c:css("--bh")}], 300);
+}
+draw();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+const bk=D.books.reduce((a,b)=>(a[b.book]=b,a),{});
+const kp=[["Buy & Hold","vm_cagr","cagr"],["Winners group (12 families, selected)","vm_cagr"],["Core + 2x blueprint overlay","vm_cagr"],["Blueprint roles (no selection)","vm_cagr"]];
+document.getElementById("kpi").innerHTML=[
+ `<div><span class="n">${fmt(bk["Buy & Hold"].cagr,2)} %</span><span class="l">Buy &amp; Hold · CAGR<br>max DD ${fmt(bk["Buy & Hold"].maxdd,1)} % · Sharpe ${fmt(bk["Buy & Hold"].sharpe,2)}</span></div>`,
+ `<div class="good"><span class="n">${fmt(bk["Winners group (12 families, selected)"].vm_cagr,2)} %</span><span class="l">Skupina 12 rodin při stejné volatilitě<br>max DD ${fmt(bk["Winners group (12 families, selected)"].vm_maxdd,1)} % · Sharpe ${fmt(bk["Winners group (12 families, selected)"].sharpe,2)}</span></div>`,
+ `<div class="good"><span class="n">${fmt(D.wf.top10.test.sharpe,2)}</span><span class="l">Sharpe ve slepém testu 2018–26<br>B&amp;H ${fmt(D.wf.buy_hold.test.sharpe,2)} · vm CAGR 11,6 % vs 9,3 %</span></div>`,
+ `<div><span class="n">${fmt(bk["Blueprint roles (no selection)"].vm_cagr,2)} %</span><span class="l">Průměr všech rolí bez výběru<br>prakticky shodné s B&amp;H</span></div>`,
+ `<div class="bad"><span class="n">${fmt(bk["R4 delta exhaustion"].alpha_ann,2)} %</span><span class="l">Alfa role delta exhaustion<br>t = ${fmt(bk["R4 delta exhaustion"].alpha_t,2)}</span></div>`].join("");
+
+const famRows=D.families.filter(f=>f.variants>=200||f.beats_bh);
+document.getElementById("fam").innerHTML='<thead><tr><th class="t">Rodina</th><th>směr</th><th>variant</th><th>exp</th><th>CAGR</th><th>max DD</th><th>Sharpe</th><th>MAR</th><th>beta</th><th>alfa %/r</th><th>alfa t</th><th>vm CAGR</th><th>vm DD</th><th>&gt; B&amp;H</th></tr></thead><tbody>'+
+ famRows.map(f=>`<tr${f.beats_bh?' style="background:var(--good-bg)"':''}><td class="t">${esc(f.label)}</td><td>${f.side>0?"long":"short"}</td><td>${fmt(f.variants)}</td><td>${fmt(f.exposure*100)} %</td><td class="${cls(f.cagr)}">${fmt(f.cagr,2)} %</td><td>${fmt(f.maxdd,1)} %</td><td>${fmt(f.sharpe,2)}</td><td>${fmt(f.mar,2)}</td><td>${fmt(f.beta,2)}</td><td class="${cls(f.alpha_ann)}">${fmt(f.alpha_ann,2)}</td><td>${fmt(f.alpha_t,2)}</td><td class="${cls(f.vm_cagr-9.66)}">${fmt(f.vm_cagr,2)} %</td><td>${fmt(f.vm_maxdd,1)} %</td><td>${f.beats_bh?'<span class="pill ok">ano</span>':'–'}</td></tr>`).join("")+'</tbody>';
+
+const wfrow=(k,lbl)=>{const v=D.wf[k];return `<tr${k=="buy_hold"?' class="ref"':''}><td class="t">${lbl}</td><td>${fmt(v.train.sharpe,2)}</td><td>${fmt(v.test.sharpe,2)}</td><td>${fmt(v.test.mar,2)}</td><td>${fmt(v.test.maxdd,1)} %</td><td>${fmt(v.test.alpha_t,2)}</td></tr>`;};
+document.getElementById("wf").innerHTML='<thead><tr><th class="t">Kniha</th><th>Sharpe 09–17</th><th>Sharpe 18–26</th><th>MAR 18–26</th><th>max DD</th><th>alfa t</th></tr></thead><tbody>'+
+ [wfrow("top5","Top 5 rodin"),wfrow("top10","Top 10 rodin"),wfrow("top20","Top 20 rodin"),wfrow("all_families","Všechny rodiny"),wfrow("buy_hold","Buy &amp; Hold")].join("")+'</tbody>';
+
+document.getElementById("bk").innerHTML='<thead><tr><th class="t">Drawdown od 252d high</th><th>dní</th><th>úspěšnost</th><th>MFE</th><th>MAE</th></tr></thead><tbody>'+
+ D.buckets.map(b=>`<tr><td class="t">${b.bucket}</td><td>${fmt(b.n)}</td><td class="${b.hit>0.55?"pos":""}">${fmt(b.hit*100,1)} %</td><td>${fmt(b.mfe,2)}</td><td>${fmt(b.mae,2)}</td></tr>`).join("")+'</tbody>';
+document.getElementById("cd").innerHTML='<thead><tr><th class="t">Podmínka</th><th>dní</th><th>úspěšnost</th><th>MFE</th><th>MAE</th></tr></thead><tbody>'+
+ D.conds.map(b=>`<tr><td class="t">${esc(b.name)}</td><td>${fmt(b.n)}</td><td class="${b.hit>0.57?"pos":b.hit<0.51?"neg":""}">${fmt(b.hit*100,1)} %</td><td>${fmt(b.mfe,2)}</td><td>${fmt(b.mae,2)}</td></tr>`).join("")+'</tbody>';
+</script>

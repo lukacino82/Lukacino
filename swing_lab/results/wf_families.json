@@ -1,0 +1,167 @@
+{
+ "top5": {
+  "picked": [
+   "D05",
+   "C04",
+   "WR#<#",
+   "A12",
+   "LMT_RSI#<#_#ATR"
+  ],
+  "train": {
+   "cagr": 1.88,
+   "maxdd": -1.6,
+   "vol": 1.4,
+   "sharpe": 1.38,
+   "mar": 1.17,
+   "beta": 0.1,
+   "alpha_ann": 0.89,
+   "alpha_ir": 0.98,
+   "alpha_t": 2.95
+  },
+  "test": {
+   "cagr": 1.61,
+   "maxdd": -3.6,
+   "vol": 2.1,
+   "sharpe": 0.78,
+   "mar": 0.45,
+   "beta": 0.1,
+   "alpha_ann": 0.61,
+   "alpha_ir": 0.44,
+   "alpha_t": 1.31
+  }
+ },
+ "top10": {
+  "picked": [
+   "D05",
+   "C04",
+   "WR#<#",
+   "A12",
+   "LMT_RSI#<#_#ATR",
+   "C07",
+   "E05",
+   "CloseAt#dLow",
+   "A05",
+   "P_NewLow#&NoCDLow"
+  ],
+  "train": {
+   "cagr": 2.17,
+   "maxdd": -1.7,
+   "vol": 1.6,
+   "sharpe": 1.35,
+   "mar": 1.29,
+   "beta": 0.12,
+   "alpha_ann": 0.91,
+   "alpha_ir": 0.94,
+   "alpha_t": 2.84
+  },
+  "test": {
+   "cagr": 1.86,
+   "maxdd": -4.1,
+   "vol": 2.4,
+   "sharpe": 0.78,
+   "mar": 0.46,
+   "beta": 0.12,
+   "alpha_ann": 0.65,
+   "alpha_ir": 0.44,
+   "alpha_t": 1.33
+  }
+ },
+ "top20": {
+  "picked": [
+   "D05",
+   "C04",
+   "WR#<#",
+   "A12",
+   "LMT_RSI#<#_#ATR",
+   "C07",
+   "E05",
+   "CloseAt#dLow",
+   "A05",
+   "P_NewLow#&NoCDLow",
+   "ConnorsRSI<#",
+   "A04",
+   "G03",
+   "A08",
+   "RSI#<#",
+   "C<mvwap#sd",
+   "P_Hi#DD>#&%b<#",
+   "B01",
+   "A02",
+   "P_Hi#DD>#&RSI#<#"
+  ],
+  "train": {
+   "cagr": 2.13,
+   "maxdd": -1.9,
+   "vol": 1.7,
+   "sharpe": 1.28,
+   "mar": 1.12,
+   "beta": 0.13,
+   "alpha_ann": 0.8,
+   "alpha_ir": 0.83,
+   "alpha_t": 2.51
+  },
+  "test": {
+   "cagr": 1.92,
+   "maxdd": -4.4,
+   "vol": 2.5,
+   "sharpe": 0.78,
+   "mar": 0.43,
+   "beta": 0.13,
+   "alpha_ann": 0.63,
+   "alpha_ir": 0.43,
+   "alpha_t": 1.28
+  }
+ },
+ "all_families": {
+  "picked": [
+   "ALL"
+  ],
+  "train": {
+   "cagr": 1.46,
+   "maxdd": -2.1,
+   "vol": 1.6,
+   "sharpe": 0.9,
+   "mar": 0.7,
+   "beta": 0.14,
+   "alpha_ann": 0.05,
+   "alpha_ir": 0.07,
+   "alpha_t": 0.21
+  },
+  "test": {
+   "cagr": 1.67,
+   "maxdd": -3.8,
+   "vol": 2.4,
+   "sharpe": 0.7,
+   "mar": 0.44,
+   "beta": 0.13,
+   "alpha_ann": 0.35,
+   "alpha_ir": 0.29,
+   "alpha_t": 0.86
+  }
+ },
+ "buy_hold": {
+  "picked": [],
+  "train": {
+   "cagr": 10.04,
+   "maxdd": -12.6,
+   "vol": 10.3,
+   "sharpe": 0.98,
+   "mar": 0.8,
+   "beta": 1.0,
+   "alpha_ann": -0.0,
+   "alpha_ir": -0.98,
+   "alpha_t": -2.95
+  },
+  "test": {
+   "cagr": 9.28,
+   "maxdd": -27.6,
+   "vol": 15.6,
+   "sharpe": 0.65,
+   "mar": 0.34,
+   "beta": 1.0,
+   "alpha_ann": -0.0,
+   "alpha_ir": -0.65,
+   "alpha_t": -1.94
+  }
+ }
+}
