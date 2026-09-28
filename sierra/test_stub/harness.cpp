@@ -2,6 +2,15 @@
 // feature engine computed, so it can be diffed against swing_lab/features.py.
 // Build:  g++ -O2 -std=c++17 -Itest_stub test_stub/harness.cpp Lukacino_MultiSwing.cpp -o /tmp/harness
 #include "sierrachart.h"
+
+// same guard the study uses: the Sierra headers define min/max as macros
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
+
 #include <fstream>
 #include <sstream>
 #include <iostream>

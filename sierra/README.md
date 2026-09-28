@@ -46,6 +46,9 @@ Studie je záměrně pesimističtější: když se v jedné seanci dotkne SL i T
 na denním rozpětí, zatímco výzkumný engine prochází 30minutové bary. Nižší P&L než backtest
 je proto očekávaný směr, ne chyba.
 
+Testovací hlavička záměrně definuje `min`/`max` jako makra stejně jako skutečný `scstructures.h`,
+takže se tahle třída chyb odhalí už offline, ne až na build serveru Sierry.
+
 `test_stub/` je pouze testovací náhrada. Není to Sierra Chart a nikdy se nesmí distribuovat
 ani použít pro reálné obchodování.
 

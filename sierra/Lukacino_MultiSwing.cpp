@@ -28,6 +28,16 @@
 // ============================================================================================
 
 #include "sierrachart.h"
+
+// scstructures.h defines min() and max() as macros, which makes std::max / std::min fail to
+// compile. Undefine them right after the Sierra headers; the standard functions are used below.
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
+
 #include <vector>
 #include <string>
 #include <fstream>
@@ -1107,17 +1117,20 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         }
     }
 
-    // ---------------- status line ----------------
-    if (logLevel >= LOG_INFO && sc.UpdateStartIndex > 0 && !S->daily.empty()) {
+    // ---------------- status line: logged only when the open-position count changes ----------------
+    if (logLevel >= LOG_INFO && !S->daily.empty()) {
         int openPresets = 0;
         for (size_t k = 0; k < S->states.size(); ++k) if (S->states[k].inPos != 0) ++openPresets;
-        SCString st;
-        st.Format("Multi-Swing | days %d | presets %d | open %d | mode %s | live orders %s",
-                  (int)S->daily.size(), (int)S->presets.size(), openPresets,
-                  sc.Input[IN_MODE].GetIndex() == MODE_FULL ? "FULL AUTO" :
-                  sc.Input[IN_MODE].GetIndex() == MODE_SEMI ? "SEMI" : "SIGNALS",
-                  sc.Input[IN_SEND_LIVE].GetYesNo() ? "ENABLED" : "off");
-        sc.SetStudyStatusText(st);
+        if (openPresets != sc.GetPersistentInt(2)) {
+            sc.SetPersistentInt(2, openPresets);
+            SCString st;
+            st.Format("Multi-Swing | days %d | presets %d | open %d | mode %s | live orders %s",
+                      (int)S->daily.size(), (int)S->presets.size(), openPresets,
+                      sc.Input[IN_MODE].GetIndex() == MODE_FULL ? "FULL AUTO" :
+                      sc.Input[IN_MODE].GetIndex() == MODE_SEMI ? "SEMI" : "SIGNALS",
+                      sc.Input[IN_SEND_LIVE].GetYesNo() ? "ENABLED" : "off");
+            sc.AddMessageToLog(st, 0);
+        }
     }
     // step 1 never sends orders; the guard stays until the order layer is implemented
     if (sc.Input[IN_MODE].GetIndex() == MODE_FULL && sc.Input[IN_SEND_LIVE].GetYesNo() && sc.UpdateStartIndex == 0)

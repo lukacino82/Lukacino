@@ -10,6 +10,11 @@
 #include <vector>
 #include <cmath>
 
+// the real scstructures.h defines these as macros; reproduce that so std::max / std::min
+// misuse fails in the offline build exactly as it does on Sierra's build server
+#define max(a,b)            (((a) > (b)) ? (a) : (b))
+#define min(a,b)            (((a) < (b)) ? (a) : (b))
+
 #define SCDLLName(x)
 #define SCSFExport extern "C" void
 #define RGB(r,g,b) (((r)<<16)|((g)<<8)|(b))
@@ -107,7 +112,6 @@ struct SCStudyInterface {
     void SetPersistentInt(int k, int v) { persistentInt[k] = v; }
     SCDateTime CurrentSystemDateTime;
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
-    void SetStudyStatusText(const SCString&) {}
     SCString DataFilesFolder() { return SCString("."); }
     SCString FormatDateTime(const SCDateTime& d) { int y; unsigned m, dd; CivilFromDays(d.GetDate(), y, m, dd);
         SCString r; r.Format("%04d-%02u-%02u", y, m, dd); return r; }
