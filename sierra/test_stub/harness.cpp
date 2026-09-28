@@ -19,7 +19,10 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc);
 // input indices duplicated here on purpose: the harness must use the same numbers a Sierra user
 // sees, so a renumbering in the study shows up as a test failure instead of silently passing
 enum { IN_TRADING_ENABLED = 0, IN_MODE, IN_SEND_LIVE, IN_DIRECTION, IN_PRESET_FILE, IN_RELOAD,
-       IN_RISK_UNIT, IN_INSTRUMENT, IN_EVAL_AT, IN_JOURNAL_FILE, IN_RTH_START_H = 48, IN_LOG_LEVEL = 50 };
+       IN_RISK_UNIT, IN_INSTRUMENT, IN_EVAL_AT, IN_JOURNAL_FILE,
+       IN_MAX_GROSS = 34, IN_MAX_CONCURRENT, IN_MAX_PER_FAMILY, IN_MAX_PER_ROLE,
+       IN_ENTRY_EXPIRY = 44, IN_TIME_STOP = 47, IN_LOG_LEVEL = 50,
+       IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR = 53, IN_OV_RRR = 54 };
 
 // the study keeps its daily bars inside a private struct; for the harness we re-read the
 // subgraphs it publishes, which is exactly what a Sierra user can see on the chart
@@ -32,6 +35,16 @@ int main(int argc, char** argv)
     sc.Input[IN_JOURNAL_FILE].SetString(argc > 4 ? argv[4] : "harness_journal.csv");
     sc.Input[IN_TRADING_ENABLED].SetYesNo(1);
     sc.Input[IN_LOG_LEVEL].SetCustomInputIndex(0);
+    // the research book has no exposure caps, so the parity run must not apply any either
+    sc.Input[IN_MAX_CONCURRENT].SetInt(0); sc.Input[IN_MAX_PER_FAMILY].SetInt(0);
+    sc.Input[IN_MAX_PER_ROLE].SetInt(0);   sc.Input[IN_MAX_GROSS].SetInt(0);
+    sc.Input[IN_ENTRY_EXPIRY].SetInt(1);   sc.Input[IN_RISK_UNIT].SetFloat(1.0f);
+    // optional switches so the new risk caps and exit overrides can be exercised from the test
+    if (const char* v = getenv("MAX_CONCURRENT")) sc.Input[IN_MAX_CONCURRENT].SetInt(atoi(v));
+    if (const char* v = getenv("EXIT_OVERRIDE"))  sc.Input[IN_EXIT_OVERRIDE].SetCustomInputIndex(atoi(v));
+    if (const char* v = getenv("OV_SL_ATR"))      sc.Input[IN_OV_SL_ATR].SetFloat((float)atof(v));
+    if (const char* v = getenv("OV_RRR"))         sc.Input[IN_OV_RRR].SetFloat((float)atof(v));
+    if (const char* v = getenv("TIME_STOP"))      sc.Input[IN_TIME_STOP].SetInt(atoi(v));
     sc.SecondsPerBar = 60;
 
     std::ifstream f(argv[1]);

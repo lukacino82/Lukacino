@@ -93,8 +93,8 @@ bezpečný provoz, takže **měnit musíš jen ty, které mají v posledním slo
 | 4 | Preset File | swing_presets.csv | jen když sis soubor přejmenoval |
 | 5 | Reload Presets (toggle) | No | přepni tam a zpět po úpravě CSV |
 | 6 | Risk Unit (contracts per preset) | 1.0 | 1 MES na preset, viz sizing níže |
-| 7 | Instrument | MES | přepni na ES, když jedeš velké kontrakty |
-| 8 | Evaluate Signals At | RTH close | nech, odpovídá výzkumu |
+| 7 | Instrument | MES | přepni na ES; přepočítává strop expozice (1 ES = 10 MES) |
+| 8 | Entry Timing | Fill at RTH close | nech, odpovídá výzkumu |
 | 9 | Journal CSV | swing_journal.csv | |
 
 ### Rodiny (10–33)
@@ -122,21 +122,68 @@ podle vlastních výsledků, ne podle dojmu.
 
 ### Risk (34–41)
 
-| # | Input | Výchozí | Poznámka |
-|---|---|---|---|
-| 34 | Max Gross Contracts | 60 | strop v MES; při Risk Unit 1 stačí |
-| 35 | Max Concurrent Presets | 24 | z 48 možných, brání nákupu všeho v jedné korekci |
-| 36 | Max Presets Per Family | 4 | rodina má právě 4 varianty |
-| 37 | Max Presets Per Role | 12 | |
-| 38 | Daily Loss Limit (USD) | 0 = vypnuto | zapni až v semi-auto |
-| 39 | Max Drawdown Stop (USD) | 0 = vypnuto | zapni až v semi-auto |
-| 40 | Scale In By Correction Depth | No | |
-| 41 | Scale In Cap | 2.0 | platí jen když je 40 na Yes |
+| # | Input | Výchozí | Aktivní? | Poznámka |
+|---|---|---|---|---|
+| 34 | Max Gross Exposure (MES equivalents) | 60 | ano | ES se počítá jako 10 MES |
+| 35 | Max Concurrent Presets | 48 | ano | 48 = neomezuje; snižování stojí hodně, viz níže |
+| 36 | Max Presets Per Family | 4 | ano | rodina má právě 4 varianty, takže neomezuje |
+| 37 | Max Presets Per Role | 12 | ano | největší role má 12 presetů, takže neomezuje |
+| 38 | Daily Loss Limit USD | 0 | **ne, krok 3** | potřebuje order vrstvu |
+| 39 | Max Drawdown Stop USD | 0 | **ne, krok 3** | |
+| 40 | Scale In By Correction Depth | No | **ne, krok 3** | |
+| 41 | Scale In Cap | 2.0 | **ne, krok 3** | |
+
+**Výchozí capy schválně nic neořezávají**, aby kniha obchodovala přesně to, co bylo ověřeno.
+Změřeno na 18 letech: snížení *Max Concurrent Presets* na 10 sníží počet obchodů z 6 222
+na 3 514 a P&L ze 72 951 na 29 673 bodů. Cap totiž ubírá právě ty shluky vstupů v hlubokých
+korekcích, kde je edge nejsilnější. Snižuj ho jen vědomě, jako rozhodnutí o riziku.
 
 ### Exekuce (42–47)
 
-Nech všechno na výchozím. *Flatten At Session End* musí zůstat **No** — jde o swingy,
-které drží přes noc.
+| # | Input | Výchozí | Aktivní? |
+|---|---|---|---|
+| 42 | Entry Type Override | As defined by preset | ano |
+| 43 | Limit / Stop Offset (ticks) | 0 | ano |
+| 44 | Entry Order Expiry (sessions) | 1 | ano |
+| 45 | Max Slippage ticks | 8 | **ne, krok 3** |
+| 46 | Flatten At Session End | No | **ne, krok 3** — a musí zůstat No, jsou to swingy |
+| 47 | Time Stop Override (sessions) | 0 = použít preset | ano |
+
+### TP / SL / RRR override (52–58)
+
+**Tohle je odpověď na otázku, kde se nastavuje TP, SL a RRR.** Za normálních okolností nikde:
+každý z 48 presetů si nese vlastní exit model, který pro něj byl ověřen. Osmnáct různých
+exitů v CSV není nedodělek, je to výsledek testu — proto je override **výchozím stavem vypnutý**.
+
+| # | Input | Výchozí |
+|---|---|---|
+| 52 | Exit Override (overrides ALL presets) | Use preset exits (validated) |
+| 53 | Override SL (x ATR20) | 1.0 |
+| 54 | Override RRR (TP = SL x RRR) | 2.0 |
+| 55 | Override SL (ticks) | 80 |
+| 56 | Override TP (ticks) | 160 |
+| 57 | Override Breakeven (R, 0=off) | 0 |
+| 58 | Override Trailing (x ATR20, 0=off) | 0 |
+
+Input 52 má tři stavy:
+
+- **Use preset exits** — každý preset jede svůj ověřený exit. Tohle chceš.
+- **Override: ATR bracket** — na všech 48 presetů se vnutí SL = 53 × ATR20 a TP = SL × RRR (54).
+- **Override: fixed ticks** — pevný SL (55) a TP (56) v ticích. Ticky jsou 0,25 bodu.
+
+Breakeven (57) a trailing (58) platí jen když je override zapnutý.
+
+**Co to stojí.** Změřeno na stejných datech, období 2016-06 až 2026-09:
+
+| Nastavení | Obchodů | P&L | Průměrné držení | Win |
+|---|---|---|---|---|
+| Preset exity (výchozí) | 6 222 | 72 951 b. | 5,2 dne | 61 % |
+| Override SL 1 ATR, RRR 2 | 7 594 | 58 390 b. | 4,0 dne | 52 % |
+| Override SL 2 ATR, RRR 1 | 6 324 | 72 535 b. | 5,2 dne | 66 % |
+| Time Stop Override 5 dní | 7 095 | 63 605 b. | 4,1 dne | 62 % |
+
+Jednotný exit přes všech 48 presetů stojí 0–20 % P&L. Override je proto na experimenty,
+ne na ostrý provoz. Když ho zapneš, výsledky z reportu už neplatí.
 
 ### Seance a diagnostika (48–51)
 

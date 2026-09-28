@@ -59,13 +59,17 @@ enum InputIdx {
     IN_ENTRY_TYPE = 42, IN_LIMIT_OFFSET, IN_ENTRY_EXPIRY, IN_MAX_SLIPPAGE,
     IN_FLATTEN_EOD, IN_TIME_STOP,                                                   // 42-47 execution
     IN_RTH_START = 48, IN_RTH_END, IN_LOG_LEVEL, IN_DRAW_SIGNALS,                   // 48-51 session / diag
+    IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR, IN_OV_RRR, IN_OV_SL_TICKS, IN_OV_TP_TICKS,
+    IN_OV_BE_R, IN_OV_TRAIL_ATR,                                                    // 52-58 exit override
     IN_COUNT
 };
 
 enum ModeKind    { MODE_SIGNALS = 0, MODE_SEMI, MODE_FULL };
 enum DirKind     { DIR_LONG_ONLY = 0, DIR_BOTH, DIR_SHORT_ONLY };
-enum EvalKind    { EVAL_CLOSE_MINUS_1 = 0, EVAL_CLOSE, EVAL_NEXT_OPEN };
+enum EvalKind    { EVAL_CLOSE = 0, EVAL_NEXT_OPEN };
 enum LogLevel    { LOG_ERRORS = 0, LOG_INFO, LOG_DEBUG };
+enum ExitOverride { XO_PRESET = 0, XO_ATR_BRACKET, XO_FIXED_TICKS };
+enum EntryOverride { EO_PRESET = 0, EO_FORCE_CLOSE, EO_FORCE_LIMIT };
 
 static const int MAX_FAMILIES = 12;
 static const int DAILY_HISTORY = 400;          // > 252-day peak window + 200-day MA warm-up
@@ -124,6 +128,8 @@ struct PresetState {
     double entry = 0, stop = 0, target = 0, best = 0, worst = 0;
     double initialStop = 0;
     bool   trailOn = false;
+    double trailDist = 1e18, beR = 0;   // resolved at entry, frozen for the life of the trade
+    int    timeStop = 0;
     bool   exitNextOpen = false;        // set by an "@open" signal exit, executed on the next session
     // day references are ABSOLUTE session numbers, never vector indices: the daily history is
     // trimmed to DAILY_HISTORY and every stored vector index would silently shift on each trim
@@ -133,6 +139,7 @@ struct PresetState {
     int    pendingSide = 0;             // order armed at the signal close, to be filled next session
     double pendingLevel = 0;
     long   pendingDay = -1;
+    EntryKind pendingKind = EK_CLOSE;
     long   signalDay = -1;
 };
 
@@ -663,9 +670,94 @@ static const char* ReasonName(int r)
 }
 
 // ------------------------------------------------------------------ process one completed daily bar
-static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<Features>& F, int i,
-                       long absDay, double riskUnit, int direction, const SCString& journalPath, int logLevel)
+// Everything the signal engine needs from the Inputs, resolved once per bar.
+struct RunCfg {
+    double riskUnit = 1.0;
+    int    direction = DIR_LONG_ONLY;
+    int    logLevel = LOG_INFO;
+    // exit override
+    int    exitOverride = XO_PRESET;
+    double ovSlAtr = 1.0, ovRrr = 2.0, ovBeR = 0.0, ovTrailAtr = 0.0;
+    double ovSlPts = 0.0, ovTpPts = 0.0;
+    int    globalTimeStop = 0;
+    // entry override
+    int    entryOverride = EO_PRESET;
+    double limitOffsetPts = 0.0;
+    int    entryExpiry = 1;
+    bool   entryNextOpen = false;
+    // risk caps
+    int    maxConcurrent = 0, maxPerFamily = 0, maxPerRole = 0;
+    double maxGross = 0;        // in MES equivalents
+    double contractMult = 1.0;  // 1 for MES, 10 for ES
+};
+
+// Resolve the exit distances for one entry: preset values, or the global override when armed.
+// The override deliberately breaks parity with the research, which is why it is off by default.
+static void ResolveExit(const Preset& p, const RunCfg& cfg, double atr,
+                        double& slDist, double& tpDist, double& trailDist, double& beR, int& timeStop)
 {
+    if (cfg.exitOverride == XO_ATR_BRACKET) {
+        slDist = cfg.ovSlAtr * atr;
+        tpDist = cfg.ovRrr > 0 ? slDist * cfg.ovRrr : 1e18;
+    } else if (cfg.exitOverride == XO_FIXED_TICKS) {
+        slDist = cfg.ovSlPts > 0 ? cfg.ovSlPts : 1e18;
+        tpDist = cfg.ovTpPts > 0 ? cfg.ovTpPts : 1e18;
+    } else {
+        slDist = p.slAtr > 0 ? p.slAtr * atr : 1e18;
+        tpDist = p.tpAtr > 0 ? p.tpAtr * atr : 1e18;
+    }
+    if (cfg.exitOverride == XO_PRESET) {
+        trailDist = p.trailAtr > 0 ? p.trailAtr * atr : 1e18;
+        beR = p.beR;
+        timeStop = p.timeStop;
+    } else {
+        trailDist = cfg.ovTrailAtr > 0 ? cfg.ovTrailAtr * atr : 1e18;
+        beR = cfg.ovBeR;
+        timeStop = p.timeStop;
+    }
+    if (cfg.globalTimeStop > 0) timeStop = cfg.globalTimeStop;
+}
+
+static void OpenPosition(PresetState& st, const Preset& p, const RunCfg& cfg, double atr,
+                         double fill, long absDay, int i)
+{
+    double slDist, tpDist, trailDist, beR;
+    int timeStop;
+    ResolveExit(p, cfg, atr, slDist, tpDist, trailDist, beR, timeStop);
+    st.inPos = 1; st.entry = fill; st.entryDay = absDay; st.entryDayIdx = i; st.heldDays = 0;
+    st.best = fill; st.worst = fill;
+    st.trailOn = (p.trailActR <= 0);
+    st.initialStop = slDist < 1e17 ? slDist : 0;
+    st.stop   = slDist < 1e17 ? fill - slDist : -1e18;
+    st.target = tpDist < 1e17 ? fill + tpDist : 1e18;
+    st.trailDist = trailDist; st.beR = beR; st.timeStop = timeStop;
+}
+
+// Would opening this preset breach one of the exposure caps? Zero means the cap is off.
+static bool CapsAllow(const StudyState& S, size_t k, const RunCfg& cfg)
+{
+    const Preset& p = S.presets[k];
+    int total = 0, sameFamily = 0, sameRole = 0;
+    double gross = 0;
+    for (size_t j = 0; j < S.states.size(); ++j) {
+        if (S.states[j].inPos == 0) continue;
+        ++total;
+        gross += cfg.riskUnit * cfg.contractMult;
+        if (S.presets[j].familyIdx == p.familyIdx) ++sameFamily;
+        if (S.presets[j].role == p.role) ++sameRole;
+    }
+    if (cfg.maxConcurrent > 0 && total >= cfg.maxConcurrent) return false;
+    if (cfg.maxPerFamily > 0 && sameFamily >= cfg.maxPerFamily) return false;
+    if (cfg.maxPerRole > 0 && sameRole >= cfg.maxPerRole) return false;
+    if (cfg.maxGross > 0 && gross + cfg.riskUnit * cfg.contractMult > cfg.maxGross) return false;
+    return true;
+}
+
+static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<Features>& F, int i,
+                       long absDay, const RunCfg& cfg, const SCString& journalPath)
+{
+    const double riskUnit = cfg.riskUnit;
+    const int direction = cfg.direction, logLevel = cfg.logLevel;
     const std::vector<DailyBar>& d = S.daily;
     const Features& f = F[i];
     if (!f.ready) return;
@@ -684,21 +776,17 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
         if (direction == DIR_SHORT_ONLY) { st = PresetState(); continue; }   // every preset here is long
 
         // ---- 1. a resting order armed yesterday may fill today (limit / stop, ON + RTH)
-        if (st.inPos == 0 && st.pendingSide != 0 && st.pendingDay == absDay - 1) {
+        if (st.inPos == 0 && st.pendingSide != 0 &&
+            absDay - st.pendingDay >= 1 && absDay - st.pendingDay <= cfg.entryExpiry) {
             bool filled = false; double fill = 0;
-            if (p.entry == EK_LIMIT) {
+            if (st.pendingLevel > 1e17) { filled = true; fill = d[i].o; }          // "next open" entry
+            else if (st.pendingKind == EK_LIMIT) {
                 if (d[i].ethLow <= st.pendingLevel) { filled = true; fill = std::min(st.pendingLevel, d[i].o); }
-            } else if (p.entry == EK_STOP_ABOVE_HIGH) {
+            } else if (st.pendingKind == EK_STOP_ABOVE_HIGH) {
                 if (d[i].ethHigh >= st.pendingLevel) { filled = true; fill = std::max(st.pendingLevel, d[i].o); }
             }
-            st.pendingSide = 0;
-            if (filled) {
-                st.inPos = 1; st.entry = fill; st.entryDay = absDay; st.entryDayIdx = i; st.heldDays = 0;
-                st.best = fill; st.worst = fill; st.trailOn = (p.trailActR <= 0);
-                st.initialStop = p.slAtr > 0 ? p.slAtr * f.atr20 : 0;
-                st.stop   = st.initialStop > 0 ? fill - st.initialStop : -1e18;
-                st.target = p.tpAtr > 0 ? fill + p.tpAtr * f.atr20 : 1e18;
-            }
+            if (filled || absDay - st.pendingDay >= cfg.entryExpiry) st.pendingSide = 0;
+            if (filled) OpenPosition(st, p, cfg, f.atr20, fill, absDay, i);
         }
 
         // ---- 2. an "@open" exit armed yesterday is executed on today's open, before anything else
@@ -724,11 +812,11 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
             // the protective level is derived from the excursion BEFORE this bar, so that today's
             // own high can never arm a trail or breakeven that today's low then triggers
             double eff = st.stop; int reason = 1;
-            if (st.trailOn && p.trailAtr > 0) {
-                double ts = st.best - p.trailAtr * f.atr20;
+            if (st.trailOn && st.trailDist < 1e17) {
+                double ts = st.best - st.trailDist;
                 if (ts > eff) { eff = ts; reason = 3; }
             }
-            if (p.beR > 0 && st.initialStop > 0 && (st.best - st.entry) >= p.beR * st.initialStop) {
+            if (st.beR > 0 && st.initialStop > 0 && (st.best - st.entry) >= st.beR * st.initialStop) {
                 double be = st.entry;
                 if (be > eff) { eff = be; reason = 6; }
             }
@@ -742,7 +830,7 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
 
             if (code == 0) {
                 ++st.heldDays;
-                if (p.timeStop > 0 && st.heldDays >= p.timeStop) { code = 4; px = d[i].c; }
+                if (st.timeStop > 0 && st.heldDays >= st.timeStop) { code = 4; px = d[i].c; }
                 else if (ExitSignal(p, f)) {
                     if (p.xsigAtOpen) st.exitNextOpen = true;    // executed on the next open
                     else { code = 5; px = d[i].c; }
@@ -774,18 +862,22 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
 
         // ---- 4. a new signal on today's close
         if (st.inPos == 0 && st.pendingSide == 0 && !st.exitNextOpen) {
-            if (RegimeOk(p, f) && SetupSignal(p, d, i, f, pf)) {
+            if (RegimeOk(p, f) && SetupSignal(p, d, i, f, pf) && CapsAllow(S, k, cfg)) {
                 st.signalDay = absDay;
-                if (p.entry == EK_CLOSE) {
-                    st.inPos = 1; st.entry = f.c; st.entryDay = absDay; st.entryDayIdx = i; st.heldDays = 0;
-                    st.best = f.c; st.worst = f.c; st.trailOn = (p.trailActR <= 0);
-                    st.initialStop = p.slAtr > 0 ? p.slAtr * f.atr20 : 0;
-                    st.stop   = st.initialStop > 0 ? f.c - st.initialStop : -1e18;
-                    st.target = p.tpAtr > 0 ? f.c + p.tpAtr * f.atr20 : 1e18;
+                EntryKind entry = p.entry;
+                if (cfg.entryOverride == EO_FORCE_CLOSE) entry = EK_CLOSE;
+                else if (cfg.entryOverride == EO_FORCE_LIMIT) entry = EK_LIMIT;
+                if (cfg.entryNextOpen && entry == EK_CLOSE) { entry = EK_LIMIT; }   // filled at the next open
+                if (entry == EK_CLOSE) {
+                    OpenPosition(st, p, cfg, f.atr20, f.c, absDay, i);
                 } else {
                     st.pendingSide = 1;
                     st.pendingDay  = absDay;
-                    st.pendingLevel = (p.entry == EK_LIMIT) ? f.c - p.entryOffsetAtr * f.atr20 : f.h;
+                    st.pendingKind = entry;
+                    if (cfg.entryNextOpen && p.entry == EK_CLOSE) st.pendingLevel = 1e18;  // any price: next open
+                    else st.pendingLevel = (entry == EK_LIMIT)
+                                         ? f.c - p.entryOffsetAtr * f.atr20 - cfg.limitOffsetPts
+                                         : f.h + cfg.limitOffsetPts;
                 }
                 if (logLevel >= LOG_INFO) {
                     SCString m; m.Format("SIGNAL %s %s  close %.2f  ATR %.2f  %s",
@@ -829,7 +921,7 @@ static void ResetDayAccumulators(StudyState& S)
 // first bar arrives, and - for live trading - once the session end has passed in real time,
 // so a half-day session is not left open until the next Globex open.
 static void FinalizeDay(SCStudyInterfaceRef sc, StudyState& S, std::vector<Features>& feats,
-                        double riskUnit, int direction, const SCString& journal, int logLevel, bool enabled)
+                        const RunCfg& cfg, const SCString& journal, bool enabled)
 {
     DailyBar& b = S.cur;
     if (S.curVol > 0) {
@@ -849,7 +941,7 @@ static void FinalizeDay(SCStudyInterfaceRef sc, StudyState& S, std::vector<Featu
     feats.resize(S.daily.size());
     feats[di] = ComputeFeatures(S.daily, di);
     ++S.dayCounter;
-    if (enabled) ProcessDay(sc, S, feats, di, S.dayCounter, riskUnit, direction, journal, logLevel);
+    if (enabled) ProcessDay(sc, S, feats, di, S.dayCounter, cfg, journal);
     ResetDayAccumulators(S);
 }
 
@@ -917,8 +1009,8 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_INSTRUMENT].Name = "Instrument";
         sc.Input[IN_INSTRUMENT].SetCustomInputStrings("MES;ES");
         sc.Input[IN_INSTRUMENT].SetCustomInputIndex(0);
-        sc.Input[IN_EVAL_AT].Name = "Evaluate Signals At";
-        sc.Input[IN_EVAL_AT].SetCustomInputStrings("RTH close;RTH close -1 min;Next RTH open");
+        sc.Input[IN_EVAL_AT].Name = "Entry Timing";
+        sc.Input[IN_EVAL_AT].SetCustomInputStrings("Fill at RTH close (as research);Fill at next RTH open");
         sc.Input[IN_EVAL_AT].SetCustomInputIndex(EVAL_CLOSE);
         sc.Input[IN_JOURNAL_FILE].Name = "Journal CSV";
         sc.Input[IN_JOURNAL_FILE].SetString("swing_journal.csv");
@@ -937,23 +1029,23 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             sc.Input[IN_FAM1_W + 2 * k].SetFloat(1.0f);
         }
 
-        sc.Input[IN_MAX_GROSS].Name = "Max Gross Contracts";        sc.Input[IN_MAX_GROSS].SetInt(60);
-        sc.Input[IN_MAX_CONCURRENT].Name = "Max Concurrent Presets"; sc.Input[IN_MAX_CONCURRENT].SetInt(24);
+        sc.Input[IN_MAX_GROSS].Name = "Max Gross Exposure (MES equivalents)";        sc.Input[IN_MAX_GROSS].SetInt(60);   // MES equivalents
+        sc.Input[IN_MAX_CONCURRENT].Name = "Max Concurrent Presets"; sc.Input[IN_MAX_CONCURRENT].SetInt(48);
         sc.Input[IN_MAX_PER_FAMILY].Name = "Max Presets Per Family"; sc.Input[IN_MAX_PER_FAMILY].SetInt(4);
         sc.Input[IN_MAX_PER_ROLE].Name = "Max Presets Per Role";     sc.Input[IN_MAX_PER_ROLE].SetInt(12);
-        sc.Input[IN_DAILY_LOSS].Name = "Daily Loss Limit (USD, 0=off)"; sc.Input[IN_DAILY_LOSS].SetFloat(0);
-        sc.Input[IN_MAX_DD_STOP].Name = "Max Drawdown Stop (USD, 0=off)"; sc.Input[IN_MAX_DD_STOP].SetFloat(0);
-        sc.Input[IN_SCALE_IN].Name = "Scale In By Correction Depth"; sc.Input[IN_SCALE_IN].SetYesNo(0);
-        sc.Input[IN_SCALE_CAP].Name = "Scale In Cap";               sc.Input[IN_SCALE_CAP].SetFloat(2.0f);
+        sc.Input[IN_DAILY_LOSS].Name = "Daily Loss Limit USD (step 3, not active yet)"; sc.Input[IN_DAILY_LOSS].SetFloat(0);
+        sc.Input[IN_MAX_DD_STOP].Name = "Max Drawdown Stop USD (step 3, not active yet)"; sc.Input[IN_MAX_DD_STOP].SetFloat(0);
+        sc.Input[IN_SCALE_IN].Name = "Scale In By Correction Depth (step 3, not active yet)"; sc.Input[IN_SCALE_IN].SetYesNo(0);
+        sc.Input[IN_SCALE_CAP].Name = "Scale In Cap (step 3, not active yet)";               sc.Input[IN_SCALE_CAP].SetFloat(2.0f);
 
-        sc.Input[IN_ENTRY_TYPE].Name = "Entry Order Type";
+        sc.Input[IN_ENTRY_TYPE].Name = "Entry Type Override";
         sc.Input[IN_ENTRY_TYPE].SetCustomInputStrings("As defined by preset;Force market on close;Force limit");
         sc.Input[IN_ENTRY_TYPE].SetCustomInputIndex(0);
-        sc.Input[IN_LIMIT_OFFSET].Name = "Extra Limit Offset (ticks)"; sc.Input[IN_LIMIT_OFFSET].SetInt(0);
+        sc.Input[IN_LIMIT_OFFSET].Name = "Limit / Stop Offset (ticks)"; sc.Input[IN_LIMIT_OFFSET].SetInt(0);
         sc.Input[IN_ENTRY_EXPIRY].Name = "Entry Order Expiry (sessions)"; sc.Input[IN_ENTRY_EXPIRY].SetInt(1);
-        sc.Input[IN_MAX_SLIPPAGE].Name = "Max Slippage (ticks)";      sc.Input[IN_MAX_SLIPPAGE].SetInt(8);
-        sc.Input[IN_FLATTEN_EOD].Name = "Flatten At Session End";     sc.Input[IN_FLATTEN_EOD].SetYesNo(0);
-        sc.Input[IN_TIME_STOP].Name = "Global Time Stop (sessions, 0=preset)"; sc.Input[IN_TIME_STOP].SetInt(0);
+        sc.Input[IN_MAX_SLIPPAGE].Name = "Max Slippage ticks (step 3, not active yet)";      sc.Input[IN_MAX_SLIPPAGE].SetInt(8);
+        sc.Input[IN_FLATTEN_EOD].Name = "Flatten At Session End (step 3, not active yet)";     sc.Input[IN_FLATTEN_EOD].SetYesNo(0);
+        sc.Input[IN_TIME_STOP].Name = "Time Stop Override (sessions, 0 = use preset)"; sc.Input[IN_TIME_STOP].SetInt(0);
 
         sc.Input[IN_RTH_START].Name = "RTH Start (chart time zone)";  sc.Input[IN_RTH_START].SetTime(HMS_TIME(9, 30, 0));
         sc.Input[IN_RTH_END].Name = "RTH End (chart time zone)";      sc.Input[IN_RTH_END].SetTime(HMS_TIME(16, 0, 0));
@@ -961,6 +1053,20 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_LOG_LEVEL].SetCustomInputStrings("Errors;Info;Debug trace per preset");
         sc.Input[IN_LOG_LEVEL].SetCustomInputIndex(LOG_INFO);
         sc.Input[IN_DRAW_SIGNALS].Name = "Draw Signals On Chart";     sc.Input[IN_DRAW_SIGNALS].SetYesNo(1);
+
+        // Global TP / SL / RRR override. Default OFF: each preset carries the exit model that was
+        // validated for it, and forcing one exit on all 48 invalidates the research numbers.
+        sc.Input[IN_EXIT_OVERRIDE].Name = "Exit Override (overrides ALL presets)";
+        sc.Input[IN_EXIT_OVERRIDE].SetCustomInputStrings(
+            "Use preset exits (validated);Override: ATR bracket;Override: fixed ticks");
+        sc.Input[IN_EXIT_OVERRIDE].SetCustomInputIndex(XO_PRESET);
+        sc.Input[IN_OV_SL_ATR].Name = "  Override SL (x ATR20)";     sc.Input[IN_OV_SL_ATR].SetFloat(1.0f);
+        sc.Input[IN_OV_RRR].Name = "  Override RRR (TP = SL x RRR)"; sc.Input[IN_OV_RRR].SetFloat(2.0f);
+        sc.Input[IN_OV_SL_TICKS].Name = "  Override SL (ticks)";     sc.Input[IN_OV_SL_TICKS].SetInt(80);
+        sc.Input[IN_OV_TP_TICKS].Name = "  Override TP (ticks)";     sc.Input[IN_OV_TP_TICKS].SetInt(160);
+        sc.Input[IN_OV_BE_R].Name = "  Override Breakeven (R, 0=off)"; sc.Input[IN_OV_BE_R].SetFloat(0);
+        sc.Input[IN_OV_TRAIL_ATR].Name = "  Override Trailing (x ATR20, 0=off)";
+        sc.Input[IN_OV_TRAIL_ATR].SetFloat(0);
         return;
     }
 
@@ -1011,9 +1117,30 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // ---------------- main loop over intraday bars ----------------
     const int rthStart = sc.Input[IN_RTH_START].GetTime();
     const int rthEnd   = sc.Input[IN_RTH_END].GetTime();
-    const double riskUnit = sc.Input[IN_RISK_UNIT].GetFloat();
-    const int direction   = sc.Input[IN_DIRECTION].GetIndex();
     const SCString journal = DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString());
+    const double tickSize = 0.25;                       // ES and MES share the same tick
+
+    RunCfg cfg;
+    cfg.riskUnit      = sc.Input[IN_RISK_UNIT].GetFloat();
+    cfg.direction     = sc.Input[IN_DIRECTION].GetIndex();
+    cfg.logLevel      = logLevel;
+    cfg.exitOverride  = sc.Input[IN_EXIT_OVERRIDE].GetIndex();
+    cfg.ovSlAtr       = sc.Input[IN_OV_SL_ATR].GetFloat();
+    cfg.ovRrr         = sc.Input[IN_OV_RRR].GetFloat();
+    cfg.ovSlPts       = sc.Input[IN_OV_SL_TICKS].GetInt() * tickSize;
+    cfg.ovTpPts       = sc.Input[IN_OV_TP_TICKS].GetInt() * tickSize;
+    cfg.ovBeR         = sc.Input[IN_OV_BE_R].GetFloat();
+    cfg.ovTrailAtr    = sc.Input[IN_OV_TRAIL_ATR].GetFloat();
+    cfg.globalTimeStop = sc.Input[IN_TIME_STOP].GetInt();
+    cfg.entryOverride = sc.Input[IN_ENTRY_TYPE].GetIndex();
+    cfg.limitOffsetPts = sc.Input[IN_LIMIT_OFFSET].GetInt() * tickSize;
+    cfg.entryExpiry   = std::max(1, sc.Input[IN_ENTRY_EXPIRY].GetInt());
+    cfg.entryNextOpen = sc.Input[IN_EVAL_AT].GetIndex() == EVAL_NEXT_OPEN;
+    cfg.maxConcurrent = sc.Input[IN_MAX_CONCURRENT].GetInt();
+    cfg.maxPerFamily  = sc.Input[IN_MAX_PER_FAMILY].GetInt();
+    cfg.maxPerRole    = sc.Input[IN_MAX_PER_ROLE].GetInt();
+    cfg.maxGross      = sc.Input[IN_MAX_GROSS].GetInt();
+    cfg.contractMult  = sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? 10.0 : 1.0;   // ES = 10 x MES
     const bool enabled = sc.Input[IN_TRADING_ENABLED].GetYesNo() != 0;
 
     // a full recalculation restarts the aggregation from scratch
@@ -1044,7 +1171,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 
         // ---- a completed RTH session closes the trading day
         if (S->sessionOpen && S->cur.v > 0 && S->cur.c > 0 && tDays != S->cur.date.GetDate())
-            FinalizeDay(sc, *S, feats, riskUnit, direction, journal, logLevel, enabled);
+            FinalizeDay(sc, *S, feats, cfg, journal, enabled);
 
         // ---- period rollovers, keyed on the trading date exactly like features.py
         int wk = WeekKey(tDays), mk = MonthKey(tDate), qk = QuarterKey(tDate);
@@ -1125,7 +1252,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             if (logLevel >= LOG_INFO)
                 sc.AddMessageToLog("Multi-Swing: session end passed with no further bars "
                                    "(shortened session) - closing the trading day now.", 0);
-            FinalizeDay(sc, *S, feats, riskUnit, direction, journal, logLevel, enabled);
+            FinalizeDay(sc, *S, feats, cfg, journal, enabled);
         }
     }
 
