@@ -632,14 +632,24 @@ static bool ExitSignal(const Preset& p, const Features& f)
 }
 
 // ------------------------------------------------------------------ journal
+static const char* JOURNAL_HEADER =
+    "preset_id,family,signal_day,entry_day,exit_day,side,entry,exit,pnl_pts,mae,mfe,bars,reason";
+
+// A full recalculation re-simulates every loaded bar, so the ledger is rewritten from scratch
+// instead of appended to - otherwise every chart reload would duplicate the whole trade history.
+static void ResetJournal(const SCString& path)
+{
+    std::ofstream f(path.GetChars(), std::ios::trunc);
+    if (f.is_open()) f << JOURNAL_HEADER << "\n";
+}
+
 static void AppendJournal(const SCString& path, const SCString& row, StudyState& S)
 {
     std::ofstream f(path.GetChars(), std::ios::app);
     if (!f.is_open()) return;
     if (S.journalRows == 0) {
         std::ifstream probe(path.GetChars(), std::ios::ate);
-        if (!probe.is_open() || probe.tellg() == 0)
-            f << "preset_id,family,signal_day,entry_day,exit_day,side,entry,exit,pnl_pts,mae,mfe,bars,reason\n";
+        if (!probe.is_open() || probe.tellg() == 0) f << JOURNAL_HEADER << "\n";
     }
     f << row.GetChars() << "\n";
     ++S.journalRows;
@@ -1010,7 +1020,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     int start = sc.UpdateStartIndex;
     if (start == 0) { S->daily.clear(); ResetDayAccumulators(*S); S->lastProcessedIndex = -1; S->dayCounter = -1;
                       S->wKey = S->mKey = S->qKey = -1; S->lastCompletedMvwap = 0;
-                      for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState(); }
+                      for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState();
+                      S->journalRows = 0;
+                      ResetJournal(DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString())); }
 
     static std::vector<Features> feats;                 // parallel to S->daily, rebuilt on demand
     if (start == 0) feats.clear();

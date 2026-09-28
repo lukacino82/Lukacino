@@ -6,6 +6,8 @@ Architektura a seznam Inputů: `swing_lab/SIERRA_ARCHITECTURE.md`.
 **Stav: krok 1 ze 4.** Studie počítá signály, vede vlastní ledger a kreslí do grafu.
 Příkazy zatím neposílá — order vrstva je krok 3, až po ověření v Sierra Replay.
 
+Podrobné nastavení krok za krokem: **`NASTAVENI.md`**.
+
 ## Instalace
 
 1. Zkopíruj `Lukacino_MultiSwing.cpp` do `SierraChart\ACS_Source\`.
@@ -65,6 +67,8 @@ chování při živých datech. To ověří až Replay podle kroku 2 v `SIERRA_A
 - **Historie** je omezena na 400 denních seancí. Odkazy na dny jsou absolutní čísla seancí,
   takže ořezání historie neposune stav otevřených pozic.
 - **Reload presetů** bez restartu: přepni Input *Reload Presets* a zpět.
+- **Ledger** se při plném přepočtu grafu přepíše od začátku, ne dopisuje, aby reload grafu
+  nezdvojil historii obchodů.
 
 ## Další kroky
 
