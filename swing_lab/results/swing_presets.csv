@@ -1,0 +1,49 @@
+id,family,role,variant,setup,regime,exit,trades,win,avg_pts,pf,sharpe,hold_days,exposure
+LMT_RSIx<x_xAT_1,LMT_RSI#<#_#ATR,R1 limit pullback,1,LMT_RSI2<10_-0.75ATR,c>sma200,x:RSI2>70+SL3.0ATR+T10,69,0.826,24.01,2.3,0.57,4.3,0.065
+LMT_RSIx<x_xAT_2,LMT_RSI#<#_#ATR,R1 limit pullback,2,LMT_RSI2<25_-0.25ATR,c>sma50,x:Time1,328,0.588,3.93,1.51,0.57,1.0,0.072
+LMT_RSIx<x_xAT_3,LMT_RSI#<#_#ATR,R1 limit pullback,3,LMT_RSI3<20_-0.25ATR,c>sma100,x:RSI2>90,79,0.823,41.22,3.08,0.57,12.2,0.212
+LMT_RSIx<x_xAT_4,LMT_RSI#<#_#ATR,R1 limit pullback,4,LMT_RSI2<25_-0.75ATR,sma50>sma200,x:Trail1.0ATR_act1.0R_T20,206,0.583,9.59,1.61,0.57,4.1,0.166
+C<dvwapxsd_1,C<dvwap#sd,R2 vwap deviation,1,C<dvwap-0.5sd,sma50>sma200,x:SL1.5ATR_RRR2.0,334,0.431,11.04,1.33,0.48,10.2,0.651
+C<dvwapxsd_2,C<dvwap#sd,R2 vwap deviation,2,C<dvwap-2.0sd,c>prev_mvwap,x:FirstUpClose,75,0.747,7.73,2.21,0.48,2.6,0.027
+C<dvwapxsd_3,C<dvwap#sd,R2 vwap deviation,3,C<dvwap-1.0sd,c>sma50,x:SL3.0ATR_RRR2.0,145,0.607,20.26,1.61,0.48,18.5,0.554
+C<dvwapxsd_4,C<dvwap#sd,R2 vwap deviation,4,C<dvwap-2.0sd,c>sma200,x:SL0.5ATR_RRR1.0,104,0.577,4.12,1.61,0.48,2.2,0.016
+C<wvwapxsd_1,C<wvwap#sd,R2 vwap deviation,1,C<wvwap-0.0sd,c>sma100,x:IBS>0.8,551,0.661,5.17,1.44,0.52,4.4,0.412
+C<wvwapxsd_2,C<wvwap#sd,R2 vwap deviation,2,C<wvwap-0.0sd,c>sma200,x:SL3.0ATR_RRR4.0,199,0.623,17.92,1.51,0.52,18.0,0.739
+C<wvwapxsd_3,C<wvwap#sd,R2 vwap deviation,3,C<wvwap-1.5sd,c>qvwap,x:SL0.5ATR_RRR3.0,187,0.332,7.15,1.57,0.52,3.7,0.094
+C<wvwapxsd_4,C<wvwap#sd,R2 vwap deviation,4,C<wvwap-0.0sd,any,x:C>PrevHigh,658,0.691,6.23,1.45,0.52,4.5,0.51
+C06_1,C06,R5 reclaim,1,C06_Reclaim3_afterDD,c>sma200&dd<10,x:C>SMA5@open,72,0.667,11.96,1.86,0.34,4.0,0.048
+C06_2,C06,R5 reclaim,2,C06_Reclaim5_afterDD,c>sma100,x:SL1.0ATR_RRR1.0,72,0.583,9.26,1.48,0.34,4.7,0.052
+C06_3,C06,R5 reclaim,3,C06_Reclaim5_afterDD,any,x:SL1.0ATR_RRR3.0_BE0.5R,166,0.175,8.36,1.51,0.34,6.5,0.187
+C06_4,C06,R5 reclaim,4,C06_Reclaim3_afterDD,c>sma50,x:SL0.75ATR_RRR0.5,116,0.741,3.74,1.38,0.34,2.5,0.023
+P_HixDD>x&RSIx_1,P_Hi#DD>#&RSI#<#,R3 drawdown+osc,1,P_Hi20DD>1.0&RSI2<25,c>sma200&dd<10,x:C>SMA5+SL2.0ATR+T10,318,0.711,6.89,1.41,0.52,3.6,0.176
+P_HixDD>x&RSIx_2,P_Hi#DD>#&RSI#<#,R3 drawdown+osc,2,P_Hi20DD>1.0&RSI2<25,c>prev_mvwap,x:IBS>0.8+T10,237,0.709,8.51,1.73,0.52,4.2,0.165
+P_HixDD>x&RSIx_3,P_Hi#DD>#&RSI#<#,R3 drawdown+osc,3,P_Hi50DD>2.0&RSI2<25,any,x:IBS>0.8+SL2.0ATR+T10,365,0.668,8.68,1.43,0.52,3.9,0.229
+P_HixDD>x&RSIx_4,P_Hi#DD>#&RSI#<#,R3 drawdown+osc,4,P_Hi50DD>2.0&RSI2<10,c>sma50,x:SL1.0ATR_RRR2.0_BE1.0R,81,0.346,12.38,2.04,0.52,4.2,0.051
+IBS<x_1,IBS<#,R4 close location,1,IBS<0.3,sma50>sma200,x:SL1.0ATR_RRR2.0_BE1.5R,502,0.373,6.26,1.29,0.51,5.7,0.47
+IBS<x_2,IBS<#,R4 close location,2,IBS<0.2,c>sma200,x:C>PrevHigh,358,0.693,7.59,1.6,0.51,4.7,0.293
+IBS<x_3,IBS<#,R4 close location,3,IBS<0.3,c>prev_mvwap,x:C>SMA5+T10,490,0.696,5.34,1.55,0.51,3.4,0.259
+IBS<x_4,IBS<#,R4 close location,4,IBS<0.1,c>sma100,x:SL1.0ATR_RRR3.0_BE1.0R,202,0.218,9.27,1.6,0.51,6.7,0.239
+WRx<x_1,WR#<#,R4 close location,1,WR10<-90,sma50>sma200,x:SL1.0ATR_RRR2.0_BE1.5R,183,0.393,11.7,1.54,0.49,4.5,0.125
+WRx<x_2,WR#<#,R4 close location,2,WR10<-90,c>sma100,x:Trail1.0ATR_act0.0R,125,0.448,8.62,1.8,0.49,4.2,0.077
+WRx<x_3,WR#<#,R4 close location,3,WR10<-90,any,x:C>wvwap+SL2.0ATR+T10,214,0.72,10.08,1.52,0.49,3.1,0.097
+WRx<x_4,WR#<#,R4 close location,4,WR10<-95,c>sma200,x:C>SMA3+SL3.0ATR,86,0.779,12.06,1.97,0.49,3.1,0.04
+D01_1,D01,R2 vwap deviation,1,D01_wvwap-2.0sd_reclaim,c>qvwap,x:C>SMA5+SL3.0ATR,87,0.759,9.58,2.13,0.42,3.3,0.043
+D01_2,D01,R2 vwap deviation,2,D01_wvwap-1.0sd,sma50>sma200,x:C>SMA10,358,0.732,7.23,1.62,0.42,4.5,0.273
+D01_3,D01,R2 vwap deviation,3,D01_mvwap-1.0sd_reclaim,c>sma200,x:SL1.5ATR_RRR2.0_BE1.0R,193,0.347,10.0,1.38,0.42,8.7,0.311
+D01_4,D01,R2 vwap deviation,4,D01_wvwap-2.0sd,c>prev_mvwap,x:RSI2>70+SL3.0ATR,68,0.809,13.95,2.28,0.42,4.7,0.055
+CloseAtxdLow_1,CloseAt#dLow,R3 drawdown+osc,1,CloseAt20dLow,c>sma200&dd<10,x:C>SMA3+SL2.0ATR+T10,109,0.706,11.13,1.78,0.49,3.0,0.046
+CloseAtxdLow_2,CloseAt#dLow,R3 drawdown+osc,2,CloseAt7dLow,c>sma100,x:SL2.0ATR_RRR1.0,201,0.587,11.8,1.42,0.49,8.3,0.307
+CloseAtxdLow_3,CloseAt#dLow,R3 drawdown+osc,3,CloseAt7dLow,c>prev_mvwap,x:RSI2>70+T10,173,0.769,10.8,1.76,0.49,5.2,0.158
+CloseAtxdLow_4,CloseAt#dLow,R3 drawdown+osc,4,CloseAt10dLow,c>qvwap,x:C>SMA5+SL3.0ATR+T10,88,0.75,13.44,2.32,0.49,3.9,0.056
+RSIx<x_1,RSI#<#,R6 oscillator,1,RSI2<30,c>sma100,x:C>SMA10+SL2.0ATR,406,0.749,5.43,1.37,0.5,3.7,0.237
+RSIx<x_2,RSI#<#,R6 oscillator,2,RSI3<10,any,x:C>SMA5@open,80,0.725,23.06,2.6,0.5,5.5,0.079
+RSIx<x_3,RSI#<#,R6 oscillator,3,RSI5<30,sma50>sma200,x:SL1.5ATR_RRR0.5,262,0.752,7.04,1.42,0.5,2.8,0.081
+RSIx<x_4,RSI#<#,R6 oscillator,4,RSI3<15,c>sma200&dd<10,x:SL0.5ATR_RRR3.0,145,0.31,7.42,1.6,0.5,2.8,0.04
+P_HixDD>x&IBS<_1,P_Hi#DD>#&IBS<#,R3 drawdown+osc,1,P_Hi20DD>1.0&IBS<0.25,sma50>sma200,x:IBS>0.8+SL3.0ATR+T10,334,0.668,6.76,1.41,0.43,4.2,0.234
+P_HixDD>x&IBS<_2,P_Hi#DD>#&IBS<#,R3 drawdown+osc,2,P_Hi50DD>2.0&IBS<0.25,c>prev_mvwap,x:IBS>0.8,98,0.704,14.62,1.92,0.43,4.6,0.078
+P_HixDD>x&IBS<_3,P_Hi#DD>#&IBS<#,R3 drawdown+osc,3,P_Hi50DD>1.0&IBS<0.25,c>sma200&dd<10,x:RSI2>70+SL2.0ATR,311,0.711,6.08,1.33,0.43,4.1,0.204
+P_HixDD>x&IBS<_4,P_Hi#DD>#&IBS<#,R3 drawdown+osc,4,P_Hi50DD>1.0&IBS<0.25,c>sma200,x:C>wvwap+SL2.0ATR,404,0.705,4.3,1.29,0.43,3.0,0.176
+ConnorsRSI<x_1,ConnorsRSI<#,R6 oscillator,1,ConnorsRSI<25,c>prev_mvwap,x:SL3.0ATR_RRR2.0,126,0.619,20.18,1.52,0.46,18.2,0.472
+ConnorsRSI<x_2,ConnorsRSI<#,R6 oscillator,2,ConnorsRSI<20,c>qvwap,x:SL1.5ATR_RRR1.5,109,0.495,14.88,1.59,0.46,8.3,0.166
+ConnorsRSI<x_3,ConnorsRSI<#,R6 oscillator,3,ConnorsRSI<10,sma50>sma200,x:SL1.0ATR_RRR3.0,75,0.333,16.69,1.69,0.46,6.4,0.081
+ConnorsRSI<x_4,ConnorsRSI<#,R6 oscillator,4,ConnorsRSI<25,c>sma200&dd<10,x:SL1.5ATR_RRR1.5,259,0.475,9.48,1.33,0.46,7.6,0.356
