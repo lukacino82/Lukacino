@@ -158,6 +158,8 @@ def setups(d: pd.DataFrame):
     for a, b in ((-0.03, -0.06), (-0.06, -0.10), (-0.10, -0.20)):
         add(f"ATH_DD{int(-a*100)}-{int(-b*100)}&Down", (d.dd_ath <= a) & (d.dd_ath > b) & (d.ret < 0), None)
     out += protocol_setups(d)
+    from correction_systems import correction_setups
+    out += correction_setups(d)
     return out
 
 

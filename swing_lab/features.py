@@ -323,7 +323,8 @@ def add_indicators(d: pd.DataFrame) -> pd.DataFrame:
     d["dist_mvwap_atr"] = (c - d.mvwap) / d.atr20
     d["wvwap_up"] = d.wvwap > d.prev_wvwap
     d["cd_low10"] = d.cumdelta.rolling(10).min().shift()
-    return d.copy()
+    from correction import add_correction_features
+    return add_correction_features(d)
 
 
 if __name__ == "__main__":
