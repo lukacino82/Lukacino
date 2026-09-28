@@ -3,3 +3,4 @@ swing_lab/results/*.parquet
 __pycache__/
 *.pyc
 .pytest_cache/
+sierra/build/
