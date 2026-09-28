@@ -20,7 +20,7 @@ int main(int argc,char**argv){
   { State* st=(State*)sc.pp[1]; if(st) printf("dni rozhodnuto %zu, prvni %d, posledni %d\n", st->C.size(), st->Date.empty()?0:st->Date.front(), st->Date.empty()?0:st->Date.back()); }
   sc.LastCallToFunction=1; std::string panel=sc.lastPanel; scsf_Lukacino_MultiSystem(sc);
   printf("virt. obchodů %zu | fills %zu | pozice %d | broker realized %.1f b. | rejects %d | alerts %d | errors %d\n",
-         sc.trades.size(), sc.fills.size(), sc.pos, sc.realized, sc.rejects, sc.alerts, sc.errors);
+         sc.trades.size(), sc.fills.size(), sc.pos, sc.realized, sc.rejects, sc.alerts, sc.errors); printf("external flattens %d\n", sc.flattens);
   if(getenv("PANEL")) printf("%s\n", panel.c_str());
   FILE*g=fopen(getenv("OUT")?getenv("OUT"):"ms_trades.txt","w"); for(auto&s:sc.trades) fprintf(g,"%s\n",s.c_str()); fclose(g);
   FILE*q=fopen(getenv("FILLS")?getenv("FILLS"):"ms_fills.csv","w"); fprintf(q,"d,t,side,qty,px,tag\n");

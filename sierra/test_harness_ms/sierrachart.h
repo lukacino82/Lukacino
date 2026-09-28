@@ -48,7 +48,7 @@ struct SCStudyInterface{
  float RoundToTickSize(float v,float t){return (float)(std::round(v/t)*t);}
  int UseTool(s_UseTool&t){lastPanel=t.Text.s;return 1;} int DeleteACSChartDrawing(int,int,int){lastPanel="";return 1;}
  // ---- broker
- int pos=getenv("START_POS")?atoi(getenv("START_POS")):0; double avg=0, realized=0; std::vector<Fill> fills; std::map<int,s_SCTradeOrder> orders; std::map<int,int> stopSide; int nextId=1, rejects=0;
+ int pos=getenv("START_POS")?atoi(getenv("START_POS")):0; double avg=0, realized=0; std::vector<Fill> fills; std::map<int,s_SCTradeOrder> orders; std::map<int,int> stopSide; int nextId=1, rejects=0, flattens=0;
  void fill(int side,int q,double px,const char*tag){ // side +1 buy, -1 sell
    int np=pos+side*q;
    if(pos==0||(pos>0)==(side>0)){ avg=(avg*std::abs(pos)+px*q)/std::abs(np); }
@@ -70,7 +70,7 @@ struct SCStudyInterface{
  double BuyOrder(s_SCNewOrder&o){return sideOrder(o,1);} double SellOrder(s_SCNewOrder&o){return sideOrder(o,-1);}
  int CancelOrder(int id){ if(orders.count(id)&&orders[id].OrderStatusCode==SCT_OSC_OPEN) orders[id].OrderStatusCode=SCT_OSC_CANCELED; return 1;}
  int GetOrderByOrderID(int id,s_SCTradeOrder&o){ if(!orders.count(id)) return 0; o=orders[id]; return 1;}
- int GetTradePosition(s_SCPositionData&p){p.PositionQuantity=pos; p.WorkingOrdersExist=0; for(auto&kv:orders) if(kv.second.OrderStatusCode==SCT_OSC_OPEN) p.WorkingOrdersExist=1; return 1;}
+ int GetTradePosition(s_SCPositionData&p){ static int gcalls=0; gcalls++; if(getenv("FLATTEN_EVERY") && pos!=0 && gcalls%atoi(getenv("FLATTEN_EVERY"))==0){ pos=0; flattens++; for(auto&kv:orders) if(kv.second.OrderStatusCode==SCT_OSC_OPEN) kv.second.OrderStatusCode=SCT_OSC_CANCELED; }p.PositionQuantity=pos; p.WorkingOrdersExist=0; for(auto&kv:orders) if(kv.second.OrderStatusCode==SCT_OSC_OPEN) p.WorkingOrdersExist=1; return 1;}
  const char* GetTradingErrorTextMessage(int){return "sim reject";}
  void checkStops(int i){ for(auto&kv:orders){ s_SCTradeOrder&t=kv.second; if(t.OrderStatusCode!=SCT_OSC_OPEN) continue; int side=stopSide[kv.first];
      bool hit= side<0 ? Low[i]<=t.Price1 : High[i]>=t.Price1; if(!hit) continue;

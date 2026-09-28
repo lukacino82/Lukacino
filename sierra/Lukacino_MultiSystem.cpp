@@ -78,7 +78,7 @@ namespace
         // příkazy
         int   StopID = 0, StopQty = 0; float StopPrice = 0;
         int   Pending = 0, PendingCalls = 0, PendingTarget = 0, StopCancelCalls = 0, LastErrTarget = 99999, LastErrActual = 99999;
-        int   FirstLiveDone = 0, OrdersBlocked = 0;
+        int   FirstLiveDone = 0, OrdersBlocked = 0, LastActual = 0;
         int   LoggedCfg = 0, LoggedDelta = 0, LoggedSize = 0, LoggedStopErr = 0;
         int   StopFailBar = -1, StopFailQty = 0; float StopFailPx = 0;
     };
@@ -670,21 +670,44 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
                 sc.AddMessageToLog(m, 1); sc.SetAlert(In_AlertNo.GetInt(), m);
             }
             // actual == 0 a historie má otevřené pozice: zůstanou jen virtuální (žádný pozdní vstup)
+            st->LastActual = actual;
         }
 
         // Emergency Stop vyplněn u brokera
+        bool stopFilled = false;
         if (st->StopID)
         {
             s_SCTradeOrder ord;
             if (sc.GetOrderByOrderID(st->StopID, ord) && ord.OrderStatusCode == SCT_OSC_FILLED)
             {
                 for (int s = 0; s < NSYS; s++) if (st->S[s].Active) closeSys(s, (float)ord.AvgFillPrice, "EMERGENCY (broker)", -1);
-                st->StopID = 0; st->EmergLevel = 0;
+                st->StopID = 0; st->EmergLevel = 0; stopFilled = true;
                 sc.AddMessageToLog("Lukacino MS: Emergency Stop vyplnen u brokera - systemy vynulovany.", 1);
             }
             else if (sc.GetOrderByOrderID(st->StopID, ord) && (ord.OrderStatusCode == SCT_OSC_CANCELED || ord.OrderStatusCode == SCT_OSC_ERROR))
                 st->StopID = 0;
         }
+
+        // Pozice na účtu se změnila bez příkazu studie (ruční Flatten, zásah v Trade Window).
+        // Flatten na nulu: systémy zůstanou jen virtuální, studie pozici znovu NEotevře.
+        // Jiná ruční změna: příkazy se pozastaví, dokud se pozice nesrovná a studie nepřepočítá.
+        if (!st->Pending && !stopFilled && actual != st->LastActual)
+        {
+            if (actual == 0)
+            {
+                for (int s = 0; s < NSYS; s++) st->S[s].Live = 0;
+                if (st->StopID) { sc.CancelOrder(st->StopID); st->StopID = 0; }
+                sc.AddMessageToLog("Lukacino MS: pozice na uctu zavrena mimo studii (Flatten) - systemy jen virtualni, znovu se neotevrou.", 1);
+            }
+            else if (!st->OrdersBlocked)
+            {
+                st->OrdersBlocked = 1;
+                SCString m; m.Format("Lukacino MS: POZOR, pozice na uctu se zmenila mimo studii (%d -> %d). Prikazy pozastaveny - "
+                                     "Flatten a prepocitej studii.", st->LastActual, actual);
+                sc.AddMessageToLog(m, 1); sc.SetAlert(In_AlertNo.GetInt(), m);
+            }
+        }
+        st->LastActual = actual;
 
         // Emergency Stop pryč? Pokud ne, pošle zrušení (opakovaně po 50 voláních) a vrátí false.
         // Sierra odmítne exit, když working exit příkazy (stop) už kryjí celou pozici.
@@ -704,6 +727,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
         {
             st->PendingCalls++;
             if (actual == st->PendingTarget || st->PendingCalls > 50) st->Pending = 0;
+            st->LastActual = actual;
         }
         // zmenšení pozice (exit) jen bez working Emergency Stopu; přidání do pozice hned
         const bool reducing = (actual > 0 && target < actual) || (actual < 0 && target > actual);
