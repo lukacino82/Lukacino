@@ -135,7 +135,7 @@ podle vlastních výsledků, ne podle dojmu.
 
 **Výchozí capy schválně nic neořezávají**, aby kniha obchodovala přesně to, co bylo ověřeno.
 Změřeno na 18 letech: snížení *Max Concurrent Presets* na 10 sníží počet obchodů z 6 222
-na 3 514 a P&L ze 72 951 na 29 673 bodů. Cap totiž ubírá právě ty shluky vstupů v hlubokých
+na 3 514 a P&L ze 72 948 na 29 673 bodů. Cap totiž ubírá právě ty shluky vstupů v hlubokých
 korekcích, kde je edge nejsilnější. Snižuj ho jen vědomě, jako rozhodnutí o riziku.
 
 ### Exekuce (42–47)
@@ -177,7 +177,7 @@ Breakeven (57) a trailing (58) platí jen když je override zapnutý.
 
 | Nastavení | Obchodů | P&L | Průměrné držení | Win |
 |---|---|---|---|---|
-| Preset exity (výchozí) | 6 222 | 72 951 b. | 5,2 dne | 61 % |
+| Preset exity (výchozí) | 6 222 | 72 948 b. | 5,2 dne | 61 % |
 | Override SL 1 ATR, RRR 2 | 7 594 | 58 390 b. | 4,0 dne | 52 % |
 | Override SL 2 ATR, RRR 1 | 6 324 | 72 535 b. | 5,2 dne | 66 % |
 | Time Stop Override 5 dní | 7 095 | 63 605 b. | 4,1 dne | 62 % |
@@ -225,17 +225,54 @@ schválně, jinak by se ti při každém reloadu grafu zdvojily obchody.
 
 ## 8. Replay test pro paritu
 
+Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá při rychlosti
+*Maximum* řádově desítky minut, podle stroje.
+
+### Jednorázová příprava
+
 1. *Chart Settings → Days to Load* = **3300** (pokryje 2018–2026)
-2. Počkej, až se data stáhnou, sleduj *Window → Message Log*
-3. *Chart → Replay Chart* → Start Date **2018-01-01**, rychlost **Maximum**, *Replay Mode: Standard*
-4. Nech doběhnout až do konce
-5. Pošli mi `swing_journal.csv` z Data Files Folder
+2. Počkej, až se data stáhnou. Sleduj *Window → Message Log*, dokud neskončí stahování.
+3. *Trading Enabled* = **Yes**, *Mode* = **Signals only**, *Send Orders To Trade Service* = **No**.
+   Replay tak nikdy nesáhne na účet.
 
-Porovnám ho s výzkumným ledgerem obchod po obchodu. Offline už teď sedí: 32 ze 48 presetů
-má identickou množinu vstupů a P&L je 94,2 % Pythonu. Replay ověří to, co offline test
-ověřit nemůže — chování samotné Sierry se seancemi a živými bary.
+### Jedno kolo replaye
 
----
+1. V Data Files Folder **smaž nebo přejmenuj** `swing_journal.csv`.
+   Studie si ho sice při plném přepočtu přepisuje od začátku, ale replay běží po barech,
+   ne jedním přepočtem, takže čistý start je jistota.
+2. *Chart → Replay Chart*
+   - Start Date **2018-01-01**
+   - Replay Speed **Maximum**
+   - Replay Mode **Standard**
+   - *Clear chart before replay* zapnuto
+3. Nech doběhnout až do konce. Během běhu se v Message Logu objevuje řádek při každé
+   změně počtu otevřených pozic — když je log němý celé měsíce, něco je špatně
+   (většinou *Trading Enabled = No* nebo málo načtených dní).
+4. Po doběhnutí zkontroluj `swing_journal.csv`: první obchody mají být z **jara 2019**
+   (2018 padne na zahřívání indikátorů), poslední z konce replaye, a mají tam být
+   zastoupené **všechny rodiny**. Pár set řádků místo tisíců znamená, že replay nedojel
+   nebo se kniha nezahřála. Přesný počet ti nebudu tipovat z hlavy — porovnám ho
+   s výzkumným ledgerem za stejné období.
+5. Pošli mi ten soubor. Porovnám ho obchod po obchodu s výzkumným ledgerem.
+
+### Co replay ověřuje a co ne
+
+Offline harness (`sierra/run_parity.py`) už teď projíždí stejnou C++ logiku proti Pythonu
+na 4 122 506 barech a sedí: **32 ze 48 presetů má identickou množinu vstupů**, 39 ze 48 má
+překryv vstupů ≥ 97 %, 6 185 obchodů v Pythonu proti 6 222 ve studii a P&L 77 329 proti
+72 948 bodům, tedy **94,3 % Pythonu**. Ten rozdíl je schválně: když stop i target padnou
+do jedné seance, studie je na denním rozsahu vyhodnotí **stopem napřed**, zatímco výzkum
+prochází 30minutové bary. Živé P&L pod backtestem je správný směr.
+
+Replay ověřuje to, co offline test ověřit nemůže — chování samotné Sierry: hranice seancí,
+rollover kontraktu, pořadí barů a to, že studie počítá stejně, když data přicházejí po jednom
+baru, a ne najednou.
+
+### Když se čísla rozejdou
+
+Pošli mi `swing_journal.csv` a k němu výpis Message Logu. Rozdíl mezi replayem a offline
+harnessem je vždy chyba ve studii nebo v nastavení grafu, nikdy ne "šum" — offline je
+deterministický a proti Pythonu sedí.
 
 ## Časté chyby
 
