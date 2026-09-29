@@ -39,6 +39,11 @@ COLS = ["preset_id", "family", "signal_day", "entry_day", "exit_day", "side",
 # Sierra's global date/time display setting - so journals produced by an older build carry
 # whatever format that machine was set to. Normalise the column so those can still be checked.
 DAY_COLS = ["signal_day", "entry_day", "exit_day"]
+
+# Anchored VWAP and its sigma bands are computed from volume. Sierra aggregates volume for the
+# continuous contract its own way, so these families can disagree with the research data even
+# when the logic is identical - unlike the price-only families, where a difference is a real bug.
+VOLUME_FAMILIES = ("wvwap", "dvwap", "mvwap")
 ISO = re.compile(r"\d{4}-\d{2}-\d{2}$")
 NUMERIC = re.compile(r"^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$")
 
@@ -211,6 +216,29 @@ def main():
 
     if pnl_o:
         print(f"\n  P&L pts  replay {pnl_r:.0f}  offline {pnl_o:.0f} ({100 * pnl_r / pnl_o:.1f} %)")
+
+    if diffs:
+        fam_of = {r["preset_id"]: r["family"] for r in off}
+        fam_of.update({r["preset_id"]: r["family"] for r in rep})
+        by_fam: dict[str, list[int]] = {}
+        for pid in ids:
+            f = fam_of.get(pid, "?")
+            d = next((x[0] for x in diffs if x[1] == pid), 0)
+            by_fam.setdefault(f, [0, 0])
+            by_fam[f][0] += d
+            by_fam[f][1] += 1
+        print("\n  by family, most days out first:")
+        for f, (d, n) in sorted(by_fam.items(), key=lambda kv: -kv[1][0]):
+            if d:
+                vol = "  <- volume-dependent" if any(v in f for v in VOLUME_FAMILIES) else ""
+                print(f"    {f:<22s}{d:5d} days out over {n} presets{vol}")
+        vd = sum(d for f, (d, _) in by_fam.items() if any(v in f for v in VOLUME_FAMILIES))
+        td = sum(d for _, (d, _) in by_fam.items())
+        if td and vd / td > 0.5:
+            print(f"\n  {100 * vd / td:.0f} % of the difference sits in the VWAP families, which are the ones\n"
+                  f"  computed from volume. That points at Sierra's volume aggregation for the\n"
+                  f"  continuous contract rather than at the trading logic - check that the chart\n"
+                  f"  is Back Adjusted and that it is the same contract the research used.")
 
     if not diffs:
         print("\n  Identical. Sierra's session handling, rollover and bar-by-bar delivery match the\n"
