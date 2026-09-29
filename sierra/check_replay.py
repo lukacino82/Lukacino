@@ -12,19 +12,18 @@ Every difference is Sierra-specific and therefore worth looking at.
 usage:
     python check_replay.py swing_journal.csv
 
-Needs only Python and pandas: the off-line side is committed as reference_journal.csv, so
-this runs on the machine Sierra runs on, without a compiler and without the market data.
-Pass --rebuild to regenerate it from the current study source instead (needs g++ and the
-research data, so in practice only here).
+Runs on a stock Python 3.8+, no packages to install: the off-line side is committed as
+reference_journal.csv, so this works on the machine Sierra runs on, without a compiler and
+without the market data. --rebuild regenerates that reference from the current study source
+and does need the research environment, so in practice it only runs in the repo.
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import subprocess
 import sys
 from pathlib import Path
-
-import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -35,20 +34,24 @@ COLS = ["preset_id", "family", "signal_day", "entry_day", "exit_day", "side",
         "entry", "exit", "pnl_pts", "mae", "mfe", "bars", "reason"]
 
 
-def load_journal(path: Path, what: str) -> pd.DataFrame:
+def load_journal(path: Path, what: str) -> list[dict]:
     if not path.exists():
         raise SystemExit(f"{what} journal not found: {path}")
-    j = pd.read_csv(path)
-    missing = [c for c in COLS if c not in j.columns]
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        raise SystemExit(f"{what} journal is empty.")
+    missing = [c for c in COLS if c not in rows[0]]
     if missing:
         raise SystemExit(f"{what} journal is missing columns {missing}.\n"
                          f"Expected the ledger written by Lukacino_MultiSwing: {', '.join(COLS)}")
-    if j.empty:
-        raise SystemExit(f"{what} journal is empty.")
-    return j
+    for r in rows:
+        r["pnl_pts"] = float(r["pnl_pts"] or 0)
+    return rows
 
 
 def build_offline() -> Path:
+    """Regenerate the reference ledger. Needs g++, pandas and the research data."""
     from run_parity import TMP, build, export_bars
     from sieve import RES
     exe = build(TMP)
@@ -65,13 +68,22 @@ def build_offline() -> Path:
     return journal
 
 
+def window(rows: list[dict], lo: str, hi: str) -> list[dict]:
+    return [r for r in rows if lo <= r["entry_day"] <= hi]
+
+
+def summarise(rows: list[dict], label: str):
+    print(f"  {label:<8s}{len(rows):5d} trades {sum(r['pnl_pts'] for r in rows):9.0f} pts   "
+          f"{len({r['preset_id'] for r in rows})} presets, {len({r['family'] for r in rows})} families")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("replay", help="swing_journal.csv written by the study during Replay")
     ap.add_argument("--offline", default=None,
-                    help=f"harness journal to diff against (default: {REFERENCE.name})")
+                    help=f"journal to diff against (default: {REFERENCE.name})")
     ap.add_argument("--rebuild", action="store_true",
-                    help="regenerate the off-line journal from the current study source")
+                    help="regenerate the reference journal from the current study source")
     ap.add_argument("--top", type=int, default=15, help="how many worst presets to list")
     a = ap.parse_args()
 
@@ -86,43 +98,47 @@ def main():
 
     # The replay warms the indicators up before it can signal, so its own first entry sets the
     # window. The tail is whichever run stops first.
-    lo = rep.entry_day.min()
-    hi = min(rep.entry_day.max(), off.entry_day.max())
-    rep = rep[(rep.entry_day >= lo) & (rep.entry_day <= hi)]
-    off = off[(off.entry_day >= lo) & (off.entry_day <= hi)]
-    print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}) ===")
-    print(f"  replay  {len(rep):5d} trades   {rep.pnl_pts.sum():8.0f} pts   "
-          f"{rep.preset_id.nunique()} presets, {rep.family.nunique()} families")
-    print(f"  offline {len(off):5d} trades   {off.pnl_pts.sum():8.0f} pts   "
-          f"{off.preset_id.nunique()} presets, {off.family.nunique()} families")
+    lo = min(r["entry_day"] for r in rep)
+    hi = min(max(r["entry_day"] for r in rep), max(r["entry_day"] for r in off))
+    rep, off = window(rep, lo, hi), window(off, lo, hi)
 
-    silent = sorted(set(off.preset_id) - set(rep.preset_id))
+    print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}) ===")
+    summarise(rep, "replay")
+    summarise(off, "offline")
+
+    ids = sorted({r["preset_id"] for r in rep} | {r["preset_id"] for r in off})
+    silent = sorted({r["preset_id"] for r in off} - {r["preset_id"] for r in rep})
     if silent:
         print(f"\n  presets that never fired in the replay ({len(silent)}): {', '.join(silent)}")
 
-    rows = []
-    for pid in sorted(set(off.preset_id) | set(rep.preset_id)):
-        r, o = rep[rep.preset_id == pid], off[off.preset_id == pid]
-        re_, oe = set(r.entry_day), set(o.entry_day)
-        rows.append(dict(id=pid, replay=len(r), offline=len(o),
-                         only_replay=len(re_ - oe), only_offline=len(oe - re_),
-                         replay_pnl=r.pnl_pts.sum(), offline_pnl=o.pnl_pts.sum()))
-    df = pd.DataFrame(rows)
-    df["diff"] = df.only_replay + df.only_offline
+    diffs, n_same, n_close, pnl_r, pnl_o = [], 0, 0, 0.0, 0.0
+    for pid in ids:
+        r = [x for x in rep if x["preset_id"] == pid]
+        o = [x for x in off if x["preset_id"] == pid]
+        re_, oe = {x["entry_day"] for x in r}, {x["entry_day"] for x in o}
+        only_r, only_o = len(re_ - oe), len(oe - re_)
+        pr, po = sum(x["pnl_pts"] for x in r), sum(x["pnl_pts"] for x in o)
+        pnl_r += pr
+        pnl_o += po
+        n_same += (only_r + only_o) == 0
+        n_close += (only_r + only_o) <= max(1, 0.01 * len(o))
+        if only_r or only_o:
+            diffs.append((only_r + only_o, pid, len(r), len(o), only_r, only_o, pr, po))
 
-    print(f"\n  identical entry sets      : {int((df['diff'] == 0).sum())}/{len(df)}")
-    print(f"  >= 99 % entry overlap     : "
-          f"{int((df['diff'] <= (0.01 * df.offline).clip(lower=1)).sum())}/{len(df)}")
-    worst = df[df['diff'] > 0].sort_values("diff", ascending=False)
-    if len(worst):
-        print(f"\n  presets that differ ({len(worst)}), worst first:")
-        print(worst.head(a.top).round({"replay_pnl": 0, "offline_pnl": 0}).to_string(index=False))
+    print(f"\n  identical entry sets      : {n_same}/{len(ids)}")
+    print(f"  >= 99 % entry overlap     : {n_close}/{len(ids)}")
 
-    pnl_r, pnl_o = df.replay_pnl.sum(), df.offline_pnl.sum()
-    print(f"\n  P&L pts  replay {pnl_r:.0f}  offline {pnl_o:.0f} "
-          f"({100 * pnl_r / pnl_o:.1f} %)" if pnl_o else "")
+    if diffs:
+        print(f"\n  presets that differ ({len(diffs)}), worst first:")
+        head = f"  {'id':<18s}{'replay':>7s}{'offline':>8s}{'only_rep':>9s}{'only_off':>9s}{'rep_pnl':>9s}{'off_pnl':>9s}"
+        print(head)
+        for d, pid, nr, no, orr, oo, pr, po in sorted(diffs, reverse=True)[:a.top]:
+            print(f"  {pid:<18s}{nr:>7d}{no:>8d}{orr:>9d}{oo:>9d}{pr:>9.0f}{po:>9.0f}")
 
-    if df["diff"].sum() == 0:
+    if pnl_o:
+        print(f"\n  P&L pts  replay {pnl_r:.0f}  offline {pnl_o:.0f} ({100 * pnl_r / pnl_o:.1f} %)")
+
+    if not diffs:
         print("\n  Identical. Sierra's session handling, rollover and bar-by-bar delivery match the\n"
               "  off-line run, so the parity already measured against Python carries over to Replay.")
     else:

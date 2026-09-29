@@ -259,9 +259,9 @@ Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá p
    python sierra\check_replay.py cesta\k\swing_journal.csv
    ```
 
-   Vypíše rozdíl preset po presetu, běží asi sekundu. Potřebuje jen **Python a pandas**
-   (`pip install pandas`), žádný kompilátor ani tržní data — referenční ledger je v repu
-   jako `sierra/reference_journal.csv`. Kdyby to nešlo, pošli mi `swing_journal.csv`
+   Vypíše rozdíl preset po presetu, běží asi sekundu. Potřebuje **jen Python**, nic se
+   neinstaluje — žádné balíčky, žádný kompilátor, žádná tržní data. Referenční ledger je
+   v repu jako `sierra/reference_journal.csv`. Kdyby to nešlo, pošli mi `swing_journal.csv`
    a proženu ho tady.
 
    `--rebuild` referenční ledger přegeneruje z aktuálního zdroje studie. To má smysl jen
