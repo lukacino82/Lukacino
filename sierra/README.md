@@ -42,7 +42,7 @@ Poslední běh, období 2016-06 až 2026-09:
 | Presetů s identickou množinou vstupů | 32 ze 48 |
 | Presetů s ≥ 97 % shodou vstupů | 39 ze 48 |
 | Obchodů celkem | Python 6 185, studie 6 222 |
-| P&L v bodech | Python 77 329, studie 72 866 (94,2 %) |
+| P&L v bodech | Python 77 329, studie 72 948 (94,3 %) |
 
 Studie je záměrně pesimističtější: když se v jedné seanci dotkne SL i TP, počítá **SL první**
 na denním rozpětí, zatímco výzkumný engine prochází 30minutové bary. Nižší P&L než backtest
@@ -69,6 +69,10 @@ chování při živých datech. To ověří až Replay podle kroku 2 v `SIERRA_A
 - **Reload presetů** bez restartu: přepni Input *Reload Presets* a zpět.
 - **Ledger** se při plném přepočtu grafu přepíše od začátku, ne dopisuje, aby reload grafu
   nezdvojil historii obchodů.
+- **Chybějící soubor presetů** se zaloguje **jednou**, ne při každém volání studie. Po zkopírování
+  CSV do *Data Files Folder* se načtení znovu spustí přepnutím Inputu *Reload Presets*.
+- **Velikost baru:** parita je měřena na 1minutových barech. Na hrubším grafu studie jednou
+  zaloguje varování; VWAP sigma a denní rozpětí se tam mírně liší.
 
 ## Další kroky
 
