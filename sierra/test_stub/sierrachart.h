@@ -113,8 +113,6 @@ struct SCStudyInterface {
     SCDateTime CurrentSystemDateTime;
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
     SCString DataFilesFolder() { return SCString("."); }
-    SCString FormatDateTime(const SCDateTime& d) { int y; unsigned m, dd; CivilFromDays(d.GetDate(), y, m, dd);
-        SCString r; r.Format("%04d-%02u-%02u", y, m, dd); return r; }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }
 };
 typedef SCStudyInterface& SCStudyInterfaceRef;

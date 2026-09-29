@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,58 @@ REFERENCE = HERE / "reference_journal.csv"
 
 COLS = ["preset_id", "family", "signal_day", "entry_day", "exit_day", "side",
         "entry", "exit", "pnl_pts", "mae", "mfe", "bars", "reason"]
+
+
+# Until the DayString() fix, the study wrote dates through sc.FormatDateTime(), which follows
+# Sierra's global date/time display setting - so journals produced by an older build carry
+# whatever format that machine was set to. Normalise the column so those can still be checked.
+DAY_COLS = ["signal_day", "entry_day", "exit_day"]
+ISO = re.compile(r"\d{4}-\d{2}-\d{2}$")
+NUMERIC = re.compile(r"^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$")
+
+
+def day_only(v: str) -> str:
+    return (v or "").strip().split("T")[0].split(" ")[0]
+
+
+def normalise_days(rows: list[dict], what: str):
+    """Rewrite the day columns to YYYY-MM-DD in place, one decision for the whole file."""
+    vals = [day_only(r[c]) for r in rows for c in DAY_COLS if day_only(r[c])]
+    if all(ISO.match(v) for v in vals):
+        for r in rows:
+            for c in DAY_COLS:
+                r[c] = day_only(r[c])
+        return
+
+    parts = []
+    for v in vals:
+        m = NUMERIC.match(v)
+        if not m:
+            raise SystemExit(f"{what} journal: cannot read the date {v!r}.\n"
+                             f"  Rebuild the study - the current source writes YYYY-MM-DD - or send me the file.")
+        parts.append([int(x) for x in m.groups()])
+
+    # Year first is unambiguous. Otherwise day-first and month-first both parse, and guessing per
+    # row silently mangles the first twelve days of a month, so decide from the whole column.
+    if all(p[0] > 31 for p in parts):
+        order = (0, 1, 2)
+    elif any(p[0] > 12 for p in parts):
+        order = (2, 1, 0)
+    elif any(p[1] > 12 for p in parts):
+        order = (2, 0, 1)
+    else:
+        raise SystemExit(f"{what} journal: the dates are ambiguous - {vals[0]!r} could be either\n"
+                         f"  day-first or month-first, and nothing in the file settles it.\n"
+                         f"  Rebuild the study (the current source writes YYYY-MM-DD) and replay again.")
+    y, mo, d = order
+    for r in rows:
+        for c in DAY_COLS:
+            v = day_only(r[c])
+            if v:
+                q = [int(x) for x in NUMERIC.match(v).groups()]
+                r[c] = f"{q[y]:04d}-{q[mo]:02d}-{q[d]:02d}"
+    print(f"  note: {what} journal dates were not ISO; read as "
+          f"{'year' if y == 0 else 'day' if d == 0 else 'month'}-first and converted.")
 
 
 def load_journal(path: Path, what: str) -> list[dict]:
@@ -47,6 +100,7 @@ def load_journal(path: Path, what: str) -> list[dict]:
                          f"Expected the ledger written by Lukacino_MultiSwing: {', '.join(COLS)}")
     for r in rows:
         r["pnl_pts"] = float(r["pnl_pts"] or 0)
+    normalise_days(rows, what)
     return rows
 
 
@@ -100,6 +154,13 @@ def main():
     # window. The tail is whichever run stops first.
     lo = min(r["entry_day"] for r in rep)
     hi = min(max(r["entry_day"] for r in rep), max(r["entry_day"] for r in off))
+    if lo > hi:
+        raise SystemExit(
+            f"\n  The journals do not overlap in time at all:\n"
+            f"    replay  {min(r['entry_day'] for r in rep)} .. {max(r['entry_day'] for r in rep)}\n"
+            f"    offline {min(r['entry_day'] for r in off)} .. {max(r['entry_day'] for r in off)}\n\n"
+            f"  Either the Replay covered a period the reference does not reach, or the dates were\n"
+            f"  read wrong. Send me the journal and I will look.")
     rep, off = window(rep, lo, hi), window(off, lo, hi)
 
     print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}) ===")
@@ -124,6 +185,19 @@ def main():
         n_close += (only_r + only_o) <= max(1, 0.01 * len(o))
         if only_r or only_o:
             diffs.append((only_r + only_o, pid, len(r), len(o), only_r, only_o, pr, po))
+
+    shared = {r["entry_day"] for r in rep} & {r["entry_day"] for r in off}
+    if not shared:
+        rs, os_ = sorted({r["entry_day"] for r in rep}), sorted({r["entry_day"] for r in off})
+        raise SystemExit(
+            f"\n  The two journals do not share a single entry day, which no trading difference can\n"
+            f"  produce. Something about the runs is not comparable at all.\n\n"
+            f"    replay  entry days: {', '.join(rs[:4])} ... {rs[-1]}  ({len(rs)} days)\n"
+            f"    offline entry days: {', '.join(os_[:4])} ... {os_[-1]}  ({len(os_)} days)\n\n"
+            f"  Check, in this order:\n"
+            f"    1. the chart's symbol - a Replay on a different instrument than ES\n"
+            f"    2. the chart's time zone - a whole-session shift moves every entry a day\n"
+            f"    3. that reference_journal.csv is the one committed next to this script")
 
     print(f"\n  identical entry sets      : {n_same}/{len(ids)}")
     print(f"  >= 99 % entry overlap     : {n_close}/{len(ids)}")

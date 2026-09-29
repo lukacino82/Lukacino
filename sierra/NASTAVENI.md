@@ -30,7 +30,7 @@ Data Files Folder*. Do ní patří `swing_presets.csv`.
 
 ## 2. Instalace studie
 
-1. `Lukacino_MultiSwing.cpp` → `SierraChart\ACS_Source\`
+1. `Lukacino_MultiSwing.cpp` → `SierraChart\ACS_Source\` (při každé aktualizaci studie znovu)
 2. `swing_presets.csv` → Data Files Folder z bodu 1
 3. *Analysis → Build Custom Studies DLL* → vyber soubor → **Build**
 4. V okně buildu musí být `The build is complete` bez chyb
@@ -308,3 +308,4 @@ deterministický a proti Pythonu sedí.
 | VWAP čáry jsou na nule | graf nemá objemy, nebo je to non-intraday graf |
 | Signály na jiných dnech než v backtestu | graf není *Back Adjusted*, nebo je jiná časová zóna |
 | Ledger má dvakrát tytéž obchody | starý soubor z verze před touto opravou, smaž ho |
+| `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |

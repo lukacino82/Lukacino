@@ -643,6 +643,19 @@ static bool ExitSignal(const Preset& p, const Features& f)
 }
 
 // ------------------------------------------------------------------ journal
+
+// Always YYYY-MM-DD. sc.FormatDateTime() follows Sierra's global date/time display setting and
+// appends a time, so the ledger it produced was unparseable against the research one on any
+// machine not set to ISO - and the off-line harness could never see it, since its stub formats
+// dates itself. The ledger has to be comparable regardless of how the user's Sierra displays
+// dates, so the format is pinned here.
+static SCString DayString(const SCDateTime& t)
+{
+    SCString r;
+    r.Format("%04d-%02d-%02d", t.GetYear(), t.GetMonth(), t.GetDay());
+    return r;
+}
+
 static const char* JOURNAL_HEADER =
     "preset_id,family,signal_day,entry_day,exit_day,side,entry,exit,pnl_pts,mae,mfe,bars,reason";
 
@@ -801,9 +814,9 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
             int sdIdx = i - (int)(absDay - st.signalDay), edIdx = i - (int)(absDay - st.entryDay);
             row.Format("%s,%s,%s,%s,%s,1,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%s",
                        p.id.GetChars(), p.family.GetChars(),
-                       sc.FormatDateTime(d[std::max(sdIdx, 0)].date).GetChars(),
-                       sc.FormatDateTime(d[std::max(edIdx, 0)].date).GetChars(),
-                       sc.FormatDateTime(d[i].date).GetChars(),
+                       DayString(d[std::max(sdIdx, 0)].date).GetChars(),
+                       DayString(d[std::max(edIdx, 0)].date).GetChars(),
+                       DayString(d[i].date).GetChars(),
                        st.entry, px, pnl * riskUnit * weight,
                        st.worst - st.entry, st.best - st.entry,
                        (int)(absDay - st.entryDay) + 1, "signal");
@@ -849,15 +862,15 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
                 SCDateTime sd = d[std::max(sdIdx, 0)].date, ed = d[std::max(edIdx, 0)].date, xd = d[i].date;
                 row.Format("%s,%s,%s,%s,%s,1,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%s",
                            p.id.GetChars(), p.family.GetChars(),
-                           sc.FormatDateTime(sd).GetChars(), sc.FormatDateTime(ed).GetChars(),
-                           sc.FormatDateTime(xd).GetChars(),
+                           DayString(sd).GetChars(), DayString(ed).GetChars(),
+                           DayString(xd).GetChars(),
                            st.entry, px, pnl * riskUnit * weight,
                            st.worst - st.entry, st.best - st.entry,
                            (int)(absDay - st.entryDay) + 1, ReasonName(code));
                 AppendJournal(journalPath, row, S);
                 if (logLevel >= LOG_INFO) {
                     SCString m; m.Format("EXIT %s %s @ %.2f  (%.2f pts, %s)",
-                                         p.id.GetChars(), sc.FormatDateTime(xd).GetChars(), px, pnl, ReasonName(code));
+                                         p.id.GetChars(), DayString(xd).GetChars(), px, pnl, ReasonName(code));
                     sc.AddMessageToLog(m, 0);
                 }
                 st = PresetState();
@@ -885,7 +898,7 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
                 }
                 if (logLevel >= LOG_INFO) {
                     SCString m; m.Format("SIGNAL %s %s  close %.2f  ATR %.2f  %s",
-                                         p.id.GetChars(), sc.FormatDateTime(d[i].date).GetChars(),
+                                         p.id.GetChars(), DayString(d[i].date).GetChars(),
                                          f.c, f.atr20, p.entry == EK_CLOSE ? "filled at close" : "order armed");
                     sc.AddMessageToLog(m, 0);
                 }
