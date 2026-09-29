@@ -1140,7 +1140,11 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         if (RealPrice(st.stop, last))   o.Stop1Price   = st.stop;
         if (RealPrice(st.target, last)) o.Target1Price = st.target;
 
-        if (sc.BuyEntry(o) > 0) {
+        // Sierra's return code is the whole diagnosis of a refused order, so it is captured and
+        // logged. An earlier version tested the call inline and printed a hardcoded 0, throwing
+        // away the one number that says why - and then the failure cut-off silenced the rest.
+        const int rc = (int)sc.BuyEntry(o);
+        if (rc > 0) {
             lg.qtyOnAccount = qty;
             S.orderFailures = 0;
             if (logLevel >= LOG_INFO) {
@@ -1148,16 +1152,18 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                                      qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price);
                 sc.AddMessageToLog(m, 0);
             }
-        } else if (++S.orderFailures >= ORDER_FAILURE_LIMIT) {
-            sc.AddMessageToLog("Multi-Swing: too many rejected orders in a row - ORDER PLACEMENT "
-                               "STOPPED. The account is not holding what the book thinks. Flatten "
-                               "it by hand, fix the trade account or Trade Simulation Mode, then "
-                               "reload the study.", 1);
         } else {
-            SCString m; m.Format("Multi-Swing ORDER REJECTED (%d): BUY %d %s. Check the trade "
-                                 "account and Trade Simulation Mode.",
-                                 0, qty, S.presets[k].id.GetChars());
+            SCString m;
+            m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: BUY %d %s at market, "
+                     "stop %.2f target %.2f. (%d of %d before order placement stops.)",
+                     rc, qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price,
+                     S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT);
             sc.AddMessageToLog(m, 1);
+            if (++S.orderFailures >= ORDER_FAILURE_LIMIT)
+                sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many rejections. "
+                                   "The account is not holding what the book thinks and nothing "
+                                   "more will be sent. Flatten the position by hand, fix the trade "
+                                   "account or Trade Simulation Mode, then reload the study.", 1);
         }
     }
 }
@@ -1167,7 +1173,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
 // ACSIL has no status-text call (sc.SetStudyStatusText does not exist), so the box is a stationary
 // text drawing the study keeps up to date. It is the only place the mode is visible without opening
 // the Message Log, and telling a paper run from a live one at a glance is worth a drawing.
-static void DrawStatusBox(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
+static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const RunCfg& cfg,
                           bool enabled, int openPresets, int target, int position)
 {
     if (sc.Input[IN_SHOW_STATUS].GetYesNo() == 0) {
@@ -1177,7 +1183,11 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& c
 
     const int  mode   = sc.Input[IN_MODE].GetIndex();
     const bool sending = sc.Input[IN_SEND_LIVE].GetYesNo() != 0;
+    // Once placement has stopped the box must say so: it was still reading "ORDERS LIVE" while
+    // nothing was being sent, which is the one thing a status box must never get wrong.
+    const bool stopped = S.orderFailures >= ORDER_FAILURE_LIMIT;
     const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
+                         : stopped            ? "STOPPED - rejections, nothing is being sent"
                          : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE" : "FULL AUTO - not sending")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
@@ -1194,9 +1204,10 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& c
                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES");
 
     // Red whenever real orders can leave the study, so a live run never looks like a paper one.
-    const COLORREF colour = (enabled && mode == MODE_FULL && sending) ? RGB(255, 80, 80)
-                          : !enabled                                  ? RGB(150, 150, 150)
-                                                                      : RGB(0, 220, 120);
+    const COLORREF colour = stopped                                   ? RGB(255, 200, 0)
+                          : (enabled && mode == MODE_FULL && sending)  ? RGB(255, 80, 80)
+                          : !enabled                                   ? RGB(150, 150, 150)
+                                                                       : RGB(0, 220, 120);
     const int corner = sc.Input[IN_STATUS_CORNER].GetIndex();
     s_UseTool t;
     t.Clear();
