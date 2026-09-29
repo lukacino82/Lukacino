@@ -3,8 +3,9 @@
 ACSIL implementace dvanácti rodin z `swing_lab/results/ES_CORRECTION_ALPHA.html`.
 Architektura a seznam Inputů: `swing_lab/SIERRA_ARCHITECTURE.md`.
 
-**Stav: krok 1 ze 4.** Studie počítá signály, vede vlastní ledger a kreslí do grafu.
-Příkazy zatím neposílá — order vrstva je krok 3, až po ověření v Sierra Replay.
+**Stav: kroky 1 a 3 napsané, krok 2 čeká na tvůj Replay.** Studie počítá signály, vede vlastní
+ledger, kreslí do grafu a umí posílat příkazy. Order vrstva vznikla dřív, než proběhl Replay,
+takže je napsaná, ale na skutečném účtu **neověřená** — viz *Co order vrstva zaručuje*.
 
 Podrobné nastavení krok za krokem: **`NASTAVENI.md`**.
 
@@ -78,7 +79,38 @@ chování při živých datech. To ověří až Replay podle kroku 2 v `SIERRA_A
 
 | Krok | Obsah | Stav |
 |---|---|---|
-| 1 | Feature engine, parser presetů, signály, ledger | hotovo |
-| 2 | Sierra Replay 2018–2026, porovnání ledgeru | čeká na tebe |
-| 3 | OrderManager a RiskController, `Send Live = No` | |
-| 4 | Semi-auto na simulovaném účtu, ≥ 50 obchodů | |
+| 1 | Feature engine, parser presetů, signály, ledger | hotovo, parita s Pythonem změřená |
+| 2 | Sierra Replay 2018–2026, porovnání ledgeru | **čeká na tebe** — postup v `NASTAVENI.md` §8 |
+| 3 | Order vrstva: bracket per vstup + srovnání pozice | napsané, na účtu neověřené |
+| 4 | Semi-auto na simulovaném účtu, ≥ 50 obchodů | čeká na krok 2 |
+
+Krok 3 předběhl krok 2. Není to důvod ho přeskočit: dokud Replay neukáže, že studie v Sierře
+počítá totéž co offline, nemá smysl řešit, jestli správně posílá příkazy.
+
+## Co order vrstva zaručuje
+
+Kniha je 48 presetů, každý s vlastním stopem a targetem. Sierra drží **jednu** pozici na grafu.
+Řešení: každý vstup jde jako samostatný příkaz s vlastním bracketem, který spravuje Sierra, a
+součet se pak srovnává proti pozici, kterou Sierra hlásí.
+
+| Důvod výstupu | Podíl v referenčním ledgeru | Kdo ho na účtu provede |
+|---|---:|---|
+| `signal` | 3 477 z 6 504 (53,5 %) | srovnání pozice na konci seance |
+| `sl` | 1 415 (21,8 %) | Sierra, připojený stop |
+| `tp` | 808 (12,4 %) | Sierra, připojený target |
+| `time` | 500 (7,7 %) | srovnání pozice na konci seance |
+| `breakeven` | 161 (2,5 %) | **nikdo — stop se v Sierře neposouvá** |
+| `trail` | 143 (2,2 %) | **nikdo — stop se v Sierře neposouvá** |
+
+**Známá mezera: posuny stopu se do Sierry nepřenášejí.** Bracket se nastaví při vstupu a už se
+nemění, zatímco výzkumný engine u 8 ze 48 presetů stop posouvá (trailing, breakeven). Těch
+**304 obchodů ze 6 504, tedy 4,7 %**, na účtu neskončí na posunutém stopu, ale až tržním
+příkazem, až je kniha zavře. Pozice přitom zůstává chráněná původním, širším stopem — není to
+díra v riziku, ale je to horší výstupní cena a systematicky v neprospěch. Opravit to znamená
+posílat `sc.ModifyOrder` na připojený stop; přesné názvy členů ACSIL si musím ověřit v
+dokumentaci Sierry, ke které z tohohle kontejneru není přístup (egress policy blokuje
+sierrachart.com). Než to půjde ověřit, je to popsané, ne zamlčené.
+
+**Co musí ukázat až Sim účet:** když srovnání pozice odprodá přebytek tržním příkazem, Sierra
+zmenší i připojené příkazy zbývajících vstupů. Jestli přitom některý preset zůstane bez stopu,
+se z kódu vyčíst nedá — to ukáže krok 4 a je to první věc, kterou tam kontrolovat.

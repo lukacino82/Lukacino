@@ -152,13 +152,13 @@ struct PresetState {
 };
 
 // The account side of a preset, deliberately NOT part of PresetState: the exit path resets that
-// wholesale on every close, which would drop the ids of orders still working in the market and
-// leave them there with nothing tracking them.
+// wholesale on every close, which would drop what is still working in the market and leave it
+// there with nothing tracking it.
 //
-// exitedInAccount says a protective order has filled. A stop takes its contracts off the account
-// the moment it trades, while the book only closes the preset when the session is finalised;
-// without the flag the next sync would see the account short of the book and buy the stopped-out
-// position straight back, turning every stop into a round trip at a worse price.
+// What this leg records is only that an entry was sent and has not been superseded, so the same
+// trade is not bought twice. It deliberately does NOT claim the contracts are still held: Sierra
+// works the bracket, and when the stop or the target trades, the account drops without telling the
+// study. Only sc.GetTradePosition knows, and the reconciliation at the end of SyncOrders uses it.
 struct AccountLeg {
     int  qtyOnAccount = 0;      // what this preset actually put on the account
     long entryDay = -1;         // a re-entry the same session is a new trade, not the old one
@@ -208,6 +208,8 @@ struct StudyState {
     SCString featureCsv;                // empty unless the per-day dump is switched on
     std::vector<AccountLeg> legs;       // parallel to states, but outliving each trade's reset
     int      orderFailures = 0;         // consecutive rejections; trading stops at the limit
+    int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
+    int      trimSentAccount = -1;      // the position it was sent against
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1086,28 +1088,23 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // first Sim Replay logged the same rejection thousands of times - trading stops and says so.
     if (S.orderFailures >= ORDER_FAILURE_LIMIT) return;
 
+    // An entry sent in this call is not filled yet, so the position read below still lags it. The
+    // trim is skipped for one call rather than selling the entry straight back out.
+    bool entrySent = false;
+
     for (size_t k = 0; k < S.states.size(); ++k) {
         PresetState& st = S.states[k];
         AccountLeg&  lg = S.legs[k];
         const int qty = PresetQty(sc, S, k, cfg);
 
-        // ---- the book is flat here: close whatever this preset still holds on the account
+        // ---- the book is flat here: stop counting this preset, and send nothing yet
+        //
+        // Sierra's bracket may already have taken these contracts off the account, and this loop
+        // has no way to tell. Selling lg.qtyOnAccount blind would then come out of whatever else
+        // the net position is carrying - another preset's contracts, still believed open and from
+        // that moment silently unprotected. The surplus is trimmed once, below, against the
+        // position Sierra actually reports.
         if (st.inPos == 0) {
-            if (lg.qtyOnAccount > 0 && send) {
-                s_SCNewOrder o;
-                o.OrderQuantity = lg.qtyOnAccount;
-                o.OrderType = SCT_ORDERTYPE_MARKET;
-                o.TimeInForce = SCT_TIF_DAY;
-                if (sc.SellExit(o) <= 0) {
-                    // Sierra may already have closed it on the attached stop or target, which is
-                    // not a failure: the book is flat and so, now, is the account.
-                    if (logLevel >= LOG_DEBUG) {
-                        SCString m; m.Format("Multi-Swing: %s was already flat on the account.",
-                                             S.presets[k].id.GetChars());
-                        sc.AddMessageToLog(m, 0);
-                    }
-                }
-            }
             lg = AccountLeg();
             continue;
         }
@@ -1130,6 +1127,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                 sc.AddMessageToLog(m, 0);
             }
             lg.qtyOnAccount = qty;
+            entrySent = true;
             continue;
         }
 
@@ -1146,6 +1144,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         const int rc = (int)sc.BuyEntry(o);
         if (rc > 0) {
             lg.qtyOnAccount = qty;
+            entrySent = true;
             S.orderFailures = 0;
             if (logLevel >= LOG_INFO) {
                 SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f",
@@ -1165,6 +1164,77 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                                    "more will be sent. Flatten the position by hand, fix the trade "
                                    "account or Trade Simulation Mode, then reload the study.", 1);
         }
+    }
+
+    // ---- bring the total back down to what the book wants
+    //
+    // Because Sierra works each bracket, it closes a stopped-out preset without telling the study,
+    // which makes the reported position - not the ledger - the only honest record of what is held.
+    // Everything the book closed for its own reasons (a signal exit, a time stop) is exactly the
+    // difference between that position and what the book still wants, and it goes out as one order
+    // instead of being guessed at preset by preset.
+    int want = 0;
+    for (size_t k = 0; k < S.states.size(); ++k)
+        if (S.states[k].inPos != 0) want += PresetQty(sc, S, k, cfg);
+
+    int account;
+    if (send) {
+        s_SCPositionData pos;
+        sc.GetTradePosition(pos);
+        account = (int)pos.PositionQuantity;
+    } else {
+        account = S.semiPosition;
+    }
+
+    // A market exit is not filled by the time the next study call runs, so the position still reads
+    // high. Without this the same surplus would be sold again on every call until the fill landed.
+    if (S.trimSentQty > 0) {
+        if (account != S.trimSentAccount) {
+            S.trimSentQty = 0;
+            S.trimSentAccount = -1;
+        } else {
+            return;
+        }
+    }
+    if (entrySent || account <= want) return;
+
+    const int surplus = account - want;
+
+    if (!send) {
+        S.semiPosition -= surplus;
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing SEMI: would SELL %d to hold %d contracts.",
+                                 surplus, want);
+            sc.AddMessageToLog(m, 0);
+        }
+        return;
+    }
+
+    s_SCNewOrder o;
+    o.OrderQuantity = surplus;
+    o.OrderType     = SCT_ORDERTYPE_MARKET;
+    o.TimeInForce   = SCT_TIF_DAY;
+    const int rc = (int)sc.SellExit(o);
+    if (rc > 0) {
+        S.trimSentQty     = surplus;
+        S.trimSentAccount = account;
+        S.orderFailures   = 0;
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing: SELL %d, position %d -> %d (book wants %d).",
+                                 surplus, account, want, want);
+            sc.AddMessageToLog(m, 0);
+        }
+    } else {
+        SCString m;
+        m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d to bring the position "
+                 "from %d to %d. (%d of %d before order placement stops.)",
+                 rc, surplus, account, want, S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT);
+        sc.AddMessageToLog(m, 1);
+        if (++S.orderFailures >= ORDER_FAILURE_LIMIT)
+            sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many rejections. "
+                               "The account is not holding what the book thinks and nothing more "
+                               "will be sent. Flatten the position by hand, fix the trade account "
+                               "or Trade Simulation Mode, then reload the study.", 1);
     }
 }
 
@@ -1481,6 +1551,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState();
                       S->journalRows = 0; S->semiPosition = 0;
                       S->orderFailures = 0; S->legs.clear();
+                      S->trimSentQty = 0; S->trimSentAccount = -1;
                       ResetJournal(DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString()));
                       ResetFeatureCsv(S->featureCsv); }
 
