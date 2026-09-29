@@ -111,6 +111,8 @@ struct SCStudyInterface {
     int GetPersistentInt(int k) { return persistentInt[k]; }
     void SetPersistentInt(int k, int v) { persistentInt[k] = v; }
     SCDateTime CurrentSystemDateTime;
+    // the off-line harness is never a replay; the study must still not depend on the wall clock
+    int IsReplayRunning() { return 0; }
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
     SCString DataFilesFolder() { return SCString("."); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }

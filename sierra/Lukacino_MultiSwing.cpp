@@ -1270,12 +1270,21 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     }
 
     // ---------------- live guard: close a half-day session once its RTH end has passed ----------------
-    // In a historical recalculation this never fires, because it only looks at the very last bar.
+    // On a shortened session RTH ends early and no further bar arrives, so without this the day
+    // would not close until the next session's first bar and its signal would be a session late.
+    //
+    // It must fire only at the live edge of the chart. sc.CurrentSystemDateTime is the wall clock,
+    // which during a Replay of history sits years past every bar - so the original test (system
+    // date later than the bar's) was true on every call, and the guard closed the same trading day
+    // over and over. A Replay from 2018 produced about twice the trades from its start date on,
+    // while the years before it, replayed as ordinary chart history, matched. Requiring the wall
+    // clock to be on the very day being closed confines it to live trading, where it belongs.
     if (S->sessionOpen && S->cur.v > 0 && S->cur.c > 0 && sc.ArraySize > 0) {
         const SCDateTime now = sc.CurrentSystemDateTime;
         const int curDayDays = S->cur.date.GetDate();
-        const bool sessionEndPassed = now.GetDate() > curDayDays ||
-                                      (now.GetDate() == curDayDays && now.GetTimeInSeconds() >= rthEnd);
+        const bool sessionEndPassed = sc.IsReplayRunning() == 0 &&
+                                      now.GetDate() == curDayDays &&
+                                      now.GetTimeInSeconds() >= rthEnd;
         const SCDateTime lastBar = sc.BaseDateTimeIn[sc.ArraySize - 1];
         const bool noBarsSinceEnd = lastBar.GetTimeInSeconds() < rthEnd || lastBar.GetDate() < curDayDays;
         if (enabled && sessionEndPassed && noBarsSinceEnd) {

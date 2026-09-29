@@ -47,7 +47,7 @@ Data Files Folder*. Do ní patří `swing_presets.csv`.
 |---|---|---|---|
 | Bar Period | Type | Minutes | |
 | Bar Period | Value | **1** | z denních barů nejde spočítat sigma VWAP pásem |
-| Symbol | Continuous Futures Contract | **Date Rule Rollover – Back Adjusted** | bez toho zkreslí rollové skoky ATR i drawdown |
+| Symbol | Continuous Futures Contract | **Date Rule Rollover – Back Adjusted** | bez toho zkreslí rollové skoky ATR i drawdown; samotné *Date Rule Rollover* nestačí, musí tam být i *Back Adjusted* |
 | Data | Days to Load | **1000** pro živý provoz, **3300** pro Replay 2018–2026 | viz níže |
 | Session Times | Use specific session times | **vypnuto** (celá Globex seance) | studie potřebuje i overnight |
 
@@ -307,5 +307,6 @@ deterministický a proti Pythonu sedí.
 | Žádné signály, log je v pořádku | *Trading Enabled* je na No, nebo je načteno málo dní |
 | VWAP čáry jsou na nule | graf nemá objemy, nebo je to non-intraday graf |
 | Signály na jiných dnech než v backtestu | graf není *Back Adjusted*, nebo je jiná časová zóna |
+| Replay dá zhruba dvojnásobek obchodů od data startu | studie z verze před opravou live guardu — přebuildi DLL |
 | Ledger má dvakrát tytéž obchody | starý soubor z verze před touto opravou, smaž ho |
 | `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |
