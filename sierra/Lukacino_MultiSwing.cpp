@@ -63,6 +63,7 @@ enum InputIdx {
     IN_OV_BE_R, IN_OV_TRAIL_ATR,                                                    // 52-58 exit override
     IN_SHOW_STATUS = 59, IN_STATUS_CORNER, IN_STATUS_SIZE,
     IN_LABEL_SIGNALS, IN_LABEL_DAYS,                                                // 59-63 on-chart display
+    IN_FEATURE_CSV = 64,                                                            // 64 diagnostics
     IN_COUNT
 };
 
@@ -189,6 +190,7 @@ struct StudyState {
     int      lastLoggedDelta = 0;       // semi-auto logs an intention once, not on every call
     int      lastSyncTarget = -1;       // what the book wanted at the last sync
     int      labelsDrawn = 0;           // so the labels can be removed when switched off
+    SCString featureCsv;                // empty unless the per-day dump is switched on
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -677,6 +679,37 @@ static void ResetJournal(const SCString& path)
     if (f.is_open()) f << JOURNAL_HEADER << "\n";
 }
 
+// Per-day dump of everything the entry rules read. The journal says which days the study traded;
+// when those days differ from the research and the rules are identical, the answer is in the
+// numbers the rules were given - above all the day's volume, since the VWAP bands are built from
+// it and the price-only families agree while the VWAP ones do not.
+static const char* FEATURE_HEADER =
+    "day,open,high,low,close,volume,atr20,dvwap,dvwap_sd,wvwap,wvwap_sd,mvwap,mvwap_sd,qvwap,"
+    "rsi2,ibs,connors,wr10,dd_pct,sma5,sma10,sma50,sma200";
+
+static void ResetFeatureCsv(const SCString& path)
+{
+    if (path.GetLength() == 0) return;
+    std::ofstream f(path.GetChars(), std::ios::trunc);
+    if (f.is_open()) f << FEATURE_HEADER << "\n";
+}
+
+static void AppendFeatureCsv(const SCString& path, const SCDateTime& day,
+                             const DailyBar& b, const Features& ft)
+{
+    if (path.GetLength() == 0 || !ft.ready) return;
+    std::ofstream f(path.GetChars(), std::ios::app);
+    if (!f.is_open()) return;
+    SCString row;
+    row.Format("%s,%.2f,%.2f,%.2f,%.2f,%.0f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,"
+               "%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f",
+               DayString(day).GetChars(), b.o, b.h, b.l, b.c, b.v, ft.atr20,
+               ft.dvwap, ft.dvwapSd, ft.wvwap, ft.wvwapSd, ft.mvwap, ft.mvwapSd, ft.qvwap,
+               ft.rsi2, ft.ibs, ft.connors, ft.wr10, ft.dd * 100.0,
+               ft.sma5, ft.sma10, ft.sma50, ft.sma200);
+    f << row.GetChars() << "\n";
+}
+
 static void AppendJournal(const SCString& path, const SCString& row, StudyState& S)
 {
     std::ofstream f(path.GetChars(), std::ios::app);
@@ -967,6 +1000,7 @@ static void FinalizeDay(SCStudyInterfaceRef sc, StudyState& S, std::vector<Featu
     int di = (int)S.daily.size() - 1;
     feats.resize(S.daily.size());
     feats[di] = ComputeFeatures(S.daily, di);
+    AppendFeatureCsv(S.featureCsv, b.date, S.daily[di], feats[di]);
     ++S.dayCounter;
     if (enabled) ProcessDay(sc, S, feats, di, S.dayCounter, cfg, journal);
     ResetDayAccumulators(S);
@@ -1237,6 +1271,8 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_LABEL_SIGNALS].SetYesNo(0);
         sc.Input[IN_LABEL_DAYS].Name = "  Label Only The Last N Sessions (0 = all)";
         sc.Input[IN_LABEL_DAYS].SetInt(60);
+        sc.Input[IN_FEATURE_CSV].Name = "Feature Dump CSV (blank = off)";
+        sc.Input[IN_FEATURE_CSV].SetString("");
         return;
     }
 
@@ -1246,6 +1282,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     if (S == nullptr) { S = new StudyState(); sc.SetPersistentPointer(0, S); }
 
     const int logLevel = sc.Input[IN_LOG_LEVEL].GetIndex();
+
+    S->featureCsv = sc.Input[IN_FEATURE_CSV].GetString()[0] == 0
+                  ? SCString() : DataPath(sc, sc.Input[IN_FEATURE_CSV].GetString());
 
     // ---------------- trading flags ----------------
     // The book adds to and trims one net position, so successive entries in the same direction must
@@ -1344,7 +1383,8 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       S->wKey = S->mKey = S->qKey = -1; S->lastCompletedMvwap = 0;
                       for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState();
                       S->journalRows = 0;
-                      ResetJournal(DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString())); }
+                      ResetJournal(DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString()));
+                      ResetFeatureCsv(S->featureCsv); }
 
     static std::vector<Features> feats;                 // parallel to S->daily, rebuilt on demand
     if (start == 0) feats.clear();

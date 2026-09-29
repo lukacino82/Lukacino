@@ -194,6 +194,20 @@ ne na ostrý provoz. Když ho zapneš, výsledky z reportu už neplatí.
 | 50 | Log Level | Info | |
 | 51 | Draw Signals On Chart | Yes | zelené šipky pod bary |
 
+### Diagnostika (64)
+
+| # | Input | Výchozí | Co dělá |
+|---|---|---|---|
+| 64 | Feature Dump CSV (blank = off) | prázdné | vypíše každý den všechny hodnoty, ze kterých vstupní pravidla počítají |
+
+Nech prázdné, dokud tě o to nepožádám. Když tam dáš třeba `swing_features.csv`, studie
+vedle ledgeru zapisuje řádek na každou uzavřenou seanci: OHLC, **objem**, ATR20, všechny tři
+VWAP kotvy i jejich sigma, RSI2, IBS, ConnorsRSI, Williams %R, drawdown a klouzavé průměry.
+
+Je to na ladění parity. Ledger říká, **které dny** se obchodovalo; tenhle soubor říká, **z čeho**
+se ta rozhodnutí počítala, takže jde rozlišit chybu ve studii od rozdílu v datech. Porovnává
+se skriptem `sierra/check_features.py` (ten běží jen tady, potřebuje výzkumná data).
+
 ### Zobrazení na grafu (59–63)
 
 | # | Input | Výchozí | Co dělá |
