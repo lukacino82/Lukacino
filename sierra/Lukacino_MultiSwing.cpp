@@ -61,6 +61,8 @@ enum InputIdx {
     IN_RTH_START = 48, IN_RTH_END, IN_LOG_LEVEL, IN_DRAW_SIGNALS,                   // 48-51 session / diag
     IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR, IN_OV_RRR, IN_OV_SL_TICKS, IN_OV_TP_TICKS,
     IN_OV_BE_R, IN_OV_TRAIL_ATR,                                                    // 52-58 exit override
+    IN_SHOW_STATUS = 59, IN_STATUS_CORNER, IN_STATUS_SIZE,
+    IN_LABEL_SIGNALS, IN_LABEL_DAYS,                                                // 59-63 on-chart display
     IN_COUNT
 };
 
@@ -70,6 +72,11 @@ enum EvalKind    { EVAL_CLOSE = 0, EVAL_NEXT_OPEN };
 enum LogLevel    { LOG_ERRORS = 0, LOG_INFO, LOG_DEBUG };
 enum ExitOverride { XO_PRESET = 0, XO_ATR_BRACKET, XO_FIXED_TICKS };
 enum EntryOverride { EO_PRESET = 0, EO_FORCE_CLOSE, EO_FORCE_LIMIT };
+enum CornerKind  { CORNER_TL = 0, CORNER_TR, CORNER_BL, CORNER_BR };
+
+// Line numbers for the drawings this study manages. Kept well clear of anything drawn by hand so
+// redrawing the box never touches a user's own drawing.
+enum { DRAW_STATUS_LINE = 7710001, DRAW_LABEL_BASE = 7720001 };
 
 static const int MAX_FAMILIES = 12;
 static const int DAILY_HISTORY = 400;          // > 252-day peak window + 200-day MA warm-up
@@ -181,6 +188,7 @@ struct StudyState {
     int      journalRows = 0;
     int      lastLoggedDelta = 0;       // semi-auto logs an intention once, not on every call
     int      lastSyncTarget = -1;       // what the book wanted at the last sync
+    int      labelsDrawn = 0;           // so the labels can be removed when switched off
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1035,6 +1043,62 @@ static int SyncPosition(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg
     return 0;
 }
 
+// ------------------------------------------------------------------ on-chart status box
+//
+// ACSIL has no status-text call (sc.SetStudyStatusText does not exist), so the box is a stationary
+// text drawing the study keeps up to date. It is the only place the mode is visible without opening
+// the Message Log, and telling a paper run from a live one at a glance is worth a drawing.
+static void DrawStatusBox(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
+                          bool enabled, int openPresets, int target, int position)
+{
+    if (sc.Input[IN_SHOW_STATUS].GetYesNo() == 0) {
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, DRAW_STATUS_LINE);
+        return;
+    }
+
+    const int  mode   = sc.Input[IN_MODE].GetIndex();
+    const bool sending = sc.Input[IN_SEND_LIVE].GetYesNo() != 0;
+    const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
+                         : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE" : "FULL AUTO - not sending")
+                         : mode == MODE_SEMI  ? "SEMI - logging intended orders"
+                                              : "SIGNALS ONLY - paper";
+
+    SCString text;
+    text.Format("LUKACINO MULTI-SWING\n"
+                "mode      %s\n"
+                "presets   %d in %d families\n"
+                "open      %d presets\n"
+                "book      %d contracts   position %d\n"
+                "days      %d   risk unit %.2f %s",
+                modeName, (int)S.presets.size(), S.familyCount, openPresets,
+                target, position, (int)S.daily.size(), cfg.riskUnit,
+                sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES");
+
+    // Red whenever real orders can leave the study, so a live run never looks like a paper one.
+    const COLORREF colour = (enabled && mode == MODE_FULL && sending) ? RGB(255, 80, 80)
+                          : !enabled                                  ? RGB(150, 150, 150)
+                                                                      : RGB(0, 220, 120);
+    const int corner = sc.Input[IN_STATUS_CORNER].GetIndex();
+    s_UseTool t;
+    t.Clear();
+    t.ChartNumber   = sc.ChartNumber;
+    t.DrawingType   = DRAWING_STATIONARY_TEXT;
+    t.Region        = 0;
+    t.AddMethod     = UTAM_ADD_OR_ADJUST;
+    t.LineNumber    = DRAW_STATUS_LINE;
+    t.UseRelativeVerticalValues = 1;                       // both coordinates are then percentages
+    t.BeginDateTime = (corner == CORNER_TR || corner == CORNER_BR) ? 70 : 2;
+    t.BeginValue    = (corner == CORNER_BL || corner == CORNER_BR) ?  2 : 97;
+    t.Text          = text;
+    t.Color         = colour;
+    t.FontSize      = sc.Input[IN_STATUS_SIZE].GetInt();
+    t.FontBold      = 1;
+    t.MultiLineLabel = 1;
+    t.TransparentLabelBackground = 0;
+    t.SecondaryColor = RGB(0, 0, 0);
+    sc.UseTool(t);
+}
+
 // ------------------------------------------------------------------ the study
 SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 {
@@ -1050,6 +1114,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     SCSubgraphRef SG_Connors = sc.Subgraph[9];
     SCSubgraphRef SG_WSD     = sc.Subgraph[10];
     SCSubgraphRef SG_DSD     = sc.Subgraph[11];
+    SCSubgraphRef SG_Entries = sc.Subgraph[12];
 
     if (sc.SetDefaults) {
         sc.GraphName = "Lukacino Multi-Swing";
@@ -1079,6 +1144,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         SG_Connors.Name = "Connors RSI";        SG_Connors.DrawStyle = DRAWSTYLE_IGNORE;
         SG_WSD.Name = "Weekly VWAP sigma";      SG_WSD.DrawStyle = DRAWSTYLE_IGNORE;
         SG_DSD.Name = "Daily VWAP sigma";       SG_DSD.DrawStyle = DRAWSTYLE_IGNORE;
+        SG_Entries.Name = "Presets entering";   SG_Entries.DrawStyle = DRAWSTYLE_IGNORE;
 
         sc.Input[IN_TRADING_ENABLED].Name = "Trading Enabled";
         sc.Input[IN_TRADING_ENABLED].SetYesNo(0);
@@ -1157,6 +1223,20 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_OV_BE_R].Name = "  Override Breakeven (R, 0=off)"; sc.Input[IN_OV_BE_R].SetFloat(0);
         sc.Input[IN_OV_TRAIL_ATR].Name = "  Override Trailing (x ATR20, 0=off)";
         sc.Input[IN_OV_TRAIL_ATR].SetFloat(0);
+
+        // On-chart display. The status box is on by default: the mode, and whether orders can
+        // actually leave, should not be something you have to open a log to find out.
+        sc.Input[IN_SHOW_STATUS].Name = "Show Status Box On Chart";
+        sc.Input[IN_SHOW_STATUS].SetYesNo(1);
+        sc.Input[IN_STATUS_CORNER].Name = "  Status Box Corner";
+        sc.Input[IN_STATUS_CORNER].SetCustomInputStrings("Top left;Top right;Bottom left;Bottom right");
+        sc.Input[IN_STATUS_CORNER].SetCustomInputIndex(CORNER_TL);
+        sc.Input[IN_STATUS_SIZE].Name = "  Status Box Font Size";
+        sc.Input[IN_STATUS_SIZE].SetInt(10);
+        sc.Input[IN_LABEL_SIGNALS].Name = "Label Signals With Preset Count";
+        sc.Input[IN_LABEL_SIGNALS].SetYesNo(0);
+        sc.Input[IN_LABEL_DAYS].Name = "  Label Only The Last N Sessions (0 = all)";
+        sc.Input[IN_LABEL_DAYS].SetInt(60);
         return;
     }
 
@@ -1350,6 +1430,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             for (size_t k = 0; k < S->states.size(); ++k)
                 if (S->states[k].inPos != 0 && S->states[k].entryDay == S->dayCounter) ++justEntered;
             SG_Signal[i] = justEntered > 0 ? (float)lo : 0.0f;
+            SG_Entries[i] = (float)justEntered;
         }
         S->lastProcessedIndex = i;
     }
@@ -1384,6 +1465,47 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // Once per study call, after every entry and exit for these bars has been booked, so a preset
     // entering and another exiting on the same day nets out instead of sending two orders.
     SyncPosition(sc, *S, cfg, sc.Input[IN_MODE].GetIndex(), enabled, logLevel);
+
+    // ---------------- signal labels ----------------
+    // Walked backwards from the newest bar so "the last N sessions" is knowable: during the bar
+    // loop the chart's final session is still ahead. A full replay would otherwise bury the chart
+    // under thousands of drawings, which is why the cap is the default rather than the exception.
+    if (sc.Input[IN_LABEL_SIGNALS].GetYesNo() && sc.ArraySize > 0) {
+        const int keep = sc.Input[IN_LABEL_DAYS].GetInt();
+        int drawn = 0;
+        for (int i = sc.ArraySize - 1; i >= 0 && (keep <= 0 || drawn < keep); --i) {
+            if (SG_Entries[i] <= 0) continue;
+            s_UseTool t;
+            t.Clear();
+            t.ChartNumber = sc.ChartNumber;
+            t.DrawingType = DRAWING_TEXT;
+            t.Region      = 0;
+            t.AddMethod   = UTAM_ADD_OR_ADJUST;
+            t.LineNumber  = DRAW_LABEL_BASE + drawn;
+            t.BeginIndex  = i;
+            t.BeginValue  = sc.BaseData[SC_LOW][i] - 8 * sc.TickSize;
+            SCString lab; lab.Format("%dx", (int)SG_Entries[i]);
+            t.Text        = lab;
+            t.Color       = RGB(0, 200, 0);
+            t.FontSize    = 8;
+            sc.UseTool(t);
+            ++drawn;
+        }
+        S->labelsDrawn = drawn;
+    } else if (S->labelsDrawn > 0) {
+        for (int k = 0; k < S->labelsDrawn; ++k)
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, DRAW_LABEL_BASE + k);
+        S->labelsDrawn = 0;
+    }
+
+    // ---------------- on-chart status box ----------------
+    {
+        int openPresets = 0;
+        for (size_t k = 0; k < S->states.size(); ++k) if (S->states[k].inPos != 0) ++openPresets;
+        s_SCPositionData pos; sc.GetTradePosition(pos);
+        DrawStatusBox(sc, *S, cfg, enabled, openPresets, TargetContracts(sc, *S, cfg),
+                      (int)pos.PositionQuantity);
+    }
 
     // ---------------- status line: logged only when the open-position count changes ----------------
     if (logLevel >= LOG_INFO && !S->daily.empty()) {

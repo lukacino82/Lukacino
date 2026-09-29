@@ -59,6 +59,23 @@ inline void CivilFromDays(int z, int& y, unsigned& m, unsigned& d)
     y = yy + (m <= 2);
 }
 enum { SCT_ORDERTYPE_MARKET = 1, SCT_TIF_DAY = 1 };
+enum { DRAWING_TEXT = 1, DRAWING_STATIONARY_TEXT = 2, UTAM_ADD_OR_ADJUST = 1,
+       TOOL_DELETE_CHARTDRAWING = 1 };
+typedef unsigned long COLORREF;
+#ifndef RGB
+#define RGB(r, g, b) ((COLORREF)(((unsigned char)(r)) | ((unsigned char)(g) << 8) | ((unsigned char)(b) << 16)))
+#endif
+// Chart drawings have no meaning off-line; the tool is accepted and dropped so the study's
+// display code still compiles and runs in the parity harness.
+struct s_UseTool {
+    int ChartNumber = 0, DrawingType = 0, Region = 0, AddMethod = 0, LineNumber = 0;
+    int UseRelativeVerticalValues = 0, FontSize = 0, FontBold = 0, MultiLineLabel = 0;
+    int TransparentLabelBackground = 0, BeginIndex = 0;
+    double BeginDateTime = 0, BeginValue = 0;
+    SCString Text;
+    COLORREF Color = 0, SecondaryColor = 0;
+    void Clear() { *this = s_UseTool(); }
+};
 struct s_SCNewOrder { int OrderQuantity = 0; int OrderType = 0; int TimeInForce = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
 
@@ -127,6 +144,10 @@ struct SCStudyInterface {
     int  MaximumPositionAllowed = 0;
     int  ordersAttempted = 0;
     void GetTradePosition(s_SCPositionData& p) { p = s_SCPositionData(); }
+    int  ChartNumber = 1;
+    double TickSize = 0.25;
+    void UseTool(const s_UseTool&) {}
+    void DeleteACSChartDrawing(int, int, int) {}
     int  BuyEntry(const s_SCNewOrder&)  { ++ordersAttempted; return -1; }
     int  SellExit(const s_SCNewOrder&)  { ++ordersAttempted; return -1; }
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }

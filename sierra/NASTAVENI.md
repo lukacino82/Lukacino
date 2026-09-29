@@ -192,7 +192,45 @@ ne na ostrý provoz. Když ho zapneš, výsledky z reportu už neplatí.
 | 48 | RTH Start | 09:30:00 | jen když má graf jinou časovou zónu |
 | 49 | RTH End | 16:00:00 | jen když má graf jinou časovou zónu |
 | 50 | Log Level | Info | |
-| 51 | Draw Signals On Chart | Yes | |
+| 51 | Draw Signals On Chart | Yes | zelené šipky pod bary |
+
+### Zobrazení na grafu (59–63)
+
+| # | Input | Výchozí | Co dělá |
+|---|---|---|---|
+| 59 | Show Status Box On Chart | **Yes** | rámeček se stavem, viz níže |
+| 60 | Status Box Corner | Top left | roh grafu |
+| 61 | Status Box Font Size | 10 | |
+| 62 | Label Signals With Preset Count | No | k šipce dopíše `3x` = kolik presetů ten den vstoupilo |
+| 63 | Label Only The Last N Sessions | 60 | 0 = všechny; při replayi nech omezené |
+
+Status box vypadá takhle:
+
+```
+LUKACINO MULTI-SWING
+mode      FULL AUTO - ORDERS LIVE
+presets   48 in 12 families
+open      7 presets
+book      9 contracts   position 9
+days      2431   risk unit 1.00 MES
+```
+
+Barva rámečku říká, v čem jsi, aniž bys musel číst:
+
+| Barva | Stav |
+|---|---|
+| **červená** | Full auto a *Send Orders* = Yes — příkazy opravdu odcházejí |
+| zelená | signály nebo semi, nic se neposílá |
+| šedá | *Trading Enabled* = No, studie nepočítá |
+
+Řádek `book ... position ...` je nejdůležitější: první číslo je, kolik kontraktů kniha chce
+držet, druhé kolik jich na účtu skutečně je. Když se ta dvě čísla rozejdou a nedorovnají,
+někde se odmítl příkaz — podívej se do Message Logu.
+
+**K popiskům (62):** při plném replayi je nech vypnuté nebo omezené. Kreslí se jako chart
+drawings a několik tisíc jich graf zpomalí. Vykreslují se odzadu od posledního baru, takže
+`60` znamená šedesát nejnovějších signálních dnů. Když je vypneš, studie po sobě ty svoje
+popisky smaže.
 
 ---
 
