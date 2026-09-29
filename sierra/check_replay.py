@@ -45,7 +45,9 @@ DAY_COLS = ["signal_day", "entry_day", "exit_day"]
 # Anchored VWAP and its sigma bands are computed from volume. Sierra aggregates volume for the
 # continuous contract its own way, so these families can disagree with the research data even
 # when the logic is identical - unlike the price-only families, where a difference is a real bug.
-VOLUME_FAMILIES = ("wvwap", "dvwap", "mvwap")
+# D01 does not say so in its name, but all four of its setups enter off a weekly or monthly VWAP
+# band (D01_wvwap-2.0sd, D01_mvwap-1.0sd_reclaim and so on), so it belongs here too.
+VOLUME_FAMILIES = ("wvwap", "dvwap", "mvwap", "D01")
 ISO = re.compile(r"\d{4}-\d{2}-\d{2}$")
 NUMERIC = re.compile(r"^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$")
 
