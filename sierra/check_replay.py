@@ -10,9 +10,12 @@ over the *same* instrument, their journals should be near identical on the overl
 Every difference is Sierra-specific and therefore worth looking at.
 
 usage:
-    python check_replay.py swing_journal.csv [--offline build/parity_journal.csv] [--top 15]
+    python check_replay.py swing_journal.csv
 
-Without --offline the harness is compiled and run first, which takes a few minutes.
+Needs only Python and pandas: the off-line side is committed as reference_journal.csv, so
+this runs on the machine Sierra runs on, without a compiler and without the market data.
+Pass --rebuild to regenerate it from the current study source instead (needs g++ and the
+research data, so in practice only here).
 """
 from __future__ import annotations
 
@@ -25,6 +28,8 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+
+REFERENCE = HERE / "reference_journal.csv"
 
 COLS = ["preset_id", "family", "signal_day", "entry_day", "exit_day", "side",
         "entry", "exit", "pnl_pts", "mae", "mfe", "bars", "reason"]
@@ -63,12 +68,20 @@ def build_offline() -> Path:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("replay", help="swing_journal.csv written by the study during Replay")
-    ap.add_argument("--offline", default=None, help="harness journal; built on the fly when omitted")
+    ap.add_argument("--offline", default=None,
+                    help=f"harness journal to diff against (default: {REFERENCE.name})")
+    ap.add_argument("--rebuild", action="store_true",
+                    help="regenerate the off-line journal from the current study source")
     ap.add_argument("--top", type=int, default=15, help="how many worst presets to list")
     a = ap.parse_args()
 
     rep = load_journal(Path(a.replay), "replay")
-    off_path = Path(a.offline) if a.offline else build_offline()
+    if a.offline:
+        off_path = Path(a.offline)
+    elif a.rebuild or not REFERENCE.exists():
+        off_path = build_offline()
+    else:
+        off_path = REFERENCE
     off = load_journal(off_path, "offline")
 
     # The replay warms the indicators up before it can signal, so its own first entry sets the
@@ -103,7 +116,7 @@ def main():
     worst = df[df['diff'] > 0].sort_values("diff", ascending=False)
     if len(worst):
         print(f"\n  presets that differ ({len(worst)}), worst first:")
-        print(worst.head(a.top).to_string(index=False))
+        print(worst.head(a.top).round({"replay_pnl": 0, "offline_pnl": 0}).to_string(index=False))
 
     pnl_r, pnl_o = df.replay_pnl.sum(), df.offline_pnl.sum()
     print(f"\n  P&L pts  replay {pnl_r:.0f}  offline {pnl_o:.0f} "

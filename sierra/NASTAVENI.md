@@ -253,14 +253,20 @@ Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá p
    všechny **rodiny (12)** i **presety (48)**. Za období 2019-03 až 2026-09 dává offline
    harness **4 701 obchodů a 67 320 bodů** — replay by měl být v řádu stejný. Pár set
    řádků znamená, že replay nedojel nebo se kniha nezahřála.
-5. Porovnej ho skriptem, nebo mi ho pošli:
+5. Porovnej ho skriptem — přímo na tom stroji, kde běží Sierra:
 
    ```
-   python sierra/check_replay.py cesta/k/swing_journal.csv
+   python sierra\check_replay.py cesta\k\swing_journal.csv
    ```
 
-   Skript si sám zkompiluje a projede offline harness a vypíše rozdíl preset po presetu.
-   Když už offline ledger máš, je to bez čekání: `--offline sierra/build/parity_journal.csv`.
+   Vypíše rozdíl preset po presetu, běží asi sekundu. Potřebuje jen **Python a pandas**
+   (`pip install pandas`), žádný kompilátor ani tržní data — referenční ledger je v repu
+   jako `sierra/reference_journal.csv`. Kdyby to nešlo, pošli mi `swing_journal.csv`
+   a proženu ho tady.
+
+   `--rebuild` referenční ledger přegeneruje z aktuálního zdroje studie. To má smysl jen
+   tady, kde jsou data — po každé úpravě `Lukacino_MultiSwing.cpp` je potřeba ho obnovit,
+   jinak bys replay porovnával proti staré verzi.
 
 ### Co replay ověřuje a co ne
 
