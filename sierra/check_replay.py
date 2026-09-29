@@ -31,6 +31,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 REFERENCE = HERE / "reference_journal.csv"
+TAIL_DAYS = 30
 
 COLS = ["preset_id", "family", "signal_day", "entry_day", "exit_day", "side",
         "entry", "exit", "pnl_pts", "mae", "mfe", "bars", "reason"]
@@ -160,6 +161,10 @@ def main():
     # window. The tail is whichever run stops first.
     lo = min(r["entry_day"] for r in rep)
     hi = min(max(r["entry_day"] for r in rep), max(r["entry_day"] for r in off))
+    # Positions still open when the Replay was stopped never reach the ledger, so the last few
+    # sessions always look short on the replay side. Drop them rather than report them as a
+    # difference - the average hold is about a week, so a month is comfortably clear of it.
+    hi = (dt.date.fromisoformat(hi) - dt.timedelta(days=TAIL_DAYS)).isoformat()
     if lo > hi:
         raise SystemExit(
             f"\n  The journals do not overlap in time at all:\n"
@@ -169,7 +174,7 @@ def main():
             f"  read wrong. Send me the journal and I will look.")
     rep, off = window(rep, lo, hi), window(off, lo, hi)
 
-    print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}) ===")
+    print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}, last {TAIL_DAYS} days dropped) ===")
     summarise(rep, "replay")
     summarise(off, "offline")
 

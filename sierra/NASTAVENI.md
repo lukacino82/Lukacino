@@ -245,9 +245,14 @@ Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá p
    - Replay Speed **Maximum**
    - Replay Mode **Standard**
    - *Clear chart before replay* zapnuto
-3. Nech doběhnout až do konce. Během běhu se v Message Logu objevuje řádek při každé
-   změně počtu otevřených pozic — když je log němý celé měsíce, něco je špatně
-   (většinou *Trading Enabled = No* nebo málo načtených dní).
+3. Nech běžet. V Message Logu naskakuje řádek při každé změně počtu otevřených pozic —
+   když je log němý celé měsíce, něco je špatně (většinou *Trading Enabled = No* nebo
+   málo načtených dní).
+
+   **Nemusíš dojet až do konce.** Replay klidně zastav dřív; skript porovná jen tu část,
+   kterou pokrývá, a posledních 30 dní zahodí — pozice otevřené v momentě zastavení se
+   do ledgeru nedostanou a jinak by vypadaly jako rozdíl. Na první kontrolu stačí rok
+   dva za zahřívací fází.
 4. Po doběhnutí zkontroluj `swing_journal.csv`: první obchody mají být z **jara 2019**
    (2018 padne na zahřívání indikátorů), poslední z konce replaye, a mají tam být
    všechny **rodiny (12)** i **presety (48)**. Za období 2019-03 až 2026-09 dává offline
