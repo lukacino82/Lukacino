@@ -58,7 +58,9 @@ inline void CivilFromDays(int z, int& y, unsigned& m, unsigned& d)
     m = mp + (mp < 10 ? 3 : -9);
     y = yy + (m <= 2);
 }
-enum { SCT_ORDERTYPE_MARKET = 1, SCT_TIF_DAY = 1 };
+enum { SCT_ORDERTYPE_MARKET = 1, SCT_ORDERTYPE_LIMIT = 2, SCT_ORDERTYPE_STOP = 3,
+       SCT_TIF_DAY = 1, SCT_TIF_GTC = 2,
+       SCT_OSC_FILLED = 1, SCT_OSC_CANCELED = 2, SCT_OSC_OPEN = 3 };
 enum { DRAWING_TEXT = 1, DRAWING_STATIONARY_TEXT = 2, UTAM_ADD_OR_ADJUST = 1,
        TOOL_DELETE_CHARTDRAWING = 1 };
 typedef unsigned long COLORREF;
@@ -76,7 +78,11 @@ struct s_UseTool {
     COLORREF Color = 0, SecondaryColor = 0;
     void Clear() { *this = s_UseTool(); }
 };
-struct s_SCNewOrder { int OrderQuantity = 0; int OrderType = 0; int TimeInForce = 0; };
+struct s_SCNewOrder {
+    int OrderQuantity = 0, OrderType = 0, TimeInForce = 0, InternalOrderID = 0;
+    double Price1 = 0, Price2 = 0;
+};
+struct s_SCTradeOrder { int InternalOrderID = 0, OrderStatusCode = 0, OrderQuantity = 0; double Price1 = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
 
 // Sierra counts days from 1899-12-30, a Saturday. The stub used to count from the Unix epoch, a
@@ -155,8 +161,11 @@ struct SCStudyInterface {
     double TickSize = 0.25;
     void UseTool(const s_UseTool&) {}
     void DeleteACSChartDrawing(int, int, int) {}
-    int  BuyEntry(const s_SCNewOrder&)  { ++ordersAttempted; return -1; }
-    int  SellExit(const s_SCNewOrder&)  { ++ordersAttempted; return -1; }
+    int  BuyEntry(s_SCNewOrder&)  { ++ordersAttempted; return -1; }
+    int  SellExit(s_SCNewOrder&)  { ++ordersAttempted; return -1; }
+    int  ModifyOrder(s_SCNewOrder&) { return -1; }
+    int  CancelOrder(int) { return -1; }
+    int  GetOrderByOrderID(int, s_SCTradeOrder&) { return 0; }   // 0 = no such order
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
     SCString DataFilesFolder() { return SCString("."); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }

@@ -359,10 +359,21 @@ deterministický a proti Pythonu sedí.
 
 ## 9. Obchodování na Sim účtu (replay i živě)
 
-Studie umí posílat příkazy. Na jednom grafu je ale **jedna pozice**, ne 48 — takže se nezrcadlí
-48 pozic, ale sečte se, kolik kontraktů kniha zrovna chce držet, a dorovná se rozdíl. Když
-jeden preset vstupuje a druhý týž den vystupuje, nevznikne žádný příkaz. Velikost na preset je
-*Risk Unit* × váha rodiny, tedy přesně to, na čem ledger počítá P&L: účet jede podle ledgeru.
+Studie umí posílat příkazy. Na jednom grafu je ale **jedna pozice**, ne 48. Studie proto drží
+pozici rovnou tomu, co kniha chce držet, a **ke každému otevřenému presetu pracuje jeho vlastní
+stop a target** jako samostatný příkaz na jeho velikost. Velikost na preset je *Risk Unit* ×
+váha rodiny, tedy přesně to, na čem ledger počítá P&L.
+
+**Proč ne prosté dorovnávání.** První verze posílala jeden čistý market příkaz denně. Změřeno
+(`sierra/check_netting.py`): **39 % výstupů knihy padne na stop, target nebo trail**, tedy na
+cenu, která není close — a čisté dorovnání je všechny zahodí, protože preset, který vypadl
+stopem, a jiný, který týž den vstoupil, se vykrátí. Účet by pak obchodoval **knihu bez stopek**,
+ne tu ověřenou. Na letech 2016–2026 by to vydělalo o 15 % víc, ale nejhorší den je o 48 % horší
+(−3 848 vs −2 603 bodů). Není to bonus, je to jiná strategie.
+
+Vyplněný stop sníží pozici okamžitě, zatímco kniha ten preset uzavře až na konci seance. Studie
+si to pamatuje, takže mezitím pozici nedokoupí zpátky — jinak by se z každé stopky stal
+round trip za horší cenu.
 
 ### Zapnutí
 

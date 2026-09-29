@@ -151,6 +151,20 @@ struct PresetState {
     long   signalDay = -1;
 };
 
+// The account side of a preset, deliberately NOT part of PresetState: the exit path resets that
+// wholesale on every close, which would drop the ids of orders still working in the market and
+// leave them there with nothing tracking them.
+//
+// exitedInAccount says a protective order has filled. A stop takes its contracts off the account
+// the moment it trades, while the book only closes the preset when the session is finalised;
+// without the flag the next sync would see the account short of the book and buy the stopped-out
+// position straight back, turning every stop into a round trip at a worse price.
+struct AccountLeg {
+    int  stopOrderID = 0, targetOrderID = 0;
+    bool exitedInAccount = false;
+    long entryDay = -1;         // a re-entry the same session must not inherit the old flag
+};
+
 // one completed daily RTH bar plus the ETH extremes that belong to the same trading day
 struct DailyBar {
     SCDateTime date;                    // RTH session date
@@ -190,6 +204,7 @@ struct StudyState {
     int      semiPosition = 0;          // the position semi-auto pretends to hold
     int      labelsDrawn = 0;           // so the labels can be removed when switched off
     SCString featureCsv;                // empty unless the per-day dump is switched on
+    std::vector<AccountLeg> legs;       // parallel to states, but outliving each trade's reset
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1018,77 +1033,186 @@ static void FinalizeDay(SCStudyInterfaceRef sc, StudyState& S, std::vector<Featu
 
 // ------------------------------------------------------------------ order layer
 //
-// The book is 48 presets, each holding its own position; a Sierra chart holds exactly one. So the
-// study does not try to mirror 48 positions - it sums what the book wants to be holding and moves
-// the chart's single position to that number. One market order per study call at most, for the
-// difference. A preset entering while another exits nets out to no order at all, which is also
-// what it should cost.
+// The book is 48 presets, each with its own stop and target; a Sierra chart holds one position. The
+// study therefore keeps the position equal to what the book holds, and works each open preset's
+// stop and target as its own order for its own size. The alternative - one net market order a day -
+// was measured and thrown out: 39 % of the book's exits happen at a stop, a target or a trail, and
+// netting drops every one of them, so the account would trade a book without stops rather than the
+// one the research validated. See check_netting.py.
 //
-// Quantity per preset is Risk Unit x family weight, the same figure the ledger books P&L on, so
-// the account follows the ledger rather than a second, differently sized book.
-static int TargetContracts(SCStudyInterfaceRef sc, const StudyState& S, const RunCfg& cfg)
+// Quantity per preset is Risk Unit x family weight, the same figure the ledger books P&L on.
+static int PresetQty(SCStudyInterfaceRef sc, const StudyState& S, size_t k, const RunCfg& cfg)
 {
-    double q = 0;
-    for (size_t k = 0; k < S.states.size() && k < S.presets.size(); ++k) {
-        if (S.states[k].inPos == 0) continue;
-        const int fi = S.presets[k].familyIdx;
-        if (fi < 0) continue;
-        if (sc.Input[IN_FAM1_ON + 2 * fi].GetYesNo() == 0) continue;   // same gate the ledger uses
-        q += cfg.riskUnit * sc.Input[IN_FAM1_W + 2 * fi].GetFloat();
-    }
+    if (k >= S.presets.size()) return 0;
+    const int fi = S.presets[k].familyIdx;
+    if (fi < 0 || sc.Input[IN_FAM1_ON + 2 * fi].GetYesNo() == 0) return 0;
+    const double q = cfg.riskUnit * sc.Input[IN_FAM1_W + 2 * fi].GetFloat();
     return (int)(q + 0.5);
 }
 
-// Moves the chart position to what the book is holding. Returns the signed quantity traded.
-static int SyncPosition(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
-                        int mode, bool enabled, int logLevel)
+// What the book wants the account to hold. A preset whose protective order already filled is left
+// out: those contracts are gone from the account and the book will catch up at the session end.
+static int TargetContracts(SCStudyInterfaceRef sc, const StudyState& S, const RunCfg& cfg)
 {
-    if (!enabled || mode == MODE_SIGNALS) return 0;
+    int q = 0;
+    for (size_t k = 0; k < S.states.size() && k < S.presets.size(); ++k)
+        if (S.states[k].inPos != 0 && !S.legs[k].exitedInAccount)
+            q += PresetQty(sc, S, k, cfg);
+    return q;
+}
 
+static bool OrderFilled(SCStudyInterfaceRef sc, int id)
+{
+    if (id == 0) return false;
+    s_SCTradeOrder o;
+    if (sc.GetOrderByOrderID(id, o) == 0) return false;      // unknown to Sierra any more
+    return o.OrderStatusCode == SCT_OSC_FILLED;
+}
+
+static void CancelIfWorking(SCStudyInterfaceRef sc, int& id)
+{
+    if (id != 0) { sc.CancelOrder(id); id = 0; }
+}
+
+// Places or repositions one preset's stop and target. A trailing stop moves, so the order is
+// modified rather than replaced: replacing it would leave the position unprotected in between.
+static void WorkProtective(SCStudyInterfaceRef sc, StudyState& S, size_t k, int qty,
+                           bool send, int logLevel)
+{
+    PresetState& st = S.states[k];
+    struct { int& id; double price; int type; } legs[2] = {
+        { S.legs[k].stopOrderID,   st.stop,   SCT_ORDERTYPE_STOP  },
+        { S.legs[k].targetOrderID, st.target, SCT_ORDERTYPE_LIMIT },
+    };
+    for (int L = 0; L < 2; ++L) {
+        int& id = legs[L].id;
+        const double price = legs[L].price;
+        if (price <= 0 || qty <= 0) { CancelIfWorking(sc, id); continue; }
+        if (!send) continue;
+
+        s_SCNewOrder o;
+        o.OrderQuantity = qty;
+        o.OrderType     = legs[L].type;
+        o.TimeInForce   = SCT_TIF_GTC;          // swings are held overnight; a day order would lapse
+        o.Price1        = price;
+        if (id != 0) {
+            o.InternalOrderID = id;
+            if (sc.ModifyOrder(o) > 0) continue;
+            id = 0;                              // gone from Sierra - fall through and place a fresh one
+            o.InternalOrderID = 0;
+        }
+        if (sc.SellExit(o) > 0) {
+            id = o.InternalOrderID;
+        } else if (logLevel >= LOG_ERRORS) {
+            SCString m; m.Format("Multi-Swing: could not work the %s for %s at %.2f - that preset is "
+                                 "UNPROTECTED on the account.",
+                                 L == 0 ? "stop" : "target", S.presets[k].id.GetChars(), price);
+            sc.AddMessageToLog(m, 1);
+        }
+    }
+}
+
+// Brings the account in line with the book: the protective ladder, then one market order for the
+// difference the ladder does not cover (entries, and exits that happen on a signal or a time stop).
+static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
+                       int mode, bool enabled, int logLevel)
+{
+    if (!enabled || mode == MODE_SIGNALS) return;
+    const bool send = (mode == MODE_FULL);
+
+    if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
+
+    for (size_t k = 0; k < S.states.size(); ++k) {
+        PresetState& st = S.states[k];
+        AccountLeg&  lg = S.legs[k];
+
+        // ---- 1. the book is flat here, so nothing of this preset may be left working
+        if (st.inPos == 0) {
+            CancelIfWorking(sc, lg.stopOrderID);
+            CancelIfWorking(sc, lg.targetOrderID);
+            lg = AccountLeg();
+            continue;
+        }
+
+        // ---- 2. a preset can close and re-enter within one session, and the new trade starts clean
+        if (lg.entryDay != st.entryDay) {
+            CancelIfWorking(sc, lg.stopOrderID);
+            CancelIfWorking(sc, lg.targetOrderID);
+            lg = AccountLeg();
+            lg.entryDay = st.entryDay;
+        }
+
+        // ---- 3. a protective order that filled has already taken its contracts off the account
+        if (lg.exitedInAccount) continue;
+        const bool stopHit = OrderFilled(sc, lg.stopOrderID);
+        const bool tgtHit  = OrderFilled(sc, lg.targetOrderID);
+        if (!stopHit && !tgtHit) continue;
+        lg.exitedInAccount = true;
+        if (stopHit) lg.stopOrderID = 0;
+        if (tgtHit)  lg.targetOrderID = 0;
+        CancelIfWorking(sc, lg.stopOrderID);        // the other leg must not outlive the position
+        CancelIfWorking(sc, lg.targetOrderID);
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing: %s %s filled on the account.",
+                                 S.presets[k].id.GetChars(), stopHit ? "stop" : "target");
+            sc.AddMessageToLog(m, 0);
+        }
+    }
+
+    // ---- 3. one market order for whatever the ladder does not handle
     const int target = TargetContracts(sc, S, cfg);
     s_SCPositionData pos;
     sc.GetTradePosition(pos);
-
-    // Semi-auto says what it would do and stops there, so the sizing can be watched before anything
-    // is sent. It has to measure against a position it pretends to hold: the real one never moves
-    // while nothing is sent, so every line would otherwise read "would BUY <the whole book>" instead
-    // of the one order that day actually calls for.
-    const int current = (mode == MODE_SEMI) ? S.semiPosition : (int)pos.PositionQuantity;
+    const int current = send ? (int)pos.PositionQuantity : S.semiPosition;
     const int delta = target - current;
-    if (delta == 0) return 0;
 
-    if (mode == MODE_SEMI) {
-        S.semiPosition = target;
-        if (logLevel >= LOG_INFO) {
-            SCString m; m.Format("Multi-Swing SEMI: would %s %d -> %d contracts (was %d)",
-                                 delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta,
-                                 target, current);
-            sc.AddMessageToLog(m, 0);
+    if (delta != 0) {
+        if (!send) {
+            S.semiPosition = target;
+            if (logLevel >= LOG_INFO) {
+                SCString m; m.Format("Multi-Swing SEMI: would %s %d -> %d contracts (was %d)",
+                                     delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta,
+                                     target, current);
+                sc.AddMessageToLog(m, 0);
+            }
+        } else {
+            s_SCNewOrder o;
+            o.OrderQuantity = delta > 0 ? delta : -delta;
+            o.OrderType     = SCT_ORDERTYPE_MARKET;
+            o.TimeInForce   = SCT_TIF_DAY;
+            const int r = delta > 0 ? sc.BuyEntry(o) : sc.SellExit(o);
+            if (r > 0) {
+                if (logLevel >= LOG_INFO) {
+                    SCString m; m.Format("Multi-Swing: %s %d -> position %d",
+                                         delta > 0 ? "BUY" : "SELL",
+                                         delta > 0 ? delta : -delta, target);
+                    sc.AddMessageToLog(m, 0);
+                }
+            } else {
+                // Worth seeing every time: after a rejection the account holds something other than
+                // what the book thinks, and every later sync is computed against that wrong number.
+                SCString m; m.Format("Multi-Swing ORDER REJECTED (%d): %s %d, position %d, book wants "
+                                     "%d. Check the trade account and Trade Simulation Mode.",
+                                     r, delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta,
+                                     current, target);
+                sc.AddMessageToLog(m, 1);
+            }
         }
-        return 0;
     }
 
-    s_SCNewOrder order;
-    order.OrderQuantity = delta > 0 ? delta : -delta;
-    order.OrderType = SCT_ORDERTYPE_MARKET;
-    order.TimeInForce = SCT_TIF_DAY;
-    const int result = delta > 0 ? (int)sc.BuyEntry(order) : (int)sc.SellExit(order);
-
-    if (result > 0) {
-        if (logLevel >= LOG_INFO) {
-            SCString m; m.Format("Multi-Swing: %s %d -> position %d (book wants %d)",
-                                 delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta, target, target);
-            sc.AddMessageToLog(m, 0);
-        }
-        return delta;
+    // ---- 4. work each open preset's stop and target, never more than the position can cover
+    int covered = 0;
+    const int held = send ? (int)pos.PositionQuantity + (delta > 0 ? delta : 0) : target;
+    for (size_t k = 0; k < S.states.size(); ++k) {
+        PresetState& st = S.states[k];
+        if (st.inPos == 0 || S.legs[k].exitedInAccount) continue;
+        int qty = PresetQty(sc, S, k, cfg);
+        if (covered + qty > held) qty = held - covered;      // never sell more than is held
+        if (qty <= 0) { CancelIfWorking(sc, S.legs[k].stopOrderID);
+                        CancelIfWorking(sc, S.legs[k].targetOrderID); continue; }
+        WorkProtective(sc, S, k, qty, send, logLevel);
+        covered += qty;
     }
-    // A rejection is worth seeing every time: it means the account is not holding what the ledger
-    // thinks it is, and every later sync is computed against that wrong position.
-    SCString m; m.Format("Multi-Swing ORDER REJECTED (%d): %s %d, position %d, book wants %d. "
-                         "Check the trade account is selected and Trade Simulation is on.",
-                         result, delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta, current, target);
-    sc.AddMessageToLog(m, 1);
-    return 0;
 }
 
 // ------------------------------------------------------------------ on-chart status box
@@ -1518,7 +1642,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // ---------------- bring the account to what the book holds ----------------
     // Once per study call, after every entry and exit for these bars has been booked, so a preset
     // entering and another exiting on the same day nets out instead of sending two orders.
-    SyncPosition(sc, *S, cfg, sc.Input[IN_MODE].GetIndex(), enabled, logLevel);
+    SyncOrders(sc, *S, cfg, sc.Input[IN_MODE].GetIndex(), enabled, logLevel);
 
     // ---------------- signal labels ----------------
     // Walked backwards from the newest bar so "the last N sessions" is knowable: during the bar
