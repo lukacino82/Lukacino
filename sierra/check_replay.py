@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import re
 import subprocess
 import sys
@@ -171,6 +172,25 @@ def main():
     print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}) ===")
     summarise(rep, "replay")
     summarise(off, "offline")
+
+    # Two checks that separate "the study traded differently" from "the day grid itself is wrong".
+    # Both sides run the same code, so the set of days on which a signal can occur must be the
+    # same set of RTH sessions. If it is not, nothing downstream is worth reading.
+    rd = {r["entry_day"] for r in rep}
+    od = {r["entry_day"] for r in off}
+    weekend = sorted(d for d in rd
+                     if dt.date.fromisoformat(d).weekday() >= 5)
+    if weekend:
+        print(f"\n  {len(weekend)} entries fall on a Saturday or Sunday, e.g. {', '.join(weekend[:3])}.\n"
+              f"  The research day grid is RTH sessions, so this is a chart time-zone problem: entries\n"
+              f"  are landing outside the session they belong to. Set the chart to New York (Eastern),\n"
+              f"  or move RTH Start / RTH End by the same offset.")
+    if len(rd) > 1.2 * len(od):
+        print(f"\n  the replay signals on {len(rd)} distinct days against {len(od)} off-line, "
+              f"{len(rd) / len(od):.1f}x as many.\n"
+              f"  One calendar session is being finalised more than once - the study is seeing more\n"
+              f"  'days' than there are sessions. Check 'Use specific session times' is OFF (the study\n"
+              f"  needs the whole Globex session and cuts RTH itself) and that the chart is 1-minute.")
 
     ids = sorted({r["preset_id"] for r in rep} | {r["preset_id"] for r in off})
     silent = sorted({r["preset_id"] for r in off} - {r["preset_id"] for r in rep})
