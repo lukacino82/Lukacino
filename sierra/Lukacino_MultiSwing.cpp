@@ -175,6 +175,7 @@ struct StudyState {
 
     long     dayCounter = -1;           // absolute number of completed trading days
     bool     loaded = false;
+    bool     loadAttempted = false;   // a failed load is reported once, not on every study call
     SCString loadError;
     int      lastProcessedIndex = -1;
     int      journalRows = 0;
@@ -356,6 +357,9 @@ static SCString DataPath(SCStudyInterfaceRef sc, const SCString& file)
     if (file.GetLength() > 1 && (file[1] == ':' || file[0] == '\\' || file[0] == '/')) return file;
     SCString folder = sc.DataFilesFolder();
     if (folder.GetLength() == 0) return file;
+    // sc.DataFilesFolder() already ends with a separator on most builds; do not add a second one.
+    const char last = folder[folder.GetLength() - 1];
+    if (last == '\\' || last == '/') return folder + file;
     SCString sep; sep += (folder.IndexOf('/') >= 0 && folder.IndexOf('\\') < 0) ? '/' : '\\';
     return folder + sep + file;
 }
@@ -1079,12 +1083,13 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 
     // ---------------- preset (re)load ----------------
     int reloadFlag = sc.Input[IN_RELOAD].GetYesNo();
-    if (!S->loaded || reloadFlag != sc.GetPersistentInt(1)) {
+    if ((!S->loaded && !S->loadAttempted) || reloadFlag != sc.GetPersistentInt(1)) {
         sc.SetPersistentInt(1, reloadFlag);
         SCString path = DataPath(sc, sc.Input[IN_PRESET_FILE].GetString());
         SCString err;
         bool ok = LoadPresets(sc, *S, path, err);
         S->loaded = ok;
+        S->loadAttempted = true;
         S->loadError = err;
         S->lastProcessedIndex = -1;
         S->daily.clear();
@@ -1099,7 +1104,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                 if (!S->presets[i].valid) { SCString e; e.Format("  preset %s: %s",
                      S->presets[i].id.GetChars(), S->presets[i].parseError.GetChars()); sc.AddMessageToLog(e, 1); }
         } else {
-            m.Format("Multi-Swing ERROR: %s", err.GetChars());
+            m.Format("Multi-Swing ERROR: %s  -- copy swing_presets.csv into the Data Files Folder, "
+                     "then toggle the Input 'Reload Presets' to retry. This message is logged once.",
+                     err.GetChars());
             sc.AddMessageToLog(m, 1);
             return;
         }
@@ -1112,6 +1119,16 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             sc.AddMessageToLog("Multi-Swing ERROR: apply to an INTRADAY chart of 60 minutes or less "
                                "(1-minute recommended). Weekly/monthly VWAP sigma needs intraday volume.", 1);
         return;
+    }
+    // Parity with the research engine was measured on 1-minute bars. Coarser bars still work, but
+    // the daily OHLC and the volume-weighted VWAP sigma drift, so say so once per chart.
+    if (sc.SecondsPerBar != 60 && sc.GetPersistentInt(2) == 0) {
+        sc.SetPersistentInt(2, 1);
+        SCString w; w.Format("Multi-Swing WARNING: chart bar size is %d seconds. The backtest parity "
+                             "(32/48 presets identical) was verified on 1-MINUTE bars; on coarser bars "
+                             "the VWAP sigma and daily range differ slightly. Use a 1 Min chart.",
+                             sc.SecondsPerBar);
+        sc.AddMessageToLog(w, 1);
     }
 
     // ---------------- main loop over intraday bars ----------------
