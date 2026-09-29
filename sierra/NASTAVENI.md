@@ -410,5 +410,6 @@ pozici. Když ti to naskakuje, zkontroluj vybraný účet a Trade Simulation Mod
 | VWAP čáry jsou na nule | graf nemá objemy, nebo je to non-intraday graf |
 | Signály na jiných dnech než v backtestu | graf není *Back Adjusted*, nebo je jiná časová zóna |
 | Replay dá zhruba dvojnásobek obchodů od data startu | studie z verze před opravou live guardu — přebuildi DLL |
+| Rozdíl jen v rodinách `C<wvwap#sd` a `D01` | studie z verze, kde týdenní VWAP kotvil na středu místo pondělí — přebuildi DLL |
 | Ledger má dvakrát tytéž obchody | starý soubor z verze před touto opravou, smaž ho |
 | `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |

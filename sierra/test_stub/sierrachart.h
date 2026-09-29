@@ -79,15 +79,22 @@ struct s_UseTool {
 struct s_SCNewOrder { int OrderQuantity = 0; int OrderType = 0; int TimeInForce = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
 
+// Sierra counts days from 1899-12-30, a Saturday. The stub used to count from the Unix epoch, a
+// Thursday, and that two-day gap hid a real bug: a weekly anchor derived by arithmetic on the day
+// number landed on Monday here and on Wednesday in Sierra, so the off-line run was right while
+// every live and replayed bar was wrong. The stub now uses Sierra's epoch, so an epoch assumption
+// in the study shows up in the parity run instead of waiting for a Replay to expose it.
+enum { SC_EPOCH_TO_UNIX_DAYS = 25569 };   // 1899-12-30 -> 1970-01-01
+
 struct SCDateTime {
     int days = 0; int secs = 0;
     int GetDate() const { return days; }
     int GetTimeInSeconds() const { return secs; }
     void SetDate(int d) { days = d; }
-    int GetYear() const { int y; unsigned m, d; CivilFromDays(days, y, m, d); return y; }
-    int GetMonth() const { int y; unsigned m, d; CivilFromDays(days, y, m, d); return (int)m; }
-    int GetDay() const { int y; unsigned m, d; CivilFromDays(days, y, m, d); return (int)d; }
-    int GetDayOfWeek() const { return (days + 4) % 7; }   // 0 = Sunday (1970-01-01 was Thursday)
+    int GetYear() const { int y; unsigned m, d; CivilFromDays(days - SC_EPOCH_TO_UNIX_DAYS, y, m, d); return y; }
+    int GetMonth() const { int y; unsigned m, d; CivilFromDays(days - SC_EPOCH_TO_UNIX_DAYS, y, m, d); return (int)m; }
+    int GetDay() const { int y; unsigned m, d; CivilFromDays(days - SC_EPOCH_TO_UNIX_DAYS, y, m, d); return (int)d; }
+    int GetDayOfWeek() const { return (days + 6) % 7; }   // 0 = Sunday (1899-12-30 was a Saturday)
 };
 
 struct SCFloatArray {

@@ -61,7 +61,8 @@ int main(int argc, char** argv)
         std::getline(ss, t, ','); l = atof(t.c_str());
         std::getline(ss, t, ','); c = atof(t.c_str());
         std::getline(ss, t, ','); v = atof(t.c_str());
-        sc.BaseDateTimeIn[n].days = days; sc.BaseDateTimeIn[n].secs = secs;
+        // the bar file counts from the Unix epoch, SCDateTime from Sierra's
+        sc.BaseDateTimeIn[n].days = days + SC_EPOCH_TO_UNIX_DAYS; sc.BaseDateTimeIn[n].secs = secs;
         sc.BaseData[SC_OPEN][n] = (float)o; sc.BaseData[SC_HIGH][n] = (float)h;
         sc.BaseData[SC_LOW][n] = (float)l;  sc.BaseData[SC_LAST][n] = (float)c;
         sc.BaseData[SC_VOLUME][n] = (float)v;
@@ -75,7 +76,7 @@ int main(int argc, char** argv)
     std::ofstream out(argv[3]);
     out << "days,secs,daily_close,atr20,wvwap,mvwap,dd_pct,open_presets,rsi2,ibs,connors,wsd,dsd\n";
     for (int i = 0; i < n; ++i)
-        out << sc.BaseDateTimeIn[i].days << "," << sc.BaseDateTimeIn[i].secs << ","
+        out << sc.BaseDateTimeIn[i].days - SC_EPOCH_TO_UNIX_DAYS << "," << sc.BaseDateTimeIn[i].secs << ","
             << sc.Subgraph[0][i] << "," << sc.Subgraph[1][i] << "," << sc.Subgraph[2][i] << ","
             << sc.Subgraph[3][i] << "," << sc.Subgraph[4][i] << "," << sc.Subgraph[5][i] << ","
             << sc.Subgraph[7][i] << "," << sc.Subgraph[8][i] << "," << sc.Subgraph[9][i] << ","

@@ -964,7 +964,18 @@ static int TradingDateDays(const SCDateTime& dt, int rthEndSeconds)
     }
     return days;
 }
-static int WeekKey(int days)  { return (days + 3) / 7; }          // weeks start on Monday
+// The Monday that owns this date, used as the weekly anchor's key.
+//
+// This used to be (days + 3) / 7, which lands on a Monday only if day zero is a Thursday - true of
+// the Unix epoch, and of the harness stub, but not of Sierra: SCDateTime counts from 1899-12-30, a
+// Saturday, so in Sierra the week turned over on a WEDNESDAY. The weekly VWAP and its sigma bands
+// were anchored two days late for every live and replayed bar, while the off-line run was correct,
+// which is why no parity test caught it. Asking the date for its own weekday is epoch-independent.
+static int WeekKey(const SCDateTime& t)
+{
+    const int dow = t.GetDayOfWeek();        // 0 = Sunday
+    return t.GetDate() - (dow + 6) % 7;      // days back to Monday
+}
 static int MonthKey(const SCDateTime& d) { return d.GetYear() * 12 + d.GetMonth(); }
 static int QuarterKey(const SCDateTime& d) { return d.GetYear() * 4 + (d.GetMonth() - 1) / 3; }
 
@@ -1409,7 +1420,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             FinalizeDay(sc, *S, feats, cfg, journal, enabled);
 
         // ---- period rollovers, keyed on the trading date exactly like features.py
-        int wk = WeekKey(tDays), mk = MonthKey(tDate), qk = QuarterKey(tDate);
+        int wk = WeekKey(tDate), mk = MonthKey(tDate), qk = QuarterKey(tDate);
         if (mk != S->mKey) {
             if (S->mKey >= 0 && S->mVol > 0) S->lastCompletedMvwap = S->mTpv / S->mVol;
             S->mKey = mk; S->mTpv = S->mTp2v = S->mVol = 0;
