@@ -1,0 +1,223 @@
+<title>Equity knihy ES</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f5f2; --panel:#fff; --ink:#15191d; --ink2:#4a5057; --muted:#7a8088; --rule:#dcdfd9; --grid:#e7e9e4;
+  --bh:#7a8088; --book:#2a78d6; --book2:#eb6834; --good:#1a8a4f; --bad:#c43d3c; --chip:#eceee9;
+  --good-bg:#e4f3ea; --bad-bg:#f8e5e4;
+  --display:"Archivo",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --bg:#121417; --panel:#1a1d21; --ink:#eef0ee; --ink2:#b9bec3; --muted:#8a9097; --rule:#2d3237; --grid:#262a2f;
+  --bh:#9aa0a6; --book:#3987e5; --book2:#d95926; --good:#3fb877; --bad:#e66767; --chip:#23272c;
+  --good-bg:#15301f; --bad-bg:#3a1c1c;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --bg:#121417; --panel:#1a1d21; --ink:#eef0ee; --ink2:#b9bec3; --muted:#8a9097; --rule:#2d3237; --grid:#262a2f;
+  --bh:#9aa0a6; --book:#3987e5; --book2:#d95926; --good:#3fb877; --bad:#e66767; --chip:#23272c;
+  --good-bg:#15301f; --bad-bg:#3a1c1c;}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--body)}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:28px 60px;display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+h1{font-size:clamp(28px,5vw,42px);font-weight:800;line-height:1.06}
+h2{font-size:22px;font-weight:700} h3{font-size:14px;font-weight:700}
+p{margin:0;max-width:72ch;color:var(--ink2)}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:14px}
+.head{display:flex;flex-direction:column;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:20px}
+.meta{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 12px var(--mono);background:var(--chip);color:var(--ink2);padding:3px 9px;border-radius:4px}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.kpi div{background:var(--panel);padding:13px 15px;display:flex;flex-direction:column;gap:2px}
+.kpi .n{font:600 23px var(--mono);font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12.5px;color:var(--ink2);line-height:1.35}
+.kpi .up .n{color:var(--good)}
+.chart{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 6px;position:relative}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--ink2);padding:0 4px 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:16px;height:2px;display:inline-block;border-radius:1px}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font:12px/1.45 var(--mono);padding:7px 9px;border-radius:4px;white-space:nowrap}
+.grid12{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.mini{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:11px 12px 6px;display:flex;flex-direction:column;gap:6px}
+.mini .t{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mini h3{font-size:13.5px;line-height:1.25}
+.mini .v{font:600 14px var(--mono);color:var(--good);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mini .s{font:12px var(--mono);color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+.tbl{overflow-x:auto;border:1px solid var(--rule);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th{font:500 11.5px var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel)}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.t,th.t{text-align:left;font-family:var(--body);white-space:normal;min-width:210px}
+tr:last-child td{border-bottom:0}
+tr.ref td{background:var(--chip)}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.note{font-size:13px;color:var(--muted);max-width:74ch}
+.warn{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--book2);border-radius:6px;padding:14px 16px}
+.warn p{max-width:74ch}
+</style>
+
+<div class="wrap">
+<header class="head">
+  <div class="eyebrow">ES futures · 48 presetů ve 12 rodinách · únor 2009 – září 2026</div>
+  <h1>Equity křivky knihy, kterou programujeme</h1>
+  <p>Přesně těch 48 presetů, které studie čte ze <code>swing_presets.csv</code>. Velikost 1 MES na preset, náklady 0,7 bodu na obchod. Výnos je počítaný na pevný notional jednoho ES kontraktu, aby šla kniha porovnat s Buy &amp; Hold přímo.</p>
+  <div class="meta"><span class="chip">10 408 obchodů</span><span class="chip">průměrná expozice 0,95 ES</span><span class="chip">špička 3,8 ES</span><span class="chip">4 460 obchodních dní</span></div>
+</header>
+
+<section>
+  <div class="kpi" id="kpi"></div>
+  <p class="note">Kniha má o třetinu vyšší výnos a o čtvrtinu mělčí propad než Buy &amp; Hold, přitom její roční volatilita je 14,2 % proti 13,2 %. To je zhruba stejné riziko, ne víc.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Celá kniha</div>
+  <h2>48 presetů dohromady proti Buy &amp; Hold</h2>
+  <div class="chart" id="ch_book"></div>
+  <p class="note">Oranžová je kniha, šedá Buy &amp; Hold. Kniha roste plynuleji a hlavně mělčeji klesá v roce 2018 a 2022 — drží jen v korekcích, zbytek času je mimo trh.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Jednotlivé rodiny · 4 presety každá, 0,4 ES ekvivalentu</div>
+  <h2>Dvanáct systémů zvlášť</h2>
+  <p class="note">Každá rodina je malá — čtyři MES kontrakty. Šedá čára je Buy &amp; Hold ve stejném měřítku, aby bylo vidět, jak plochá jednotlivá rodina je. Smysl dává až jejich součet.</p>
+  <div class="grid12" id="minis"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Čísla</div>
+  <h2>Rodina po rodině</h2>
+  <div class="tbl"><table id="famtbl"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Varianty nasazení</div>
+  <h2>Kniha samotná, škálovaná, nebo nad jádrem</h2>
+  <div class="tbl"><table id="booktbl"></table></div>
+  <div class="chart" id="ch_var"></div>
+  <p class="note">„B&amp;H + kniha" znamená držet trvale 1 ES a knihu obchodovat nad tím. Zdvojnásobí to výnos, ale i propad, na −43 %. Rozumnější je kniha samotná nebo škálovaná na riziko B&amp;H.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Roční výnosy v procentech</div>
+  <h2>Kde kniha pomohla a kde ne</h2>
+  <div class="tbl"><table id="yeartbl"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Co tahle čísla nejsou</div>
+  <div class="warn">
+    <h3>Těch 12 rodin bylo vybráno na téže historii, kterou graf ukazuje</h3>
+    <p>Rodiny prošly sítem právě proto, že na těchto datech porazily Buy &amp; Hold. Graf tedy ukazuje, co vybraná kniha na známé historii dělala, ne co udělá dopředu. Nezkreslené číslo je slepý test: výběr deseti rodin jen z let 2009–2017 dal v letech 2018–2026 Sharpe 0,78 proti 0,65 u Buy &amp; Hold. Pořád lepší, ale rozdíl je menší než tady.</p>
+    <p>Uvnitř rodin žádný výběr není — všechny čtyři varianty byly vybrané kolem mediánu rodiny, ne podle nejlepšího výsledku. A studie počítá o něco pesimističtěji než tenhle backtest: při současném zásahu SL a TP v jedné seanci bere stop první.</p>
+  </div>
+</section>
+</div>
+
+<script>
+let D = null;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v,d=0) => v==null||isNaN(v) ? "–" : Number(v).toLocaleString("cs-CZ",{minimumFractionDigits:d,maximumFractionDigits:d});
+const esc = t => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const cls = v => v>0?"pos":v<0?"neg":"";
+
+function niceStep(r){const p=Math.pow(10,Math.floor(Math.log10(r)));const f=r/p;return (f<1.5?1:f<3?2:f<7?5:10)*p;}
+
+function lineChart(el, dates, series, h=330, showAxis=true){
+  const W=1000, H=h, m={l:showAxis?56:6, r:showAxis?14:6, t:8, b:showAxis?26:6};
+  const all=series.flatMap(s=>s.y);
+  let lo=Math.min(0,...all), hi=Math.max(...all);
+  const step=niceStep((hi-lo)/5); lo=Math.floor(lo/step)*step; hi=Math.ceil(hi/step)*step;
+  const x=i=>m.l+i/(dates.length-1)*(W-m.l-m.r);
+  const y=v=>m.t+(hi-v)/(hi-lo)*(H-m.t-m.b);
+  let g="";
+  if(showAxis){
+    for(let v=lo;v<=hi+1e-9;v+=step){
+      g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>`+
+         `<text x="${m.l-8}" y="${y(v)+4}" text-anchor="end" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono">${fmt(v)} %</text>`;
+    }
+    let last="";
+    dates.forEach((d,i)=>{const yr=d.slice(0,4); if(yr!==last){ last=yr;
+      if(+yr%2===1) g+=`<text x="${x(i)}" y="${H-6}" text-anchor="middle" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono">${yr}</text>`;}});
+  }
+  g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+  const paths=series.map(s=>`<path d="${s.y.map((v,i)=>(i?"L":"M")+x(i).toFixed(1)+","+y(v).toFixed(1)).join("")}" fill="none" stroke="${s.c}" stroke-width="${s.w||2}" stroke-linejoin="round"/>`).join("");
+  el.innerHTML=(showAxis?`<div class="legend">${series.map(s=>`<span><i style="background:${s.c}"></i>${esc(s.n)}</span>`).join("")}</div>`:"")+
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map(s=>s.n).join(", "))}">${g}${paths}`+
+    (showAxis?`<line class="xh" y1="${m.t}" y2="${H-m.b}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/>`:"")+
+    `</svg>`+(showAxis?`<div class="tip" hidden></div>`:"");
+  if(!showAxis) return;
+  const svg=el.querySelector("svg"), tip=el.querySelector(".tip"), xh=el.querySelector(".xh");
+  svg.addEventListener("mousemove",e=>{
+    const r=svg.getBoundingClientRect(), px=(e.clientX-r.left)/r.width*W;
+    const i=Math.max(0,Math.min(dates.length-1,Math.round((px-m.l)/(W-m.l-m.r)*(dates.length-1))));
+    xh.setAttribute("x1",x(i)); xh.setAttribute("x2",x(i)); xh.setAttribute("visibility","visible");
+    tip.hidden=false;
+    tip.innerHTML=`${dates[i]}<br>`+series.map(s=>`<span style="color:${s.c}">■</span> ${fmt(s.y[i],1)} %`).join("<br>");
+    const cr=el.getBoundingClientRect(); let left=e.clientX-cr.left+14; if(left>cr.width-190) left-=205;
+    tip.style.left=left+"px"; tip.style.top=(e.clientY-cr.top-10)+"px";
+  });
+  svg.addEventListener("mouseleave",()=>{tip.hidden=true; xh.setAttribute("visibility","hidden");});
+}
+
+function draw(){
+  const C=D.curves, dates=C.dates;
+  const bhKey="Buy & Hold 1 ES", bookKey="Celá kniha (48 presetů)";
+  const volKey=Object.keys(C).find(k=>k.startsWith("Kniha škálovaná"));
+  lineChart(document.getElementById("ch_book"), dates, [
+    {n:"Kniha 48 presetů (1 MES každý)", y:C[bookKey], c:css("--book2")},
+    {n:"Buy & Hold 1 ES", y:C[bhKey], c:css("--bh")}], 340);
+  lineChart(document.getElementById("ch_var"), dates, [
+    {n:"B&H + kniha", y:C["B&H + kniha"], c:css("--book")},
+    {n:"Kniha škálovaná na riziko B&H", y:C[volKey], c:css("--book2")},
+    {n:"Buy & Hold 1 ES", y:C[bhKey], c:css("--bh")}], 300);
+
+  const bh=C[bhKey];
+  document.getElementById("minis").innerHTML=D.families.map(f=>{
+    const y=C[f.family]; if(!y) return "";
+    return `<div class="mini"><div class="t"><h3>${esc(f.family)}</h3><span class="v">${fmt(f.cagr,2)} %</span></div>
+      <div class="box" data-k="${esc(f.family)}"></div>
+      <div class="s"><span>${fmt(f.trades)} obchodů</span><span>DD ${fmt(f.maxdd,1)} %</span><span>Sharpe ${fmt(f.sharpe,2)}</span></div></div>`;
+  }).join("");
+  document.querySelectorAll(".mini .box").forEach(b=>{
+    const k=b.dataset.k;
+    lineChart(b, dates, [
+      {n:"B&H", y:bh, c:css("--bh"), w:1.5},
+      {n:k, y:C[k], c:css("--book2"), w:2}], 90, false);
+  });
+}
+function render(){
+draw();
+const B=D.books, bh=B["Buy & Hold 1 ES"], bk=B["Celá kniha (48 presetů, 1 MES každý)"];
+document.getElementById("kpi").innerHTML=[
+ `<div class="up"><span class="n">${fmt(bk.cagr,2)} %</span><span class="l">CAGR knihy<br>Buy &amp; Hold ${fmt(bh.cagr,2)} %</span></div>`,
+ `<div class="up"><span class="n">${fmt(bk.maxdd,1)} %</span><span class="l">Maximální propad<br>Buy &amp; Hold ${fmt(bh.maxdd,1)} %</span></div>`,
+ `<div class="up"><span class="n">${fmt(bk.sharpe,2)}</span><span class="l">Sharpe<br>Buy &amp; Hold ${fmt(bh.sharpe,2)}</span></div>`,
+ `<div class="up"><span class="n">${fmt(bk.mar,2)}</span><span class="l">MAR (výnos / propad)<br>Buy &amp; Hold ${fmt(bh.mar,2)}</span></div>`,
+ `<div><span class="n">${fmt(bk.vol,1)} %</span><span class="l">Volatilita<br>Buy &amp; Hold ${fmt(bh.vol,1)} %</span></div>`,
+ `<div><span class="n">${fmt(bk.alpha_t,2)}</span><span class="l">Alfa t-statistika<br>práh významnosti je 2</span></div>`].join("");
+
+document.getElementById("famtbl").innerHTML='<thead><tr><th class="t">Rodina</th><th>presetů</th><th>obchodů</th><th>body</th><th>expozice</th><th>CAGR</th><th>max DD</th><th>Sharpe</th><th>MAR</th><th>beta</th><th>alfa t</th></tr></thead><tbody>'+
+ D.families.map(f=>`<tr><td class="t">${esc(f.family)}</td><td>${f.presets}</td><td>${fmt(f.trades)}</td><td class="${cls(f.total_pts)}">${fmt(f.total_pts)}</td><td>${fmt(f.avg_expo,2)}</td><td class="${cls(f.cagr)}">${fmt(f.cagr,2)} %</td><td>${fmt(f.maxdd,1)} %</td><td>${fmt(f.sharpe,2)}</td><td>${fmt(f.mar,2)}</td><td>${fmt(f.beta,2)}</td><td>${fmt(f.alpha_t,2)}</td></tr>`).join("")+
+ `<tr class="ref"><td class="t"><b>Celá kniha</b></td><td>48</td><td>${fmt(bk.trades)}</td><td class="pos">${fmt(bk.total_pts)}</td><td>${fmt(bk.avg_expo,2)}</td><td class="pos">${fmt(bk.cagr,2)} %</td><td>${fmt(bk.maxdd,1)} %</td><td>${fmt(bk.sharpe,2)}</td><td>${fmt(bk.mar,2)}</td><td>${fmt(bk.beta,2)}</td><td>${fmt(bk.alpha_t,2)}</td></tr>`+
+ `<tr class="ref"><td class="t">Buy &amp; Hold 1 ES</td><td>–</td><td>–</td><td>${fmt(bh.total_pts)}</td><td>1,00</td><td>${fmt(bh.cagr,2)} %</td><td>${fmt(bh.maxdd,1)} %</td><td>${fmt(bh.sharpe,2)}</td><td>${fmt(bh.mar,2)}</td><td>1,00</td><td>–</td></tr></tbody>`;
+
+document.getElementById("booktbl").innerHTML='<thead><tr><th class="t">Varianta</th><th>CAGR</th><th>max DD</th><th>volatilita</th><th>Sharpe</th><th>MAR</th><th>beta</th><th>alfa t</th></tr></thead><tbody>'+
+ Object.entries(B).map(([k,v])=>`<tr${k.startsWith("Buy")?' class="ref"':''}><td class="t">${esc(k)}</td><td class="${cls(v.cagr)}">${fmt(v.cagr,2)} %</td><td>${fmt(v.maxdd,1)} %</td><td>${fmt(v.vol,1)} %</td><td>${fmt(v.sharpe,2)}</td><td>${fmt(v.mar,2)}</td><td>${fmt(v.beta,2)}</td><td>${k.startsWith("Buy")?"–":fmt(v.alpha_t,2)}</td></tr>`).join("")+'</tbody>';
+
+document.getElementById("yeartbl").innerHTML='<thead><tr><th class="t">Rok</th>'+D.yearly.map(r=>`<th>${r.year}</th>`).join("")+'</tr></thead><tbody>'+
+ ["Buy & Hold","Kniha","B&H + kniha"].map(k=>`<tr${k==="Buy & Hold"?' class="ref"':''}><td class="t">${esc(k)}</td>`+
+   D.yearly.map(r=>`<td class="${cls(r[k])}">${fmt(r[k],1)}</td>`).join("")+'</tr>').join("")+'</tbody>';
+}
+
+fetch("book_curves_web.json").then(r=>r.json()).then(j=>{
+  D=j; render();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+}).catch(e=>{
+  document.getElementById("kpi").innerHTML =
+    '<div><span class="n">–</span><span class="l">Data se nepodařilo načíst. Zkus stránku obnovit.</span></div>';
+});
+</script>
