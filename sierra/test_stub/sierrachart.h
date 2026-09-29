@@ -81,6 +81,9 @@ struct s_UseTool {
 struct s_SCNewOrder {
     int OrderQuantity = 0, OrderType = 0, TimeInForce = 0, InternalOrderID = 0;
     double Price1 = 0, Price2 = 0;
+    // Sierra's own bracket: the stop and target ride with the entry and Sierra manages them.
+    double Target1Price = 0, Stop1Price = 0;
+    int    AttachedOrderTarget1Type = 0, AttachedOrderStop1Type = 0;
 };
 struct s_SCTradeOrder { int InternalOrderID = 0, OrderStatusCode = 0, OrderQuantity = 0; double Price1 = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
@@ -155,6 +158,7 @@ struct SCStudyInterface {
     int  SupportReversals = 0;
     int  AllowOnlyOneTradePerBar = 0;
     int  MaximumPositionAllowed = 0;
+    int  SupportAttachedOrdersForTrading = 0;
     int  ordersAttempted = 0;
     void GetTradePosition(s_SCPositionData& p) { p = s_SCPositionData(); }
     int  ChartNumber = 1;
