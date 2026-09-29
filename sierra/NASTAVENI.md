@@ -250,10 +250,17 @@ Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá p
    (většinou *Trading Enabled = No* nebo málo načtených dní).
 4. Po doběhnutí zkontroluj `swing_journal.csv`: první obchody mají být z **jara 2019**
    (2018 padne na zahřívání indikátorů), poslední z konce replaye, a mají tam být
-   zastoupené **všechny rodiny**. Pár set řádků místo tisíců znamená, že replay nedojel
-   nebo se kniha nezahřála. Přesný počet ti nebudu tipovat z hlavy — porovnám ho
-   s výzkumným ledgerem za stejné období.
-5. Pošli mi ten soubor. Porovnám ho obchod po obchodu s výzkumným ledgerem.
+   všechny **rodiny (12)** i **presety (48)**. Za období 2019-03 až 2026-09 dává offline
+   harness **4 701 obchodů a 67 320 bodů** — replay by měl být v řádu stejný. Pár set
+   řádků znamená, že replay nedojel nebo se kniha nezahřála.
+5. Porovnej ho skriptem, nebo mi ho pošli:
+
+   ```
+   python sierra/check_replay.py cesta/k/swing_journal.csv
+   ```
+
+   Skript si sám zkompiluje a projede offline harness a vypíše rozdíl preset po presetu.
+   Když už offline ledger máš, je to bez čekání: `--offline sierra/build/parity_journal.csv`.
 
 ### Co replay ověřuje a co ne
 
@@ -268,10 +275,23 @@ Replay ověřuje to, co offline test ověřit nemůže — chování samotné Si
 rollover kontraktu, pořadí barů a to, že studie počítá stejně, když data přicházejí po jednom
 baru, a ne najednou.
 
+Proto se replay porovnává **proti offline harnessu, ne proti Pythonu**. Obojí je tentýž C++ kód
+nad týmž instrumentem, takže se mají shodovat na kus. Každý rozdíl je tím pádem záležitost
+Sierry, ne logiky — a `check_replay.py` ti ho ukáže preset po presetu.
+
 ### Když se čísla rozejdou
 
-Pošli mi `swing_journal.csv` a k němu výpis Message Logu. Rozdíl mezi replayem a offline
-harnessem je vždy chyba ve studii nebo v nastavení grafu, nikdy ne "šum" — offline je
+Nejčastější příčiny, v pořadí podle pravděpodobnosti:
+
+| Příčina | Jak se pozná |
+|---|---|
+| Graf není *Back Adjusted* | rozjedou se hlavně dlouhé obchody přes rollover |
+| Graf není v zóně New York | posunou se vstupy o celé seance |
+| *Use specific session times* je zapnuté | chybí overnight, rozjede se VWAP i IBS |
+| *Days to Load* je malé | chybí začátek, kniha se nestihla zahřát |
+
+Když sedí všechno tohle a rozdíl zůstává, pošli mi `swing_journal.csv` a k němu výpis
+Message Logu. Rozdíl mezi replayem a offline harnessem není nikdy "šum" — offline je
 deterministický a proti Pythonu sedí.
 
 ## Časté chyby
