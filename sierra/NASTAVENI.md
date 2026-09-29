@@ -87,8 +87,8 @@ bezpečný provoz, takže **měnit musíš jen ty, které mají v posledním slo
 | # | Input | Výchozí | Změnit? |
 |---|---|---|---|
 | 0 | Trading Enabled | No | **zapni na Yes**, jinak se nic nepočítá |
-| 1 | Mode | Signals only | nech, dokud nebude hotová order vrstva |
-| 2 | Send Orders To Trade Service (LIVE!) | No | **nech No**, v tomto buildu stejně nic neposílá |
+| 1 | Mode | Signals only | pro obchodování na Simu přepni na **Full auto**, viz kapitola 9 |
+| 2 | Send Orders To Trade Service | No | **zapni jen spolu s Trade Simulation Mode**, viz kapitola 9 |
 | 3 | Direction Filter | Long only | nech |
 | 4 | Preset File | swing_presets.csv | jen když sis soubor přejmenoval |
 | 5 | Reload Presets (toggle) | No | přepni tam a zpět po úpravě CSV |
@@ -128,7 +128,7 @@ podle vlastních výsledků, ne podle dojmu.
 | 35 | Max Concurrent Presets | 48 | ano | 48 = neomezuje; snižování stojí hodně, viz níže |
 | 36 | Max Presets Per Family | 4 | ano | rodina má právě 4 varianty, takže neomezuje |
 | 37 | Max Presets Per Role | 12 | ano | největší role má 12 presetů, takže neomezuje |
-| 38 | Daily Loss Limit USD | 0 | **ne, krok 3** | potřebuje order vrstvu |
+| 38 | Daily Loss Limit USD | 0 | **ne, zatím** | potřebuje čtení P&L z účtu |
 | 39 | Max Drawdown Stop USD | 0 | **ne, krok 3** | |
 | 40 | Scale In By Correction Depth | No | **ne, krok 3** | |
 | 41 | Scale In Cap | 2.0 | **ne, krok 3** | |
@@ -304,6 +304,51 @@ Nejčastější příčiny, v pořadí podle pravděpodobnosti:
 Když sedí všechno tohle a rozdíl zůstává, pošli mi `swing_journal.csv` a k němu výpis
 Message Logu. Rozdíl mezi replayem a offline harnessem není nikdy "šum" — offline je
 deterministický a proti Pythonu sedí.
+
+## 9. Obchodování na Sim účtu (replay i živě)
+
+Studie umí posílat příkazy. Na jednom grafu je ale **jedna pozice**, ne 48 — takže se nezrcadlí
+48 pozic, ale sečte se, kolik kontraktů kniha zrovna chce držet, a dorovná se rozdíl. Když
+jeden preset vstupuje a druhý týž den vystupuje, nevznikne žádný příkaz. Velikost na preset je
+*Risk Unit* × váha rodiny, tedy přesně to, na čem ledger počítá P&L: účet jede podle ledgeru.
+
+### Zapnutí
+
+| Kde | Co |
+|---|---|
+| *Trade → Trade Simulation Mode On* | **zapnout** — tohle rozhoduje, jestli jde o simulaci nebo o ostrý účet, ne studie |
+| Graf → *Trade* → Trade Account | vybrat Sim účet |
+| Input 0 *Trading Enabled* | Yes |
+| Input 1 *Mode* | **Full auto** |
+| Input 2 *Send Orders To Trade Service* | **Yes** |
+
+Pořadí dodrž: Trade Simulation Mode **nejdřív**. Input 2 sám o sobě neříká „simulace" —
+říká „posílej", a kam to jde, určuje menu Trade.
+
+Než to pustíš naostro, projeď *Mode = Semi-auto*. Ten nic neposílá, jen do Message Logu píše,
+co by udělal (`would BUY 3 (book wants 12, position 9)`). Na velikostech je hned vidět, jestli
+sizing odpovídá tomu, co čekáš.
+
+### Co uvidíš v logu
+
+```
+Multi-Swing: FULL AUTO, orders ARE being sent to the trade service.
+Multi-Swing: BUY 3 -> position 12 (book wants 12)
+```
+
+Odmítnutý příkaz se loguje jako chyba **pokaždé**, ne jen jednou. Má to důvod: po odmítnutí
+drží účet něco jiného, než si myslí ledger, a každé další dorovnání se počítá proti špatné
+pozici. Když ti to naskakuje, zkontroluj vybraný účet a Trade Simulation Mode.
+
+### Na co pozor
+
+- *Max Gross Exposure* (Input 34) je zároveň strop pro `MaximumPositionAllowed`. Výchozích 60
+  odpovídá 1 MES na preset. Na ES to přepočítej, jeden ES je deset MES.
+- *Flatten At Session End* nech **No**. Jsou to swingy, přes noc se drží.
+- Replay se Simem obchoduje proti přehrávaným barům, takže si můžeš celý rok proobchodovat
+  za pár minut. Fily jsou ale simulované — o skutečném slippage nevypovídají nic.
+
+---
 
 ## Časté chyby
 

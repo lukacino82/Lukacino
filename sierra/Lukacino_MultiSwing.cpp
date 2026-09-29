@@ -179,6 +179,8 @@ struct StudyState {
     SCString loadError;
     int      lastProcessedIndex = -1;
     int      journalRows = 0;
+    int      lastLoggedDelta = 0;       // semi-auto logs an intention once, not on every call
+    int      lastSyncTarget = -1;       // what the book wanted at the last sync
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -962,6 +964,77 @@ static void FinalizeDay(SCStudyInterfaceRef sc, StudyState& S, std::vector<Featu
     ResetDayAccumulators(S);
 }
 
+// ------------------------------------------------------------------ order layer
+//
+// The book is 48 presets, each holding its own position; a Sierra chart holds exactly one. So the
+// study does not try to mirror 48 positions - it sums what the book wants to be holding and moves
+// the chart's single position to that number. One market order per study call at most, for the
+// difference. A preset entering while another exits nets out to no order at all, which is also
+// what it should cost.
+//
+// Quantity per preset is Risk Unit x family weight, the same figure the ledger books P&L on, so
+// the account follows the ledger rather than a second, differently sized book.
+static int TargetContracts(SCStudyInterfaceRef sc, const StudyState& S, const RunCfg& cfg)
+{
+    double q = 0;
+    for (size_t k = 0; k < S.states.size() && k < S.presets.size(); ++k) {
+        if (S.states[k].inPos == 0) continue;
+        const int fi = S.presets[k].familyIdx;
+        if (fi < 0) continue;
+        if (sc.Input[IN_FAM1_ON + 2 * fi].GetYesNo() == 0) continue;   // same gate the ledger uses
+        q += cfg.riskUnit * sc.Input[IN_FAM1_W + 2 * fi].GetFloat();
+    }
+    return (int)(q + 0.5);
+}
+
+// Moves the chart position to what the book is holding. Returns the signed quantity traded.
+static int SyncPosition(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
+                        int mode, bool enabled, int logLevel)
+{
+    if (!enabled || mode == MODE_SIGNALS) return 0;
+
+    const int target = TargetContracts(sc, S, cfg);
+    s_SCPositionData pos;
+    sc.GetTradePosition(pos);
+    const int current = (int)pos.PositionQuantity;
+    const int delta = target - current;
+    if (delta == 0) return 0;
+
+    // Semi-auto says what it would do and stops there, so the sizing can be watched for a while
+    // before anything is sent.
+    if (mode == MODE_SEMI) {
+        if (logLevel >= LOG_INFO && delta != S.lastLoggedDelta) {
+            S.lastLoggedDelta = delta;
+            SCString m; m.Format("Multi-Swing SEMI: would %s %d (book wants %d, position %d)",
+                                 delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta, target, current);
+            sc.AddMessageToLog(m, 0);
+        }
+        return 0;
+    }
+
+    s_SCNewOrder order;
+    order.OrderQuantity = delta > 0 ? delta : -delta;
+    order.OrderType = SCT_ORDERTYPE_MARKET;
+    order.TimeInForce = SCT_TIF_DAY;
+    const int result = delta > 0 ? (int)sc.BuyEntry(order) : (int)sc.SellExit(order);
+
+    if (result > 0) {
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing: %s %d -> position %d (book wants %d)",
+                                 delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta, target, target);
+            sc.AddMessageToLog(m, 0);
+        }
+        return delta;
+    }
+    // A rejection is worth seeing every time: it means the account is not holding what the ledger
+    // thinks it is, and every later sync is computed against that wrong position.
+    SCString m; m.Format("Multi-Swing ORDER REJECTED (%d): %s %d, position %d, book wants %d. "
+                         "Check the trade account is selected and Trade Simulation is on.",
+                         result, delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta, current, target);
+    sc.AddMessageToLog(m, 1);
+    return 0;
+}
+
 // ------------------------------------------------------------------ the study
 SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 {
@@ -1093,6 +1166,18 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     if (S == nullptr) { S = new StudyState(); sc.SetPersistentPointer(0, S); }
 
     const int logLevel = sc.Input[IN_LOG_LEVEL].GetIndex();
+
+    // ---------------- trading flags ----------------
+    // The book adds to and trims one net position, so successive entries in the same direction must
+    // be allowed and reversals must not be: a SellExit here means "hold less", never "go short".
+    // Whether these orders reach a broker or Sierra's simulator is the Trade menu's business, not
+    // this study's - with Trade Simulation on, a Replay fills them against the replayed bars.
+    sc.SendOrdersToTradeService       = sc.Input[IN_SEND_LIVE].GetYesNo() != 0;
+    sc.AllowMultipleEntriesInSameDirection = 1;
+    sc.SupportReversals               = 0;
+    sc.AllowOnlyOneTradePerBar        = 0;
+    sc.MaximumPositionAllowed         = sc.Input[IN_MAX_GROSS].GetInt() > 0
+                                      ? sc.Input[IN_MAX_GROSS].GetInt() : 1000;
 
     // ---------------- preset (re)load ----------------
     int reloadFlag = sc.Input[IN_RELOAD].GetYesNo();
@@ -1295,6 +1380,11 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         }
     }
 
+    // ---------------- bring the account to what the book holds ----------------
+    // Once per study call, after every entry and exit for these bars has been booked, so a preset
+    // entering and another exiting on the same day nets out instead of sending two orders.
+    SyncPosition(sc, *S, cfg, sc.Input[IN_MODE].GetIndex(), enabled, logLevel);
+
     // ---------------- status line: logged only when the open-position count changes ----------------
     if (logLevel >= LOG_INFO && !S->daily.empty()) {
         int openPresets = 0;
@@ -1310,8 +1400,16 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             sc.AddMessageToLog(st, 0);
         }
     }
-    // step 1 never sends orders; the guard stays until the order layer is implemented
-    if (sc.Input[IN_MODE].GetIndex() == MODE_FULL && sc.Input[IN_SEND_LIVE].GetYesNo() && sc.UpdateStartIndex == 0)
-        sc.AddMessageToLog("Multi-Swing: order placement is not implemented in this build "
-                           "(step 1 = signals + journal only). No orders will be sent.", 1);
+    // Said once per full recalculation, so it is obvious from the log which of the three the study
+    // is actually doing - the difference between a paper run and a live account is one Input.
+    if (sc.UpdateStartIndex == 0 && enabled) {
+        const int mode = sc.Input[IN_MODE].GetIndex();
+        if (mode == MODE_FULL && sc.Input[IN_SEND_LIVE].GetYesNo())
+            sc.AddMessageToLog("Multi-Swing: FULL AUTO, orders ARE being sent to the trade service. "
+                               "Trade > Trade Simulation Mode decides whether that is the simulator "
+                               "or a live account.", 1);
+        else if (mode == MODE_FULL)
+            sc.AddMessageToLog("Multi-Swing: FULL AUTO but 'Send Orders To Trade Service' is No, "
+                               "so nothing is sent. Turn it on to trade the book.", 0);
+    }
 }

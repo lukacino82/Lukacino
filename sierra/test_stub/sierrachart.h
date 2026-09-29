@@ -58,6 +58,10 @@ inline void CivilFromDays(int z, int& y, unsigned& m, unsigned& d)
     m = mp + (mp < 10 ? 3 : -9);
     y = yy + (m <= 2);
 }
+enum { SCT_ORDERTYPE_MARKET = 1, SCT_TIF_DAY = 1 };
+struct s_SCNewOrder { int OrderQuantity = 0; int OrderType = 0; int TimeInForce = 0; };
+struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
+
 struct SCDateTime {
     int days = 0; int secs = 0;
     int GetDate() const { return days; }
@@ -113,6 +117,18 @@ struct SCStudyInterface {
     SCDateTime CurrentSystemDateTime;
     // the off-line harness is never a replay; the study must still not depend on the wall clock
     int IsReplayRunning() { return 0; }
+
+    // Trading API. The off-line harness has no account, so orders are counted and refused: the
+    // study must still compile against the same calls, and the parity run must stay a paper run.
+    int  SendOrdersToTradeService = 0;
+    int  AllowMultipleEntriesInSameDirection = 0;
+    int  SupportReversals = 0;
+    int  AllowOnlyOneTradePerBar = 0;
+    int  MaximumPositionAllowed = 0;
+    int  ordersAttempted = 0;
+    void GetTradePosition(s_SCPositionData& p) { p = s_SCPositionData(); }
+    int  BuyEntry(const s_SCNewOrder&)  { ++ordersAttempted; return -1; }
+    int  SellExit(const s_SCNewOrder&)  { ++ordersAttempted; return -1; }
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
     SCString DataFilesFolder() { return SCString("."); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }
