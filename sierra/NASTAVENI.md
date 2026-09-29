@@ -378,8 +378,20 @@ Pořadí dodrž: Trade Simulation Mode **nejdřív**. Input 2 sám o sobě neř�
 říká „posílej", a kam to jde, určuje menu Trade.
 
 Než to pustíš naostro, projeď *Mode = Semi-auto*. Ten nic neposílá, jen do Message Logu píše,
-co by udělal (`would BUY 3 (book wants 12, position 9)`). Na velikostech je hned vidět, jestli
-sizing odpovídá tomu, co čekáš.
+co by udělal:
+
+```
+Multi-Swing SEMI: would BUY 3 -> 12 contracts (was 9)
+Multi-Swing SEMI: would SELL 4 -> 8 contracts (was 12)
+```
+
+Počítá to proti pozici, kterou **předstírá**, že drží — skutečná se nehýbe, když se nic
+neposílá, takže by jinak každý řádek hlásil nákup celé knihy místo jednoho denního doobchodu.
+Na těch číslech je hned vidět, jestli sizing odpovídá tomu, co čekáš.
+
+Řádky najdeš v *Window → Message Log*. Potřebuješ k tomu *Trading Enabled* = Yes,
+*Mode* = Semi-auto a *Log Level* = Info (výchozí). Píše se jen při **změně** cílové expozice,
+takže v klidných obdobích je log tiše — to je v pořádku.
 
 ### Co uvidíš v logu
 

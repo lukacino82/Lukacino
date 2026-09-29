@@ -187,8 +187,7 @@ struct StudyState {
     SCString loadError;
     int      lastProcessedIndex = -1;
     int      journalRows = 0;
-    int      lastLoggedDelta = 0;       // semi-auto logs an intention once, not on every call
-    int      lastSyncTarget = -1;       // what the book wanted at the last sync
+    int      semiPosition = 0;          // the position semi-auto pretends to hold
     int      labelsDrawn = 0;           // so the labels can be removed when switched off
     SCString featureCsv;                // empty unless the per-day dump is switched on
 };
@@ -1049,17 +1048,21 @@ static int SyncPosition(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg
     const int target = TargetContracts(sc, S, cfg);
     s_SCPositionData pos;
     sc.GetTradePosition(pos);
-    const int current = (int)pos.PositionQuantity;
+
+    // Semi-auto says what it would do and stops there, so the sizing can be watched before anything
+    // is sent. It has to measure against a position it pretends to hold: the real one never moves
+    // while nothing is sent, so every line would otherwise read "would BUY <the whole book>" instead
+    // of the one order that day actually calls for.
+    const int current = (mode == MODE_SEMI) ? S.semiPosition : (int)pos.PositionQuantity;
     const int delta = target - current;
     if (delta == 0) return 0;
 
-    // Semi-auto says what it would do and stops there, so the sizing can be watched for a while
-    // before anything is sent.
     if (mode == MODE_SEMI) {
-        if (logLevel >= LOG_INFO && delta != S.lastLoggedDelta) {
-            S.lastLoggedDelta = delta;
-            SCString m; m.Format("Multi-Swing SEMI: would %s %d (book wants %d, position %d)",
-                                 delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta, target, current);
+        S.semiPosition = target;
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing SEMI: would %s %d -> %d contracts (was %d)",
+                                 delta > 0 ? "BUY" : "SELL", delta > 0 ? delta : -delta,
+                                 target, current);
             sc.AddMessageToLog(m, 0);
         }
         return 0;
@@ -1393,7 +1396,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     if (start == 0) { S->daily.clear(); ResetDayAccumulators(*S); S->lastProcessedIndex = -1; S->dayCounter = -1;
                       S->wKey = S->mKey = S->qKey = -1; S->lastCompletedMvwap = 0;
                       for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState();
-                      S->journalRows = 0;
+                      S->journalRows = 0; S->semiPosition = 0;
                       ResetJournal(DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString()));
                       ResetFeatureCsv(S->featureCsv); }
 
