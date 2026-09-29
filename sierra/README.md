@@ -3,9 +3,11 @@
 ACSIL implementace dvanácti rodin z `swing_lab/results/ES_CORRECTION_ALPHA.html`.
 Architektura a seznam Inputů: `swing_lab/SIERRA_ARCHITECTURE.md`.
 
-**Stav: kroky 1 a 3 napsané, krok 2 čeká na tvůj Replay.** Studie počítá signály, vede vlastní
-ledger, kreslí do grafu a umí posílat příkazy. Order vrstva vznikla dřív, než proběhl Replay,
-takže je napsaná, ale na skutečném účtu **neověřená** — viz *Co order vrstva zaručuje*.
+**Stav: krok 1 hotový, krok 2 ověřený na 2016-08 až 2019-12, krok 3 napsaný a na účtu
+neověřený.** Studie počítá signály, vede vlastní ledger, kreslí do grafu a umí posílat příkazy.
+Replay potvrdil, že v Sierře počítá bod za bod totéž co offline harness (viz *Výsledek Replay*),
+ale jen na první třetině období. Order vrstva vznikla dřív, než Replay proběhl — viz
+*Co order vrstva zaručuje*.
 
 Podrobné nastavení krok za krokem: **`NASTAVENI.md`**.
 
@@ -58,7 +60,42 @@ ani použít pro reálné obchodování.
 ## Co parita neověřuje
 
 Sierra-specifické věci: odesílání příkazů, kreslení, správu seancí samotnou Sierrou a
-chování při živých datech. To ověří až Replay podle kroku 2 v `SIERRA_ARCHITECTURE.md`.
+chování při živých datech. Session handling, rollover a bar-po-baru doručování ověřil Replay
+(níže); odesílání příkazů na účet zůstává neověřené až do kroku 4.
+
+## Výsledek Replay
+
+Replay z 29. 9. 2026, graf ES 1 minuta, *Days to Load* 400, mód *Signals only*, příkazy vypnuté.
+Běh byl zastaven dřív, než dojel do konce: ledger sahá od 2016-08-15 do 2019-12-04, tedy
+1 887 obchodů proti 6 504 v referenci za celé období.
+
+`check_replay.py` proti `reference_journal.csv` na překryvu 2016-08-15 … 2019-11-04:
+
+| Kontrola | Výsledek |
+|---|---|
+| Obchodů | Replay 1 847, offline 1 843 |
+| P&L v bodech | Replay 7 932, offline 8 035 (98,7 %) |
+| Presetů s identickou množinou vstupů | 43 ze 48 |
+| Presetů s ≥ 99 % shodou vstupů | 47 ze 48 |
+| Vstupů jen v jedné z knih | 6 (ze 1 847) |
+| Entry mimo RTH seanci (sobota nebo neděle) | 0 |
+
+**Všech šest rozdílů leží mezi 2016-08-15 a 2016-08-26**, tedy v prvních devíti seancích grafu,
+kde se ConnorsRSI a týdenní/měsíční VWAP ještě nerozběhly — offline harness má natažená data
+od 2015-01-01, Replay začíná tam, kam dosáhne *Days to Load*. Po zahození prvních 60 dnů grafu:
+
+| Okno 2016-10-14 … 2019-11-04 | Replay | Offline |
+|---|---:|---:|
+| Obchodů | 1 726 | 1 726 |
+| P&L v bodech | 7 530 | 7 530 |
+| Presetů s identickou množinou vstupů | 48 ze 48 | |
+
+Shoda je **úplná, na desetinu bodu**, i v rozdělení důvodů výstupu (`signal` 997, `sl`, `tp`,
+`time`, `breakeven` 38, `trail` 38). Sierra tedy nemá vlastní chybu v seancích, rolloveru ani
+v pořadí barů; 94,3 % parita proti Pythonu z kroku 1 platí i v Sierře.
+
+Co to neověřuje: období 2020-01 až 2026-09 (covid, 2022, poslední roky) a odesílání příkazů.
+Pro zbytek období stačí Replay pustit znovu a nechat dojet — postup je stejný, `NASTAVENI.md` §8.
 
 ## Známé chování
 
@@ -80,12 +117,13 @@ chování při živých datech. To ověří až Replay podle kroku 2 v `SIERRA_A
 | Krok | Obsah | Stav |
 |---|---|---|
 | 1 | Feature engine, parser presetů, signály, ledger | hotovo, parita s Pythonem změřená |
-| 2 | Sierra Replay 2018–2026, porovnání ledgeru | **čeká na tebe** — postup v `NASTAVENI.md` §8 |
+| 2 | Sierra Replay 2018–2026, porovnání ledgeru | 2016-08→2019-12 ověřeno, 100 % shoda po warm-upu; zbytek období dojet |
 | 3 | Order vrstva: bracket per vstup + srovnání pozice | napsané, na účtu neověřené |
-| 4 | Semi-auto na simulovaném účtu, ≥ 50 obchodů | čeká na krok 2 |
+| 4 | Semi-auto na simulovaném účtu, ≥ 50 obchodů | odblokované, další na řadě |
 
-Krok 3 předběhl krok 2. Není to důvod ho přeskočit: dokud Replay neukáže, že studie v Sierře
-počítá totéž co offline, nemá smysl řešit, jestli správně posílá příkazy.
+Krok 4 už na krok 2 nečeká: Replay ukázal, že studie v Sierře počítá totéž co offline, takže
+signálová vrstva je hotová a testovat order vrstvu na Sim účtu má smysl. Dojetí Replaye do
+2026-09 je na tom nezávislé a dá se pustit vedle.
 
 ## Co order vrstva zaručuje
 
