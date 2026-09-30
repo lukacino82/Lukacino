@@ -183,6 +183,21 @@ struct AccountLeg {
 // Enough consecutive rejections to conclude the account is not doing what the study asks.
 enum { ORDER_FAILURE_LIMIT = 5 };
 
+// Sierra's own code for "this order was skipped because the chart was doing a full
+// recalculation" (scconstants.h). Named here so a rejection can say what it means instead of
+// printing a bare number, and because it is the one code that is the study's fault, not the
+// account's - see the guard at the top of SyncOrders.
+static const int SCT_SKIPPED_FULL_RECALC_CODE = -8998;
+
+// What a Sierra return code means, where the study can say something useful about it.
+static const char* OrderRejectHint(int rc)
+{
+    if (rc == SCT_SKIPPED_FULL_RECALC_CODE)
+        return "  Sierra skipped it because the chart was recalculating - this is a study bug, "
+               "not an account problem; report it.";
+    return "";
+}
+
 // one completed daily RTH bar plus the ETH extremes that belong to the same trading day
 struct DailyBar {
     SCDateTime date;                    // RTH session date
@@ -1281,6 +1296,25 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                        int mode, bool enabled, int logLevel, double last)
 {
     if (!enabled || mode == MODE_SIGNALS) return;
+
+    // Sierra refuses every ACSIL order placed during a full recalculation and returns
+    // SCT_SKIPPED_FULL_RECALC (-8998) for each one. That is deliberate on its side: a study
+    // recalculating years of history must not fire that history at an account. This function is
+    // called at the end of every study call, including the recalculating ones, so a fresh chart
+    // or a reload used to burn straight through the rejection cut-off and stop the order layer
+    // before the first live bar - which is exactly what a Sim replay did, ten refusals in one
+    // call, all of them -8998.
+    //
+    // Nothing is lost by waiting: the book's state survives the recalculation, and the first
+    // incremental call reconciles the account to it through the same path as any other day.
+    if (sc.UpdateStartIndex == 0) {
+        if (logLevel >= LOG_INFO && sc.ArraySize > 0)
+            sc.AddMessageToLog("Multi-Swing: full recalculation - no orders sent while the chart "
+                               "rebuilds (Sierra refuses them). The account is brought to what the "
+                               "book holds on the first bar after this.", 0);
+        return;
+    }
+
     const bool send = (mode == MODE_FULL);
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
@@ -1363,9 +1397,9 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         } else {
             SCString m;
             m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: BUY %d %s at market, "
-                     "stop %.2f target %.2f. (%d of %d before order placement stops.)",
+                     "stop %.2f target %.2f. (%d of %d before order placement stops.)%s",
                      rc, qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price,
-                     S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT);
+                     S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
             sc.AddMessageToLog(m, 1);
             // The cut-off was only tested once per study call, at the top of this function, while
             // the loop below it runs all forty-eight presets. A day on which every order is
@@ -1445,8 +1479,9 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     } else {
         SCString m;
         m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d to bring the position "
-                 "from %d to %d. (%d of %d before order placement stops.)",
-                 rc, surplus, account, want, S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT);
+                 "from %d to %d. (%d of %d before order placement stops.)%s",
+                 rc, surplus, account, want, S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT,
+                 OrderRejectHint(rc));
         sc.AddMessageToLog(m, 1);
         if (++S.orderFailures >= ORDER_FAILURE_LIMIT)
             sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many rejections. "

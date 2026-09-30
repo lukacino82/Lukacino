@@ -489,6 +489,14 @@ přebytku nechá zbývajícím vstupům jejich připojené stopy. To ukáže až
 první věc, kterou tam kontrolovat: v *Trade → Trade Orders and Positions* musí být otevřených
 stop příkazů právě tolik, kolik je otevřených presetů se stopem.
 
+**Při plném přepočtu grafu se příkazy neposílají.** Sierra je během přepočtu odmítá (vrací
+`-8998`, `SCT_SKIPPED_FULL_RECALC`) a má pravdu: studie, která přepočítává roky historie, nesmí
+tu historii vystřelit na účet. Studie to proto ani nezkouší a napíše do logu jeden řádek. Účet se
+srovná na to, co kniha drží, **prvním barem po přepočtu** — u replaye tedy hned po spuštění.
+
+Počítej s tím, že na tom prvním baru může odejít i deset příkazů naráz, protože tolik presetů
+kniha z historie drží otevřených. To je záměr, ne chyba: účet má držet to, co kniha.
+
 **Než pustíš full auto, nastav limity ztrát.** Inputy 38 a 39 už fungují (kapitola 5), ale
 výchozí nula je vypíná. Spolu s 34 *Max Gross Exposure* jsou to jediné tři stropy, které
 na účtu drží.
@@ -563,4 +571,5 @@ offline engine je vidí stejně. Ověřeno na letech 2015–2026: 99 zkrácenýc
 | Replay dá zhruba dvojnásobek obchodů od data startu | studie z verze před opravou live guardu — přebuildi DLL |
 | Rozdíl jen v rodinách `C<wvwap#sd` a `D01` | studie z verze, kde týdenní VWAP kotvil na středu místo pondělí — přebuildi DLL |
 | Ledger má dvakrát tytéž obchody | starý soubor z verze před touto opravou, smaž ho |
+| Všechny příkazy odmítnuty s `Sierra returned -8998` | `SCT_SKIPPED_FULL_RECALC` — studie posílala příkazy během plného přepočtu grafu, což Sierra zásadně odmítá. Opraveno; přebuilduj DLL |
 | `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |
