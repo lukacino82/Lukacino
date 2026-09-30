@@ -268,11 +268,20 @@ struct SCStudyInterface {
         if (!stubSim) return -1;
         if (stubRefuseExits) return -1;
         if (enforceCoverage) {
+            // Coverage is counted per bracket, not per child. An OCO pair covers its parent's
+            // quantity once, and a bracket with only one live child - a preset whose exit carries
+            // no target has no target order - covers it just the same. Halving the child total
+            // was wrong for exactly those, and integer division then threw the remainder away,
+            // which understated coverage and made this stub refuse sells Sierra would accept.
             int covered = 0;
-            for (std::map<int, StubOrder>::iterator it = working.begin(); it != working.end(); ++it)
-                if (bracket.count(it->second.parent)) covered += it->second.qty;
-            // each bracket is an OCO pair, so its two children cover the parent's quantity once
-            int uncovered = (int)stubPosition - covered / 2;
+            for (std::map<int, std::pair<int,int> >::iterator b = bracket.begin();
+                 b != bracket.end(); ++b) {
+                std::map<int, StubOrder>::iterator t = working.find(b->second.first);
+                std::map<int, StubOrder>::iterator p = working.find(b->second.second);
+                if (t != working.end())      covered += t->second.qty;
+                else if (p != working.end()) covered += p->second.qty;
+            }
+            int uncovered = (int)stubPosition - covered;
             if (uncovered < 0) uncovered = 0;
             if (o.OrderQuantity > uncovered) { ++exitsRefusedAsCovered; return -1; }
         }
@@ -286,6 +295,27 @@ struct SCStudyInterface {
         }
         stubPosition -= o.OrderQuantity;
         if (stubPosition < 0) stubPosition = 0;
+        // Attached orders belong to a position, so closing contracts retires their brackets.
+        // Leaving them working was the last modelling gap in this stub: children outnumbered
+        // contracts, coverage stayed high while the position fell, and later sells were refused
+        // for contracts nothing was actually protecting.
+        for (int left = o.OrderQuantity; left > 0; ) {
+            std::map<int, std::pair<int,int> >::iterator b = bracket.begin();
+            bool retired = false;
+            for (; b != bracket.end(); ++b) {
+                std::map<int, StubOrder>::iterator t = working.find(b->second.first);
+                std::map<int, StubOrder>::iterator p = working.find(b->second.second);
+                if (t == working.end() && p == working.end()) continue;
+                const int q = t != working.end() ? t->second.qty : p->second.qty;
+                if (t != working.end()) working.erase(t);
+                if (p != working.end()) working.erase(p);
+                bracket.erase(b);
+                left -= q;
+                retired = true;
+                break;
+            }
+            if (!retired) break;
+        }
         if (CancelAllOrdersOnEntriesAndReversals) {
             cancelledByTrim += (int)working.size();
             working.clear();
@@ -305,9 +335,13 @@ struct SCStudyInterface {
         if (it == working.end()) { ++stopMovesOnDeadOrder; return -1; }
         it->second.price = o.Price1;
         ++stopMovesOk;
-        // A sell order moved to or below the market fills at once, which is how a preset the book
-        // has closed actually leaves the account. Its sibling goes with it: a bracket is OCO.
-        if (stubLast > 0 && o.Price1 <= stubLast) {
+        // A sell LIMIT at or below the market fills at once - that is how a preset the book has
+        // closed leaves the account. A sell STOP below the market does NOT: it waits for price to
+        // fall to it. Filling both was a bug in this stub, and an expensive one: every trailing
+        // stop move was treated as an exit, so the stub's position ran away from the study's
+        // ledger and produced phantom surpluses that looked exactly like a fault in the study.
+        const bool fillsNow = it->second.isStop ? (o.Price1 >= stubLast) : (o.Price1 <= stubLast);
+        if (stubLast > 0 && fillsNow) {
             const int parent = it->second.parent;
             const int qty    = it->second.qty;
             std::map<int, std::pair<int,int> >::iterator b = bracket.find(parent);

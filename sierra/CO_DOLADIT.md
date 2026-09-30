@@ -361,7 +361,32 @@ pracující sell limit nad trhem; posunutý pod trh se vyplní okamžitě a sund
 Preset bez targetu (signálový exit nenese cenu) má posunout stop. Sell limit pod trhem je vždy
 platná cena, sell stop nad trhem není — proto limit, kde existuje.
 
-**Implementace ale hotová není.** Stub teď vynucuje Sierřino skutečné pravidlo (prodej je odmítnut
+**Implementace (hotovo 30. 9., verze `2026-09-30.16`).** Výstup jde teď skrz target: ten je
+pracující sell limit nad trhem, posunutý pod trh se vyplní okamžitě a sundá právě kontrakty toho
+presetu. Preset bez targetu (13 ze 48 má čistě signálový exit a žádnou cílovou cenu) má stop
+zrušený — tím se jeho kontrakty odkryjí a tržní prodej pro ně Sierra přijme. Sell limit pod trhem
+je vždy platná cena; sell stop nad trhem není, proto se stopy neposouvají přes trh.
+
+Cestou se našly **tři místa, kde se záznam nohy zahodil, zatímco kontrakty byly pořád na účtu**:
+při neúspěšném retire, při znovuvstupu téhož presetu ve stejné seanci (přepsal starou nohu), a ve
+vstupní smyčce u presetu, který kniha právě zavřela. Kontrakty pak nepatřily nikomu: kniha je
+nepočítala, žádný bracket se nedal řídit, a tržní prodej pro ně byl odmítnutý jako krytý. Trvale
+zaseknuté, při každém běhu. Noha se teď zahodí, až když je prokazatelně pryč.
+
+### Čím to ověřené NENÍ
+
+Offline simulátor tenhle režim selhání **nereprodukuje**. Na jeho grafu je krytí totální a zůstane
+totální, protože první prodej je odmítnut a tím se žádný bracket neuvolní. Ve stubu první prodej
+projde a tím se to rozmotá — takže se stav, ve kterém jeho Sierra trvale je, ve stubu nikdy
+nenastane. Během ladění jsem ve vlastním stubu našel tři chyby modelu (plnil i trailing stopy,
+počítal krytí `covered/2`, nerušil brackety po prodeji) a každá měnila výsledné číslo víc než
+změny ve studii. **Ladit proti tomu číslu dál by bylo ladění modelu, ne skriptu.**
+
+Co ověřené je: rozhodovací jádro je bit-identické s `99543aa`, pojistka proti osiřelé pozici i
+cut-off po pěti odmítnutích fungují, a v opraveném stubu proběhne celé období bez uváznutí
+(9 332 vstupů, 689 výstupů přes bracket, žádný přeprodej).
+
+**Verdikt dá až jeho replay.** Původní zápis: Stub teď vynucuje Sierřino skutečné pravidlo (prodej je odmítnut
 pro kontrakty krytý pracujícím příkazem), takže se to dá poprvé měřit offline:
 
 | varianta | vstupů | exitů přes bracket | prodejů odmítnutých jako krytých |
