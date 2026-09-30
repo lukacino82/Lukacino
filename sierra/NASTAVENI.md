@@ -510,6 +510,16 @@ Odmítnutý příkaz se loguje jako chyba **pokaždé**, ne jen jednou. Má to d
 drží účet něco jiného, než si myslí ledger, a každé další dorovnání se počítá proti špatné
 pozici. Když ti to naskakuje, zkontroluj vybraný účet a Trade Simulation Mode.
 
+**Po pěti odmítnutích studie přestane posílat** a status box zšedne na
+`STOPPED - rejections, nothing is being sent`. Je to schválně: dál posílat příkazy proti
+pozici, o které studie neví, co v ní je, je horší než přestat. Hláška v logu u každého
+odmítnutí nese **návratový kód Sierry** (`Sierra returned -X`) — to je to jediné číslo, které
+řekne proč, takže si ho najdi.
+
+Zrušit ten stav jde **přepnutím Inputu 5 *Reload Presets*** tam a zpět: přenačte knihu od
+prvního baru a zahodí i pohled order vrstvy na účet. Než to uděláš, **srovnej pozici na účtu
+ručně na nulu**, jinak se studie bude srovnávat proti něčemu, co nezavedla.
+
 ### Nekompletní seance
 
 Studie hlídá, jestli každá seance došla až ke svému RTH konci. Když ne, napíše do Message Logu:

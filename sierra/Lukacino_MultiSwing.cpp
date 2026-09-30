@@ -1713,6 +1713,15 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->lastProcessedIndex = -1;
         S->daily.clear();
         ResetDayAccumulators(*S);
+        // A reload rebuilds the whole book from the first bar, so the order layer's view of the
+        // account has to go with it: legs left behind would describe entries of a book that no
+        // longer exists. It also clears the rejection cut-off, which is the only way to lift it
+        // from the Inputs - otherwise a run that hit five rejections stays STOPPED until the
+        // study is removed and added again, with no control on the dialog that says so.
+        S->orderFailures = 0;
+        S->legs.clear();
+        S->trimSentQty = 0;
+        S->trimSentAccount = -1;
         SCString m;
         if (ok) {
             int valid = 0; for (size_t i = 0; i < S->presets.size(); ++i) if (S->presets[i].valid) ++valid;
