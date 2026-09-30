@@ -1,0 +1,26 @@
+name: Extract ES2008 multipart
+on:
+  push:
+    branches: [chatgpt-es2008-research]
+permissions:
+  contents: read
+jobs:
+  extract:
+    if: contains(github.event.head_commit.message, 'Trigger ES2008 multipart extract')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract multipart archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full
+          mkdir -p out
+          7z x ES2008.zip -oout -y
+          find out -maxdepth 2 -type f -printf '%p %s bytes\n'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: es2008-extracted
+          path: out/**
+          retention-days: 1
