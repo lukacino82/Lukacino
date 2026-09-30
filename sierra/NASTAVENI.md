@@ -551,6 +551,14 @@ jdou, a obě polohy jsou plnohodnotný běh:
 | **No** | do **vlastní simulace grafu** — plní se proti barům grafu | **ano** | ne | **ne** |
 | **Yes** | do trade service (Sim nebo ostrý účet podle menu *Trade*) | ano | ano | ano |
 
+**V replayi to není volba, je to podmínka.** Simulaci grafu krmí bary replaye; trade service —
+Sim včetně — jede na reálných datech symbolu. Replay stojící v roce 2019 na 2 900, který po trade
+service chce kontrakt obchodovaný za 7 700, není požadavek, se kterým může Sierra něco udělat, tak
+ho odmítne — stejným bezdůvodným `-1` jako každá jiná brána, a pět takových zamkne posílání
+příkazů. Od `.18` to studie napíše do logu a dá do status boxu
+`FULL AUTO - REPLAY into trade service: set Input 3 to No`. Symptom, podle kterého se to pozná bez
+logu: **`book` roste a `position` zůstává 0.**
+
 `No` **není paper mód**. Příkazy se opravdu zadávají, opravdu se plní, pozice se kreslí na graf
 a `sc.GetTradePosition` ji hlásí, takže i status box ukazuje `position`. Jen se jí nedotkne
 žádný účet. Pro test replaye je to **ten správný režim**: fily jsou deterministické z barů

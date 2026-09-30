@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.17";
+static const char* STUDY_VERSION = "2026-09-30.18";
 
 static const int NUM_FAMILIES = 12;
 
@@ -320,6 +320,7 @@ struct StudyState {
                                         // study has not touched the account in this run
     bool     orphanHalt = false;        // the account holds contracts this run did not place
     bool     orphanWarned = false;      // said once, not once per call
+    bool     replayLiveWarned = false;  // ... and the same for the replay-into-trade-service note
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1685,6 +1686,27 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     const bool send = (mode == MODE_FULL);
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
+    // A replay sending orders to the trade service cannot work, and it costs a whole run to find
+    // out, because every refusal is the same reasonless -1.
+    //
+    // The chart's own simulation is fed by the replay's bars. The trade service - Sim included -
+    // works off the symbol's real market data. A replay sitting in 2019 at 2,900 asking the trade
+    // service to buy a contract that is trading at 7,700 is not a request Sierra can act on, so it
+    // refuses, five times, and the order layer latches. Nothing in the study can fix that; the
+    // combination itself is wrong. Said once, and only once, because the study cannot tell whether
+    // it is what the user meant.
+    if (send && sc.SendOrdersToTradeService && sc.IsReplayRunning() && !S.replayLiveWarned) {
+        S.replayLiveWarned = true;
+        sc.AddMessageToLog(
+            "Multi-Swing: this is a REPLAY with 'Send Orders To Trade Service' = Yes. The trade "
+            "service works off the symbol's real market data, not the replay's bars, so orders "
+            "priced in the replay's past are refused - with the same reasonless -1 as every other "
+            "gate, five of which stop order placement. For a replay set that Input to No: orders "
+            "then go to the chart's own simulation, fill against the chart's bars and draw on the "
+            "chart, which is the mode a replay is meant to be traded in. Set it to Yes only for a "
+            "live or realtime-Sim chart.", 1);
+    }
+
     // A rejection means the account no longer holds what the book thinks, so every later order is
     // computed against a wrong position. Rather than repeat that for the rest of the run - the
     // first Sim Replay logged the same rejection thousands of times - trading stops and says so.
@@ -1953,7 +1975,13 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                          : stopped            ? "STOPPED - rejections, nothing is being sent"
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
-                         : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
+                         // A replay routing orders to the trade service is a configuration that
+                         // cannot fill anything, so the box says which switch to move rather than
+                         // reading like a healthy live run.
+                         : mode == MODE_FULL  ? (sending ? (sc.IsReplayRunning()
+                                                           ? "FULL AUTO - REPLAY into trade service:"
+                                                             " set Input 3 to No"
+                                                           : "FULL AUTO - ORDERS LIVE")
                                                           : "FULL AUTO - chart simulation only")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
@@ -2252,6 +2280,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->ordersPlaced = 0;
         S->orphanHalt = false;
         S->orphanWarned = false;
+        S->replayLiveWarned = false;
         S->bracketsSeen = S->bracketsEmpty = 0;
         S->modifyOk = S->modifyFail = 0;
         SCString m;
@@ -2338,6 +2367,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       S->orderFailures = 0; S->legs.clear();
                       S->trimSentQty = 0; S->trimWaited = 0;
                       S->ordersPlaced = 0; S->orphanHalt = false; S->orphanWarned = false;
+                      S->replayLiveWarned = false;
                       S->bracketsSeen = S->bracketsEmpty = 0; S->modifyOk = S->modifyFail = 0;
                       S->incompleteDays = 0;
                       S->realizedToday = S->realizedTotal = S->equityPeak = 0;
