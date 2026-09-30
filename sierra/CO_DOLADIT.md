@@ -513,3 +513,47 @@ i `CancelOrder`), který ten stav reprodukuje. Na 468 barech:
 držená (kniha zůstane poctivá), ohlásí se jednou `CANNOT CLOSE` s tím, co to nejčastěji znamená, a
 víc se pro ni nezkouší nic. Objednávková vrstva jinak nezměněná a znovu přeměřená — žurnál
 bit-identický, 9 367 vstupů, 0 odmítnutých jako krytých při zdržení filu 0, 1 i 5 volání.
+
+---
+
+## P15 — proč trade service odmítal každý vstup (vyřešeno, nastavení, nikoli kód)
+
+Několik běhů `.17`–`.19` skončilo tak, že každý `sc.BuyEntry` vrátil `-1`, po pěti odmítnutích
+sepnula pojistka a status box hlásil `STOPPED`. Kniha přitom držela svoje (`book 10`), účet
+nedržel nic (`position 0`), takže nic z toho nebylo v objednávkové vrstvě — ven se prostě
+nedostal ani první příkaz.
+
+### Co to bylo
+
+*Trade → Auto Trading Enabled for Chart* si **Sierra sama shazuje při startu chart replaye**
+(a při reloadu grafu a změně symbolu). Zaškrtnutí před spuštěním replaye je tedy bez účinku.
+Musí se zaškrtnout **až když replay běží**, a pak teprve zvednout západku přepnutím
+Inputu 5 *Reload Presets*. Zapsáno do `NASTAVENI.md`, kapitola o zapnutí pro účet.
+
+### Jak se to dalo poznat z logu, a proč to nešlo dřív
+
+Rozhodující bylo, že u toho `-1` Sierra do Message Logu **nenapsala ani řádek** — v celém bloku
+byly jen řádky s prefixem studie plus dva `Replay jump`. Sierra odmítá volání na vstupu, ještě
+než z něj postaví příkaz; kdyby příkaz postavila a odmítla ho až pak (cena, limit, účet), řádek
+o tom napíše. **Mlčící `-1` tedy znamená tuhle bránu nebo chybějící trade account, a nic jiného.**
+Použitelný signál, protože `-1` sám žádný důvod nenese, a zbytek nabídky v hintu studie
+(`OrderRejectHint`) jsou jen kandidáti.
+
+Rychlý rozhodovací test, který tu příště zkrátí hledání: nechat replay běžet a poslat **ručně
+z Trade Window** jeden market BUY s bracketem. Projde → brána je otevřená, hledej jinde.
+Neprojde → je to nastavení.
+
+### Co se tím zároveň vyvrátilo
+
+Podezření, že na continuous back-adjusted grafu (`ESZ26_FUT_CME [CB]`, kde ES 2019 vychází na
+3630 místo reálných ~2900) trade service odmítne stop a target spočítané z grafových cen, protože
+reálný kontrakt je na jiné úrovni. **Neodmítne.** Po opravě brány přišel fill na `3818.25`, tedy
+v cenách grafu — Sim plní z replayovaných dat, ne z živého trhu kontraktu. `[CB]` je pro full
+auto replay v pořádku.
+
+### Co zůstává na sledování
+
+`book` a `position` se ve status boxu po rozjezdu na chvíli rozcházejí (viděno `book 5`,
+`position 0`). Očekávané, dokud jde o latenci filu — příkazy odešly v tomhle volání a účet je
+ještě nenahlásil. Rozcházet se **trvale** přes několik volání by znamenalo desync a patří to do
+`P13`/`P14` mechaniky, ne sem.

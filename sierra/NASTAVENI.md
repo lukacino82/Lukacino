@@ -585,6 +585,38 @@ odmítá stejným generickým `-1`.
 Pořadí dodrž: Trade Simulation Mode **nejdřív**. Input 2 sám o sobě neříká „simulace" —
 říká „posílej", a kam to jde, určuje menu Trade.
 
+#### Auto Trading for Chart zaškrtni jako POSLEDNÍ, až replay běží
+
+Tohle stálo hodinu hledání, tak natvrdo: *Trade → Auto Trading Enabled for Chart* si Sierra
+**sama shazuje**, kdykoli se graf přenačte, změní symbol, nebo **když se spustí chart replay**.
+Zaškrtnutí před startem replaye je tedy k ničemu — start ho zhasne a každý `sc.BuyEntry` pak
+vrací `-1`.
+
+Správné pořadí pro full auto replay:
+
+1. Spusť replay
+2. **Teprve teď** zaškrtni *Trade → Auto Trading Enabled for Chart*
+3. Zkontroluj *Trade → Auto Trading Enabled - Global*
+4. Přepni Input 5 *Reload Presets* na opačnou hodnotu (zvedne případnou západku `STOPPED`)
+
+**Jak `-1` z téhle brány poznáš:** Sierra u něj do Message Logu nenapíše **nic**. Odmítá volání
+ještě předtím, než z něj vznikne příkaz, takže v logu jsou jen řádky studie a žádný Sierry
+vlastní. Když Sierra příkaz naopak postaví a pak ho odmítne (cena, limit, účet), řádek o tom
+napíše. Mlčící `-1` = tahle brána nebo chybějící trade account, nic jiného.
+
+Rozhodující test, když si nejsi jistý: nech replay běžet a pošli **ručně z Trade Window** jeden
+market BUY s bracketem. Projde-li, brána je otevřená a problém je jinde. Neprojde-li, je to
+nastavení a skript s tím nemá nic společného.
+
+#### Continuous back-adjusted graf ([CB]) je pro full auto v pořádku
+
+Na `ESZ26_FUT_CME [CB]` ukazuje graf pro rok 2019 ES kolem 3630, i když reálně bylo ~2900 —
+data jsou posunutá o rolovací offset. Nabízí se otázka, jestli trade service neodmítne stop a
+target, které studie počítá z grafu, protože reálný kontrakt je na úplně jiné úrovni.
+
+**Neodmítne.** Ověřeno na replayi: fill přišel na `3818.25`, tedy v cenách grafu. Sim plní
+z replayovaných dat, ne z živého trhu daného kontraktu. Back-adjustment tedy vypínat nemusíš.
+
 Po každém `-1` zůstane objednávková vrstva zamčená (`STOPPED` ve status boxu). Odemkne ji
 jedině **změna** Inputu 5 *Reload Presets* — z Yes na No, nebo z No na Yes. Nastavit ho na to,
 co už tam je, nedělá nic.
