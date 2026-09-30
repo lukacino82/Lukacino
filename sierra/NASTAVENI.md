@@ -280,6 +280,12 @@ schválně, jinak by se ti při každém reloadu grafu zdvojily obchody.
 Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá při rychlosti
 *Maximum* řádově desítky minut, podle stroje.
 
+**Změřeno 29. 9. 2026:** replay s *Days to Load* 400 a startem 2018-01-01 natáhl historii
+od 2016-08-15 a na okně 2016-10 až 2019-11 dal **1 726 obchodů a 7 530 bodů proti 1 726 a
+7 530 bodům** offline, tedy 48 ze 48 presetů s identickou množinou vstupů. Rozdíl byl jen
+v prvních devíti seancích grafu, kde se indikátory ještě nezahřály. Sierra si tedy nic
+nepřidává — viz `sierra/README.md`, sekce *Výsledek Replay*.
+
 ### Jednorázová příprava
 
 1. *Chart Settings → Days to Load* = **3300** (pokryje 2018–2026)
@@ -305,8 +311,8 @@ Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá p
    kterou pokrývá, a posledních 30 dní zahodí — pozice otevřené v momentě zastavení se
    do ledgeru nedostanou a jinak by vypadaly jako rozdíl. Na první kontrolu stačí rok
    dva za zahřívací fází.
-4. Po doběhnutí zkontroluj `swing_journal.csv`: první obchody mají být z **jara 2019**
-   (2018 padne na zahřívání indikátorů), poslední z konce replaye, a mají tam být
+4. Po doběhnutí zkontroluj `swing_journal.csv`: první obchody jsou z prvních seancí, které
+   graf natáhl (zahřívací fáze — skript je sám zahodí), poslední z konce replaye, a mají tam být
    všechny **rodiny (12)** i **presety (48)**. Za období 2019-03 až 2026-09 dává offline
    harness **4 701 obchodů a 67 320 bodů** — replay by měl být v řádu stejný. Pár set
    řádků znamená, že replay nedojel nebo se kniha nezahřála.
@@ -316,10 +322,16 @@ Replay pouštěj opakovaně, je to hlavní průběžný test. Jedno kolo trvá p
    python sierra\check_replay.py cesta\k\swing_journal.csv
    ```
 
-   Vypíše rozdíl preset po presetu, běží asi sekundu. Potřebuje **jen Python**, nic se
-   neinstaluje — žádné balíčky, žádný kompilátor, žádná tržní data. Referenční ledger je
-   v repu jako `sierra/reference_journal.csv`. Kdyby to nešlo, pošli mi `swing_journal.csv`
-   a proženu ho tady.
+   Pouští se ve **Windows Command Prompt nebo PowerShell**, ne v Sierře, ze složky repa,
+   ve které je podsložka `sierra`. Vypíše rozdíl preset po presetu, běží asi sekundu.
+   Potřebuje **jen Python**, nic se neinstaluje — žádné balíčky, žádný kompilátor, žádná
+   tržní data. Referenční ledger je v repu jako `sierra/reference_journal.csv`. Kdyby to
+   nešlo, pošli mi `swing_journal.csv` a proženu ho tady.
+
+   Skript sám zahodí **prvních 60 dní** replaye jako zahřívací fázi a napíše, kolik obchodů
+   tím nesrovnával — replay začíná se studenými indikátory, zatímco referenční ledger je
+   natažený od 2015 a je teplý od prvního řádku. Počítat ten rozdíl jako chybu Sierry by
+   skutečnou chybu schovalo do šumu. `--warmup 0` porovná i je, `--warmup 90` zahodí víc.
 
    `--rebuild` referenční ledger přegeneruje z aktuálního zdroje studie. To má smysl jen
    tady, kde jsou data — po každé úpravě `Lukacino_MultiSwing.cpp` je potřeba ho obnovit,
@@ -389,20 +401,45 @@ Pořadí dodrž: Trade Simulation Mode **nejdřív**. Input 2 sám o sobě neř�
 říká „posílej", a kam to jde, určuje menu Trade.
 
 Než to pustíš naostro, projeď *Mode = Semi-auto*. Ten nic neposílá, jen do Message Logu píše,
-co by udělal:
+co by udělal — jeden řádek na každý vstup, s jeho vlastním stopem a targetem, a jeden souhrnný
+na odprodej přebytku:
 
 ```
-Multi-Swing SEMI: would BUY 3 -> 12 contracts (was 9)
-Multi-Swing SEMI: would SELL 4 -> 8 contracts (was 12)
+Multi-Swing SEMI: would BUY 1 for LMT_RSIx<x_xAT_1, stop 4812.50 target 4901.25
+Multi-Swing SEMI: would BUY 1 for C<wvwapxsd_2, stop 4808.75 target 4890.00
+Multi-Swing SEMI: would SELL 2 to hold 7 contracts.
 ```
 
 Počítá to proti pozici, kterou **předstírá**, že drží — skutečná se nehýbe, když se nic
 neposílá, takže by jinak každý řádek hlásil nákup celé knihy místo jednoho denního doobchodu.
-Na těch číslech je hned vidět, jestli sizing odpovídá tomu, co čekáš.
+
+Co na těch řádcích čekat:
+
+- **`would BUY` má vždycky konkrétní preset a nenulový stop.** Stop `0.00` znamená, že exit model
+  presetu stop nenastavil — to je věc, kterou chci vidět, pošli mi ten řádek.
+- **`would SELL x to hold y`** je srovnání pozice, ne chyba. Prodává se rozdíl proti tomu, co kniha
+  chce držet, a jen tudy odcházejí výstupy `signal` a `time` — tedy 61 % všech výstupů knihy.
+- **Součet kontraktů** musí odpovídat *Risk Unit* × váha rodiny za každý otevřený preset. Řádek
+  `book ... position ...` ve status boxu ukazuje totéž průběžně.
 
 Řádky najdeš v *Window → Message Log*. Potřebuješ k tomu *Trading Enabled* = Yes,
-*Mode* = Semi-auto a *Log Level* = Info (výchozí). Píše se jen při **změně** cílové expozice,
-takže v klidných obdobích je log tiše — to je v pořádku.
+*Mode* = Semi-auto a *Log Level* = Info (výchozí).
+
+Píše se jen při **změně** cílové expozice, takže v klidných obdobích je log tiše — to je
+v pořádku.
+
+**Semi-auto se dá pustit i v Replayi**, a je to nejrychlejší způsob, jak ho vidět na letech dat
+místo na jednom dni: nastavení je stejné jako v kapitole 8, jen *Mode* = Semi-auto. Ledger se
+přitom píše dál, takže jeden běh zvládne paritu i kontrolu sizingu.
+
+**Co semi-auto neověří.** Nesahá na účet, takže neřekne nic o tom, jestli Sierra po odprodeji
+přebytku nechá zbývajícím vstupům jejich připojené stopy. To ukáže až Sim účet níže a je to
+první věc, kterou tam kontrolovat: v *Trade → Trade Orders and Positions* musí být otevřených
+stop příkazů právě tolik, kolik je otevřených presetů se stopem.
+
+**Riskové limity zatím nechrání.** Inputy 38 *Daily Loss Limit* a 39 *Max Drawdown Stop* nejsou
+aktivní, takže jediný strop, který na Simu opravdu drží, je 34 *Max Gross Exposure*. Nastav ho
+podle toho, co jsi ochoten mít v trhu, ne podle výchozí hodnoty.
 
 ### Co uvidíš v logu
 

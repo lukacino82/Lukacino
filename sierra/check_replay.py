@@ -33,6 +33,14 @@ sys.path.insert(0, str(HERE))
 REFERENCE = HERE / "reference_journal.csv"
 TAIL_DAYS = 30
 
+# The replay starts where Days to Load reaches, so its first sessions run on indicators that have
+# not filled their windows yet - the 252-day drawdown peak and the weekly/monthly VWAP anchors
+# above all - while the off-line reference is loaded from 2015 and is warm from the first row.
+# Measured on the 2016-08 replay: all six differing entries sat in the first nine sessions, and
+# dropping the front of the window left 48/48 presets identical to the point. Counting those as
+# Sierra differences would hide a real one behind noise, so they are dropped and reported apart.
+WARMUP_DAYS = 60
+
 COLS = ["preset_id", "family", "signal_day", "entry_day", "exit_day", "side",
         "entry", "exit", "pnl_pts", "mae", "mfe", "bars", "reason"]
 
@@ -148,6 +156,9 @@ def main():
     ap.add_argument("--rebuild", action="store_true",
                     help="regenerate the reference journal from the current study source")
     ap.add_argument("--top", type=int, default=15, help="how many worst presets to list")
+    ap.add_argument("--warmup", type=int, default=WARMUP_DAYS,
+                    help=f"days of the replay's own start to drop as indicator warm-up "
+                         f"(default {WARMUP_DAYS}; 0 compares from the first entry)")
     a = ap.parse_args()
 
     rep = load_journal(Path(a.replay), "replay")
@@ -168,15 +179,37 @@ def main():
     # difference - the average hold is about a week, so a month is comfortably clear of it.
     hi = (dt.date.fromisoformat(hi) - dt.timedelta(days=TAIL_DAYS)).isoformat()
     if lo > hi:
+        rep_lo, rep_hi = min(r["entry_day"] for r in rep), max(r["entry_day"] for r in rep)
+        off_lo, off_hi = min(r["entry_day"] for r in off), max(r["entry_day"] for r in off)
+        if rep_lo <= off_hi and off_lo <= rep_hi:
+            raise SystemExit(
+                f"\n  The replay covers {rep_lo} .. {rep_hi}, and dropping the last {TAIL_DAYS} days\n"
+                f"  (positions still open when it stopped never reach the ledger) leaves nothing to\n"
+                f"  compare. Let the replay run at least a couple of months past its start date.")
         raise SystemExit(
             f"\n  The journals do not overlap in time at all:\n"
             f"    replay  {min(r['entry_day'] for r in rep)} .. {max(r['entry_day'] for r in rep)}\n"
             f"    offline {min(r['entry_day'] for r in off)} .. {max(r['entry_day'] for r in off)}\n\n"
             f"  Either the Replay covered a period the reference does not reach, or the dates were\n"
             f"  read wrong. Send me the journal and I will look.")
-    rep, off = window(rep, lo, hi), window(off, lo, hi)
+    # The replay's own first sessions run on half-filled indicator windows; the reference does not.
+    warm_lo = lo
+    if a.warmup > 0:
+        warm_lo = (dt.date.fromisoformat(lo) + dt.timedelta(days=a.warmup)).isoformat()
+        if warm_lo >= hi:
+            print(f"\n  note: the overlap is only {lo} .. {hi}, shorter than the {a.warmup}-day\n"
+                  f"  warm-up, so nothing is dropped and the first sessions will differ on the\n"
+                  f"  indicators that have not filled their windows yet. Pass --warmup 0 to silence\n"
+                  f"  this, or replay with more history in front of the start date.")
+            warm_lo = lo
 
-    print(f"\n=== REPLAY vs OFFLINE ({lo} .. {hi}, last {TAIL_DAYS} days dropped) ===")
+    warm_rep = [r for r in window(rep, lo, hi) if r["entry_day"] < warm_lo]
+    rep, off = window(rep, warm_lo, hi), window(off, warm_lo, hi)
+
+    print(f"\n=== REPLAY vs OFFLINE ({warm_lo} .. {hi}, last {TAIL_DAYS} days dropped) ===")
+    if warm_lo != lo:
+        print(f"  first {a.warmup} days of the replay ({lo} .. {warm_lo}) dropped as warm-up: "
+              f"{len(warm_rep)} trades not compared")
     summarise(rep, "replay")
     summarise(off, "offline")
 
@@ -266,6 +299,12 @@ def main():
                   f"  computed from volume. That points at Sierra's volume aggregation for the\n"
                   f"  continuous contract rather than at the trading logic - check that the chart\n"
                   f"  is Back Adjusted and that it is the same contract the research used.")
+
+    if not diffs and warm_rep:
+        print(f"\n  Identical on the compared window. The {len(warm_rep)} dropped warm-up trades are the\n"
+              f"  only place the two books can still disagree, and they disagree because the replay\n"
+              f"  starts cold, not because Sierra trades differently. Give the chart more history in\n"
+              f"  front of the replay start date if you want those checked too.")
 
     if not diffs:
         print("\n  Identical. Sierra's session handling, rollover and bar-by-bar delivery match the\n"
