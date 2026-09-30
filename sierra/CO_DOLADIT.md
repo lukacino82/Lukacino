@@ -139,23 +139,42 @@ Oprava je `sc.ModifyOrder` na připojený stop. Potřebuju k tomu ověřit přes
 ACSIL; egress z kontejneru sierrachart.com nepustí. **Zkopíruj mi sem stránku *ACSIL Trading
 Functions*, sekci k připojeným příkazům, a dopíšu to.**
 
-### P2 — Šest Inputů je deklarovaných, ale mrtvých
+### ~~P2 — kill switche~~ HOTOVO 30. 9.
 
-Nejsou to zapomenuté nuly, ta logika neexistuje. Grep ukáže dvě reference na každý — jméno
-a výchozí hodnota, nikde čtení:
+Inputy 38 *Daily Loss Limit* a 39 *Max Drawdown Stop* fungují, počítané z vlastního ledgeru
+studie (žádné čtení účtu). Podrobnosti a cena v `NASTAVENI.md`, kapitola 5. Zbývající mrtvé
+Inputy jsou 40, 41 (Scale In) a 45 (Max Slippage); 46 musí zůstat No tak jako tak.
+
+### ~~P3 — override per rodinu~~ HOTOVO 30. 9.
+
+Inputy 65–88, dvojice SL / RRR na rodinu, nula = nech preset být. Ověřeno regresí na
+4 122 506 barech: s výchozími hodnotami je ledger bit-identický s předchozí verzí.
+
+### P0 (nové, 30. 9.) — nekompletní seance
+
+Replay 2016–2026 měl 99,7 % P&L a 34/48 presetů s identickou množinou vstupů. **Všech 26
+rozdílných vstupů leželo na pěti dnech v srpnu 2023** a měly jednu příčinu: seance
+2023-08-09 skončila v replayi v 15:35 místo v 16:00, takže close byl 5268,00 místo 5249,25.
+Ten špatný close pak šel do ATR20 a klouzavých průměrů na dalších dvacet seancí.
+
+Studie to teď pozná a nahlásí (`INCOMPLETE SESSION` v logu, počítadlo ve status boxu),
+plánované půldny odliší podle času — ověřeno na 99 zkrácených seancích z let 2015–2026,
+nula falešných poplachů. `check_replay.py` navíc rozdíly shlukuje podle dnů a na tenhle
+vzorec sám upozorní.
+
+**Sama data to neopraví.** Když replay zastavíš uprostřed seance, ten úsek pusť znovu.
+
+### P2b — zbylé mrtvé Inputy
+
+Nejsou to zapomenuté nuly, ta logika neexistuje:
 
 | # | Input | Dopad |
 |---|---|---|
-| 38 | Daily Loss Limit USD | **na Simu ani na ostrém účtu nic nezastaví** |
-| 39 | Max Drawdown Stop USD | totéž |
 | 45 | Max Slippage ticks | fill za libovolnou cenu projde |
 | 40, 41 | Scale In / Cap | funkce ze zadání, není |
 | 46 | Flatten At Session End | musí zůstat No (swingy), takže neškodí |
 
-Jediný strop, který dnes drží, je 34 *Max Gross Exposure*. Před krokem 4 bych aktivoval
-**38 a 39** — to jsou kill switche, a bez nich nemá smysl pouštět automat ani na Sim.
-Potřebují čtení P&L z účtu (`sc.GetTradeAccountBalance` a denní reset), takže je to práce
-řádově na hodinu, ne na pět minut.
+Max Slippage má smysl až u živých fillů; na Simu je slippage stejně simulovaný.
 
 ### P3 — Exit override je globální, ne per systém
 
@@ -214,12 +233,18 @@ jinak jen mate.
 
 ---
 
-## Pořadí, jak bych to dělal
+## Stav k 30. 9.
 
-1. **P2** — kill switche, než cokoliv pojede na Sim.
-2. **P1** — posuny stopu, jakmile mi pošleš tu stránku dokumentace.
-3. **P7** — dojet Replay, běží vedle a nic neblokuje.
-4. **P3** — override per rodinu, až budeš chtít ladit.
-5. **P6** — jádro, až se rozhodneš měřit overlay proti němu.
+| | |
+|---|---|
+| ~~P2 kill switche~~ | hotovo |
+| ~~P3 override per rodinu~~ | hotovo |
+| ~~P0 nekompletní seance~~ | detekce hotová |
+| ~~P7 dojet Replay~~ | hotovo, 99,7 % na 2016–2026 |
+| **P1 posuny stopu do Sierry** | **jediná věc, která brání plnému full auto** — čeká na dokumentaci ACSIL |
+| P6 long core | strategické, až se rozhodneš měřit overlay proti jádru |
+| P2b, P4, P5 | nedělat, dokud nebude co implementovat |
 
-P4 a P5 bych nedělal, dokud nebude co implementovat. Zatím není.
+Pro full auto na Simu je hotovo všechno kromě P1. Ten není blokující v tom smyslu, že by
+se nedalo obchodovat — 8 ze 48 presetů skončí tržním příkazem místo na posunutém stopu,
+což je 4,7 % obchodů za horší cenu, ne nechráněná pozice.

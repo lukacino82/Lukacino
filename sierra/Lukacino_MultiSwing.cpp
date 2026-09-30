@@ -47,6 +47,8 @@
 SCDLLName("Lukacino Multi-Swing")
 
 // ------------------------------------------------------------------ input indices (NEVER renumber)
+static const int NUM_FAMILIES = 12;
+
 enum InputIdx {
     IN_TRADING_ENABLED = 0, IN_MODE, IN_SEND_LIVE, IN_DIRECTION, IN_PRESET_FILE, IN_RELOAD,
     IN_RISK_UNIT, IN_INSTRUMENT, IN_EVAL_AT, IN_JOURNAL_FILE,                       // 0-9 global
@@ -64,7 +66,12 @@ enum InputIdx {
     IN_SHOW_STATUS = 59, IN_STATUS_CORNER, IN_STATUS_SIZE,
     IN_LABEL_SIGNALS, IN_LABEL_DAYS,                                                // 59-63 on-chart display
     IN_FEATURE_CSV = 64,                                                            // 64 diagnostics
-    IN_COUNT
+    // Per-family exit override, one pair per family, in the family order of IN_FAM1_ON.
+    // Zero means "leave this family's presets on their own validated exit", which is the default,
+    // so the book keeps trading exactly what was measured until a number is deliberately typed in.
+    // Appended at the end and never renumbered: an existing chart keeps every setting it had.
+    IN_FAMX_SL = 65, IN_FAMX_RRR = 66,                                              // 65-88, stride 2
+    IN_COUNT = IN_FAMX_SL + 2 * NUM_FAMILIES
 };
 
 enum ModeKind    { MODE_SIGNALS = 0, MODE_SEMI, MODE_FULL };
@@ -189,6 +196,7 @@ struct StudyState {
     std::vector<DailyBar> daily;        // completed RTH days, oldest first, capped at DAILY_HISTORY
     // in-progress session accumulators
     bool     sessionOpen = false;
+    int      curLastRthTod = -1;        // time of day of the last RTH bar seen in the open session
     SCDateTime sessionDate;
     DailyBar cur;
     double   curTpv = 0, curTp2v = 0, curVol = 0;                 // day VWAP accumulators
@@ -198,6 +206,14 @@ struct StudyState {
     double   lastCompletedMvwap = 0;
 
     long     dayCounter = -1;           // absolute number of completed trading days
+    int      incompleteDays = 0;        // sessions finalised without reaching their RTH end
+
+    // Realised P&L in points, from the study's own ledger - not from the account, which the
+    // study cannot read here. It is the same number the journal records, so the limits below
+    // bite on exactly what the book did, in Replay and on a Sim account alike.
+    double   realizedToday = 0, realizedTotal = 0, equityPeak = 0;
+    long     realizedDay = -1;
+    bool     haltedDaily = false, haltedDd = false;
     bool     loaded = false;
     bool     loadAttempted = false;   // a failed load is reported once, not on every study call
     SCString loadError;
@@ -748,6 +764,14 @@ static const char* ReasonName(int r)
     return "?";
 }
 
+// Book a closed trade into the running P&L the loss limits are measured on.
+static void BookRealized(StudyState& S, double pnlPts)
+{
+    S.realizedToday += pnlPts;
+    S.realizedTotal += pnlPts;
+    if (S.realizedTotal > S.equityPeak) S.equityPeak = S.realizedTotal;
+}
+
 // ------------------------------------------------------------------ process one completed daily bar
 // Everything the signal engine needs from the Inputs, resolved once per bar.
 struct RunCfg {
@@ -764,10 +788,19 @@ struct RunCfg {
     double limitOffsetPts = 0.0;
     int    entryExpiry = 1;
     bool   entryNextOpen = false;
+    // per-family exit override, 0 = leave the family on its preset exits
+    double famSlAtr[NUM_FAMILIES] = {0};
+    double famRrr[NUM_FAMILIES]   = {0};
     // risk caps
     int    maxConcurrent = 0, maxPerFamily = 0, maxPerRole = 0;
     double maxGross = 0;        // in MES equivalents
     double contractMult = 1.0;  // 1 for MES, 10 for ES
+    // loss limits, in account currency; 0 disables. usdPerPoint is per single contract.
+    double dailyLossUsd = 0, maxDdUsd = 0, usdPerPoint = 5.0;
+    // session completeness
+    int    rthEndSec = 16 * 3600;
+    int    sessionSlackSec = 300;        // tolerance on the last RTH bar before a day counts as short
+    int    earlyCloseSec = 13 * 3600 + 30 * 60;  // 13:30 - the latest a SCHEDULED early close lands
 };
 
 // Resolve the exit distances for one entry: preset values, or the global override when armed.
@@ -784,6 +817,22 @@ static void ResolveExit(const Preset& p, const RunCfg& cfg, double atr,
     } else {
         slDist = p.slAtr > 0 ? p.slAtr * atr : 1e18;
         tpDist = p.tpAtr > 0 ? p.tpAtr * atr : 1e18;
+    }
+    // A family override sits between the preset and the global one: the global override says
+    // "ALL presets" and means it, so it wins; otherwise a family's own numbers replace the
+    // preset's, and a zero leaves the preset alone. SL alone is enough - the target then keeps
+    // the preset's own risk-reward, which is usually what you want when widening a stop.
+    if (cfg.exitOverride == XO_PRESET && p.familyIdx >= 0 && p.familyIdx < NUM_FAMILIES) {
+        const double fsl = cfg.famSlAtr[p.familyIdx], frrr = cfg.famRrr[p.familyIdx];
+        if (fsl > 0 || frrr > 0) {
+            const double presetRrr = (p.slAtr > 0 && p.tpAtr > 0) ? p.tpAtr / p.slAtr : 0.0;
+            const double useSl  = fsl  > 0 ? fsl  : p.slAtr;
+            const double useRrr = frrr > 0 ? frrr : presetRrr;
+            if (useSl > 0) {
+                slDist = useSl * atr;
+                tpDist = useRrr > 0 ? slDist * useRrr : tpDist;
+            }
+        }
     }
     if (cfg.exitOverride == XO_PRESET) {
         trailDist = p.trailAtr > 0 ? p.trailAtr * atr : 1e18;
@@ -842,6 +891,44 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
     if (!f.ready) return;
     const Features& pf = (i >= 1 && F[i - 1].ready) ? F[i - 1] : f;
 
+    // ---- loss limits
+    //
+    // A new trading day clears the daily limit; the drawdown limit does not clear by itself,
+    // because a book that has given back that much is not a book to keep starting fresh every
+    // morning. Both only block NEW entries: positions already in the market keep their stop and
+    // target and are managed to the end, which is the opposite of a flatten-everything switch
+    // and is deliberate - swings are held overnight and a forced exit at a limit breach would
+    // realise the worst price of the move.
+    const double usdPerPt = cfg.usdPerPoint;
+    if (absDay != S.realizedDay) {
+        // The book decides once a session, at the close, so every entry and every exit of a day
+        // happen at the same instant: a limit that stopped trading "for the rest of the day"
+        // would have nothing left to stop. What it can do is stand the book down for the session
+        // after a day that lost more than the limit, and that is what this does.
+        const bool breach = cfg.dailyLossUsd > 0 && S.realizedDay >= 0 &&
+                            S.realizedToday * usdPerPt <= -cfg.dailyLossUsd;
+        if (breach) {
+            SCString m; m.Format("Multi-Swing: DAILY LOSS LIMIT - the last session realised "
+                                 "%.0f USD (%.2f pts), past the %.0f USD limit. No new entries "
+                                 "this session; open positions keep their stop and target.",
+                                 -S.realizedToday * usdPerPt, S.realizedToday, cfg.dailyLossUsd);
+            sc.AddMessageToLog(m, 1);
+        }
+        S.haltedDaily = breach;
+        S.realizedDay = absDay;
+        S.realizedToday = 0;
+    }
+    if (cfg.maxDdUsd > 0 && !S.haltedDd &&
+        (S.equityPeak - S.realizedTotal) * usdPerPt >= cfg.maxDdUsd) {
+        S.haltedDd = true;
+        SCString m; m.Format("Multi-Swing: MAX DRAWDOWN STOP hit - %.0f USD off the peak "
+                             "(%.2f pts). No new entries at all until the study is reloaded; "
+                             "open positions keep their stop and target.",
+                             (S.equityPeak - S.realizedTotal) * usdPerPt, S.equityPeak - S.realizedTotal);
+        sc.AddMessageToLog(m, 1);
+    }
+    const bool halted = S.haltedDaily || S.haltedDd;
+
     for (size_t k = 0; k < S.presets.size(); ++k) {
         Preset& p = S.presets[k];
         PresetState& st = S.states[k];
@@ -855,7 +942,7 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
         if (direction == DIR_SHORT_ONLY) { st = PresetState(); continue; }   // every preset here is long
 
         // ---- 1. a resting order armed yesterday may fill today (limit / stop, ON + RTH)
-        if (st.inPos == 0 && st.pendingSide != 0 &&
+        if (st.inPos == 0 && st.pendingSide != 0 && !halted &&
             absDay - st.pendingDay >= 1 && absDay - st.pendingDay <= cfg.entryExpiry) {
             bool filled = false; double fill = 0;
             if (st.pendingLevel > 1e17) { filled = true; fill = d[i].o; }          // "next open" entry
@@ -883,6 +970,7 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
                        st.worst - st.entry, st.best - st.entry,
                        (int)(absDay - st.entryDay) + 1, "signal");
             AppendJournal(journalPath, row, S);
+            BookRealized(S, pnl * riskUnit * weight);
             st = PresetState();
         }
 
@@ -930,6 +1018,7 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
                            st.worst - st.entry, st.best - st.entry,
                            (int)(absDay - st.entryDay) + 1, ReasonName(code));
                 AppendJournal(journalPath, row, S);
+                BookRealized(S, pnl * riskUnit * weight);
                 if (logLevel >= LOG_INFO) {
                     SCString m; m.Format("EXIT %s %s @ %.2f  (%.2f pts, %s)",
                                          p.id.GetChars(), DayString(xd).GetChars(), px, pnl, ReasonName(code));
@@ -940,7 +1029,7 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
         }
 
         // ---- 4. a new signal on today's close
-        if (st.inPos == 0 && st.pendingSide == 0 && !st.exitNextOpen) {
+        if (st.inPos == 0 && st.pendingSide == 0 && !st.exitNextOpen && !halted) {
             if (RegimeOk(p, f) && SetupSignal(p, d, i, f, pf) && CapsAllow(S, k, cfg)) {
                 st.signalDay = absDay;
                 EntryKind entry = p.entry;
@@ -1003,6 +1092,7 @@ static void ResetDayAccumulators(StudyState& S)
     S.cur = DailyBar();
     S.curTpv = S.curTp2v = S.curVol = 0;
     S.sessionOpen = false;
+    S.curLastRthTod = -1;
 }
 
 
@@ -1014,6 +1104,43 @@ static void FinalizeDay(SCStudyInterfaceRef sc, StudyState& S, std::vector<Featu
                         const RunCfg& cfg, const SCString& journal, bool enabled)
 {
     DailyBar& b = S.cur;
+
+    // A session that never reached its RTH end was not fully delivered: a replay stopped and
+    // restarted mid-session, or a hole in the feed. The day still has to be appended, because
+    // dropping it would shift every session index the open positions count against - but its
+    // close is whatever price arrived last, and that close then feeds ATR20 and every moving
+    // average for the next twenty sessions. Measured once on the 2023-08-09 replay: one session
+    // truncated at 15:35 moved 26 entries across five days. Silence is what made that expensive
+    // to find, so it is logged loudly and counted in the status box.
+    if (S.curLastRthTod >= 0 && S.curLastRthTod < cfg.rthEndSec - cfg.sessionSlackSec) {
+        // A scheduled half day and a hole in the feed both leave the session short, and no bar
+        // says which one happened - the study does not know the exchange calendar. The clock
+        // does separate them in practice: every US early close lands at 13:00 or 13:15, and
+        // nothing is scheduled to close later than that but before the bell. Measured over
+        // 2015-2026 of clean research data: 99 short sessions, all of them at 12:59, 13:00 or
+        // 13:14, and not one in between - while the 2023-08-09 replay was cut at 15:35. So a
+        // session ending after earlyCloseSec is a gap, and one ending before it is a half day
+        // that both this study and the research engine see the same way.
+        const int hh = S.curLastRthTod / 3600, mm = (S.curLastRthTod % 3600) / 60;
+        if (S.curLastRthTod >= cfg.earlyCloseSec) {
+            ++S.incompleteDays;
+            SCString m;
+            m.Format("Multi-Swing: INCOMPLETE SESSION %s - last RTH bar at %02d:%02d, RTH ends at "
+                     "%02d:%02d, and no exchange half day closes then. The close used is %.2f, "
+                     "which is not the session's close. This day's signals and the next ~20 "
+                     "sessions of ATR are computed from it. Re-run the replay without stopping "
+                     "mid-session, or fill the gap in the chart's data.",
+                     DayString(b.date).GetChars(), hh, mm,
+                     cfg.rthEndSec / 3600, (cfg.rthEndSec % 3600) / 60, b.c);
+            sc.AddMessageToLog(m, 1);
+        } else if (cfg.logLevel >= LOG_DEBUG) {
+            SCString m;
+            m.Format("Multi-Swing: shortened session %s - last RTH bar at %02d:%02d, consistent "
+                     "with a scheduled early close.", DayString(b.date).GetChars(), hh, mm);
+            sc.AddMessageToLog(m, 0);
+        }
+    }
+
     if (S.curVol > 0) {
         b.dvwap = S.curTpv / S.curVol;
         b.dvwapSd = sqrt(std::max(S.curTp2v / S.curVol - b.dvwap * b.dvwap, 0.0));
@@ -1256,11 +1383,24 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     // Once placement has stopped the box must say so: it was still reading "ORDERS LIVE" while
     // nothing was being sent, which is the one thing a status box must never get wrong.
     const bool stopped = S.orderFailures >= ORDER_FAILURE_LIMIT;
+    // A halt stops new entries, so the box must say so before it says anything about the mode -
+    // "FULL AUTO - ORDERS LIVE" while a loss limit is blocking every entry would be a lie.
+    const bool halted = S.haltedDd || S.haltedDaily;
     const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
                          : stopped            ? "STOPPED - rejections, nothing is being sent"
+                         : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
+                         : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
                          : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE" : "FULL AUTO - not sending")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
+
+    SCString pnl;
+    pnl.Format("P&L       %+.0f pts today   %+.0f total   %.0f off peak",
+               S.realizedToday, S.realizedTotal, S.equityPeak - S.realizedTotal);
+    SCString warn;
+    if (S.incompleteDays > 0)
+        warn.Format("\nWARNING   %d incomplete session%s - see the Message Log",
+                    S.incompleteDays, S.incompleteDays == 1 ? "" : "s");
 
     SCString text;
     text.Format("LUKACINO MULTI-SWING\n"
@@ -1268,13 +1408,15 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                 "presets   %d in %d families\n"
                 "open      %d presets\n"
                 "book      %d contracts   position %d\n"
-                "days      %d   risk unit %.2f %s",
+                "days      %d   risk unit %.2f %s\n"
+                "%s%s",
                 modeName, (int)S.presets.size(), S.familyCount, openPresets,
                 target, position, (int)S.daily.size(), cfg.riskUnit,
-                sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES");
+                sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
+                pnl.GetChars(), warn.GetChars());
 
     // Red whenever real orders can leave the study, so a live run never looks like a paper one.
-    const COLORREF colour = stopped                                   ? RGB(255, 200, 0)
+    const COLORREF colour = stopped || halted                         ? RGB(255, 200, 0)
                           : (enabled && mode == MODE_FULL && sending)  ? RGB(255, 80, 80)
                           : !enabled                                   ? RGB(150, 150, 150)
                                                                        : RGB(0, 220, 120);
@@ -1389,8 +1531,8 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_MAX_CONCURRENT].Name = "Max Concurrent Presets"; sc.Input[IN_MAX_CONCURRENT].SetInt(48);
         sc.Input[IN_MAX_PER_FAMILY].Name = "Max Presets Per Family"; sc.Input[IN_MAX_PER_FAMILY].SetInt(4);
         sc.Input[IN_MAX_PER_ROLE].Name = "Max Presets Per Role";     sc.Input[IN_MAX_PER_ROLE].SetInt(12);
-        sc.Input[IN_DAILY_LOSS].Name = "Daily Loss Limit USD (step 3, not active yet)"; sc.Input[IN_DAILY_LOSS].SetFloat(0);
-        sc.Input[IN_MAX_DD_STOP].Name = "Max Drawdown Stop USD (step 3, not active yet)"; sc.Input[IN_MAX_DD_STOP].SetFloat(0);
+        sc.Input[IN_DAILY_LOSS].Name = "Daily Loss Limit USD (0 = off, stands down next session)";  sc.Input[IN_DAILY_LOSS].SetFloat(0);
+        sc.Input[IN_MAX_DD_STOP].Name = "Max Drawdown Stop USD (0 = off, halts until reload)"; sc.Input[IN_MAX_DD_STOP].SetFloat(0);
         sc.Input[IN_SCALE_IN].Name = "Scale In By Correction Depth (step 3, not active yet)"; sc.Input[IN_SCALE_IN].SetYesNo(0);
         sc.Input[IN_SCALE_CAP].Name = "Scale In Cap (step 3, not active yet)";               sc.Input[IN_SCALE_CAP].SetFloat(2.0f);
 
@@ -1437,6 +1579,16 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_LABEL_SIGNALS].SetYesNo(0);
         sc.Input[IN_LABEL_DAYS].Name = "  Label Only The Last N Sessions (0 = all)";
         sc.Input[IN_LABEL_DAYS].SetInt(60);
+
+        // Per-family exit override. Zero keeps the family on the exits its presets were validated
+        // with, so the defaults change nothing.
+        for (int k = 0; k < NUM_FAMILIES; ++k) {
+            SCString a, b;
+            a.Format("  Fam%d Override SL (x ATR20, 0 = preset)", k + 1);
+            b.Format("  Fam%d Override RRR (0 = preset)", k + 1);
+            sc.Input[IN_FAMX_SL  + 2 * k].Name = a; sc.Input[IN_FAMX_SL  + 2 * k].SetFloat(0);
+            sc.Input[IN_FAMX_RRR + 2 * k].Name = b; sc.Input[IN_FAMX_RRR + 2 * k].SetFloat(0);
+        }
         sc.Input[IN_FEATURE_CSV].Name = "Feature Dump CSV (blank = off)";
         sc.Input[IN_FEATURE_CSV].SetString("");
         return;
@@ -1532,6 +1684,13 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     cfg.ovTpPts       = sc.Input[IN_OV_TP_TICKS].GetInt() * tickSize;
     cfg.ovBeR         = sc.Input[IN_OV_BE_R].GetFloat();
     cfg.ovTrailAtr    = sc.Input[IN_OV_TRAIL_ATR].GetFloat();
+    for (int k = 0; k < NUM_FAMILIES; ++k) {
+        cfg.famSlAtr[k] = sc.Input[IN_FAMX_SL  + 2 * k].GetFloat();
+        cfg.famRrr[k]   = sc.Input[IN_FAMX_RRR + 2 * k].GetFloat();
+    }
+    cfg.dailyLossUsd  = sc.Input[IN_DAILY_LOSS].GetFloat();
+    cfg.maxDdUsd      = sc.Input[IN_MAX_DD_STOP].GetFloat();
+    cfg.rthEndSec     = rthEnd;
     cfg.globalTimeStop = sc.Input[IN_TIME_STOP].GetInt();
     cfg.entryOverride = sc.Input[IN_ENTRY_TYPE].GetIndex();
     cfg.limitOffsetPts = sc.Input[IN_LIMIT_OFFSET].GetInt() * tickSize;
@@ -1542,6 +1701,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     cfg.maxPerRole    = sc.Input[IN_MAX_PER_ROLE].GetInt();
     cfg.maxGross      = sc.Input[IN_MAX_GROSS].GetInt();
     cfg.contractMult  = sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? 10.0 : 1.0;   // ES = 10 x MES
+    cfg.usdPerPoint   = 5.0 * cfg.contractMult;                                 // MES 5, ES 50
     const bool enabled = sc.Input[IN_TRADING_ENABLED].GetYesNo() != 0;
 
     // a full recalculation restarts the aggregation from scratch
@@ -1552,6 +1712,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       S->journalRows = 0; S->semiPosition = 0;
                       S->orderFailures = 0; S->legs.clear();
                       S->trimSentQty = 0; S->trimSentAccount = -1;
+                      S->incompleteDays = 0;
+                      S->realizedToday = S->realizedTotal = S->equityPeak = 0;
+                      S->realizedDay = -1; S->haltedDaily = S->haltedDd = false;
                       ResetJournal(DataPath(sc, sc.Input[IN_JOURNAL_FILE].GetString()));
                       ResetFeatureCsv(S->featureCsv); }
 
@@ -1613,6 +1776,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             if (S->cur.o == 0) { S->cur.o = op; S->cur.h = hi; S->cur.l = lo; }
             else { S->cur.h = std::max(S->cur.h, hi); S->cur.l = std::min(S->cur.l, lo); }
             S->cur.c = cl;
+            S->curLastRthTod = tod;
         }
 
         // ---- plots and diagnostics on the intraday chart

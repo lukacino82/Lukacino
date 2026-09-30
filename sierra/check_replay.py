@@ -277,6 +277,31 @@ def main():
     if pnl_o:
         print(f"\n  P&L pts  replay {pnl_r:.0f}  offline {pnl_o:.0f} ({100 * pnl_r / pnl_o:.1f} %)")
 
+    # Which DAYS the books disagree on, not just which presets. A study-wide cause - one session
+    # delivered short, a rollover, a time-zone slip - hits many presets on a handful of dates,
+    # and reading that off the per-preset table means reconstructing it by hand. Measured once:
+    # 26 differing entries over 14 presets turned out to be five days in August 2023, all of them
+    # downstream of a single session the replay had truncated at 15:35.
+    if diffs:
+        by_day: dict[str, set] = {}
+        for pid in ids:
+            re_ = {x["entry_day"] for x in rep if x["preset_id"] == pid}
+            oe = {x["entry_day"] for x in off if x["preset_id"] == pid}
+            for day in re_ ^ oe:
+                by_day.setdefault(day, set()).add(pid)
+        print(f"\n  the differences fall on {len(by_day)} day(s):")
+        for day in sorted(by_day)[:20]:
+            wd = dt.date.fromisoformat(day).strftime("%a")
+            print(f"    {day} {wd}  {len(by_day[day])} preset(s)")
+        if len(by_day) > 20:
+            print(f"    ... and {len(by_day) - 20} more")
+        span = (dt.date.fromisoformat(max(by_day)) - dt.date.fromisoformat(min(by_day))).days
+        if len(by_day) <= 10 and span <= 45:
+            print(f"\n  All of them sit inside {span} days. That is one event, not {len(diffs)} unrelated\n"
+                  f"  presets: a session the replay received short feeds a wrong close into ATR20 and\n"
+                  f"  every moving average for the next twenty sessions. Search the Message Log for\n"
+                  f"  INCOMPLETE SESSION around {min(by_day)} - the study logs it when it happens.")
+
     if diffs:
         fam_of = {r["preset_id"]: r["family"] for r in off}
         fam_of.update({r["preset_id"]: r["family"] for r in rep})

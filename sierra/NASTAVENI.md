@@ -128,8 +128,8 @@ podle vlastních výsledků, ne podle dojmu.
 | 35 | Max Concurrent Presets | 48 | ano | 48 = neomezuje; snižování stojí hodně, viz níže |
 | 36 | Max Presets Per Family | 4 | ano | rodina má právě 4 varianty, takže neomezuje |
 | 37 | Max Presets Per Role | 12 | ano | největší role má 12 presetů, takže neomezuje |
-| 38 | Daily Loss Limit USD | 0 | **ne, zatím** | potřebuje čtení P&L z účtu |
-| 39 | Max Drawdown Stop USD | 0 | **ne, krok 3** | |
+| 38 | Daily Loss Limit USD | 0 | **ano** | 0 = vypnuto; po ztrátové seanci nad limit stojí kniha jednu seanci |
+| 39 | Max Drawdown Stop USD | 0 | **ano** | 0 = vypnuto; propad od vrcholu nad limit zastaví vstupy až do reloadu |
 | 40 | Scale In By Correction Depth | No | **ne, krok 3** | |
 | 41 | Scale In Cap | 2.0 | **ne, krok 3** | |
 
@@ -184,6 +184,56 @@ Breakeven (57) a trailing (58) platí jen když je override zapnutý.
 
 Jednotný exit přes všech 48 presetů stojí 0–20 % P&L. Override je proto na experimenty,
 ne na ostrý provoz. Když ho zapneš, výsledky z reportu už neplatí.
+
+### Limity ztrát (38, 39)
+
+Počítají se z **vlastního ledgeru studie**, ne z účtu — je to tentýž P&L, který se zapisuje
+do `swing_journal.csv`, takže limity kousnou přesně do toho, co kniha udělala, v Replayi
+i na Simu stejně. Přepočet na dolary: MES 5 USD za bod, ES 50, krát *Risk Unit*.
+
+Obě zastaví jen **nové vstupy**. Otevřené pozice si nechají svůj stop a target a dojedou
+do konce — to je schválně. Jsou to swingy držené přes noc a nucený výstup v momentě, kdy
+limit sepne, realizuje tu nejhorší cenu pohybu.
+
+- **38 Daily Loss Limit** — kniha rozhoduje jednou za seanci, na close, takže všechny vstupy
+  i výstupy jednoho dne padnou ve stejný okamžik. Limit, který by zastavil obchodování „do
+  konce dne", by neměl co zastavit. Co udělat může, je postavit knihu na **jednu následující
+  seanci**, a to dělá.
+- **39 Max Drawdown Stop** — propad realizovaného P&L od jeho vrcholu. Sepne natrvalo,
+  dokud studii nereloaduješ.
+
+Co to stojí, změřeno na 2015–2026 (48 presetů, MES, Risk Unit 1):
+
+| Nastavení | Obchodů | P&L | Kolikrát sepnul |
+|---|---:|---:|---:|
+| vypnuto | 6 637 | 73 729 b. | — |
+| Daily Loss 5 000 USD | 6 330 | 67 846 b. | 22× |
+| Daily Loss 1 000 USD | 5 917 | 57 659 b. | 171× |
+| Max Drawdown 20 000 USD | 1 289 | 6 282 b. | 1× |
+
+**Je to pojistka, ne vylepšení.** Každá úroveň stojí P&L. Nastav ji podle toho, kolik jsi
+ochoten ztratit, ne podle toho, kde vychází nejlíp.
+
+### Per-rodinový override TP/SL (65–88)
+
+Dvanáct dvojic, v pořadí rodin z Inputů 10–33:
+
+| # | Input | Výchozí |
+|---|---|---|
+| 65, 67, … 87 | Fam*k* Override SL (x ATR20, 0 = preset) | 0 |
+| 66, 68, … 88 | Fam*k* Override RRR (0 = preset) | 0 |
+
+**Nula znamená „nesahej"**, takže ve výchozím stavu kniha obchoduje přesně ty exity, které
+byly pro každý preset ověřené. Ověřeno regresí na 4 122 506 barech: s výchozími hodnotami je
+ledger **bit-identický** s verzí před přidáním těchto Inputů.
+
+Když vyplníš jen SL, target si podrží vlastní RRR presetu — což je obvykle to, co chceš,
+když stop rozšiřuješ. Globální override (Input 52) má přednost: říká „ALL presets" a myslí to
+vážně. Změřeno, rodina 6 (IBS) ze SL presetu na 2 ATR: 941 → 788 obchodů a 8 024 → 5 393 bodů,
+a **žádná jiná rodina se nehnula**.
+
+Per preset to přes Inputy nejde a nepůjde — 48 × 2 by se do limitu 128 nevešlo. Na to je
+sloupec `exit` v `swing_presets.csv`.
 
 ### Seance a diagnostika (48–51)
 
@@ -437,9 +487,9 @@ přebytku nechá zbývajícím vstupům jejich připojené stopy. To ukáže až
 první věc, kterou tam kontrolovat: v *Trade → Trade Orders and Positions* musí být otevřených
 stop příkazů právě tolik, kolik je otevřených presetů se stopem.
 
-**Riskové limity zatím nechrání.** Inputy 38 *Daily Loss Limit* a 39 *Max Drawdown Stop* nejsou
-aktivní, takže jediný strop, který na Simu opravdu drží, je 34 *Max Gross Exposure*. Nastav ho
-podle toho, co jsi ochoten mít v trhu, ne podle výchozí hodnoty.
+**Než pustíš full auto, nastav limity ztrát.** Inputy 38 a 39 už fungují (kapitola 5), ale
+výchozí nula je vypíná. Spolu s 34 *Max Gross Exposure* jsou to jediné tři stropy, které
+na účtu drží.
 
 ### Co uvidíš v logu
 
@@ -451,6 +501,27 @@ Multi-Swing: BUY 3 -> position 12 (book wants 12)
 Odmítnutý příkaz se loguje jako chyba **pokaždé**, ne jen jednou. Má to důvod: po odmítnutí
 drží účet něco jiného, než si myslí ledger, a každé další dorovnání se počítá proti špatné
 pozici. Když ti to naskakuje, zkontroluj vybraný účet a Trade Simulation Mode.
+
+### Nekompletní seance
+
+Studie hlídá, jestli každá seance došla až ke svému RTH konci. Když ne, napíše do Message Logu:
+
+```
+Multi-Swing: INCOMPLETE SESSION 2023-08-09 - last RTH bar at 15:35, RTH ends at 16:00,
+and no exchange half day closes then. The close used is 5268.00, ...
+```
+
+a ve status boxu přibude řádek `WARNING  n incomplete sessions`. **Ber to vážně:** close, ze
+kterého se ten den počítají signály, není close seance, a jde dál do ATR20 a klouzavých
+průměrů na dalších zhruba dvacet seancí. Právě tohle se stalo při tvém replayi 2023-08-09 —
+jedna seance useknutá v 15:35 rozhodila 26 vstupů na pěti dnech.
+
+Nejčastější příčina je **zastavení a znovuspuštění replaye uprostřed seance**. Když se to
+stane, pusť ten úsek znovu vcelku.
+
+Plánované půldny (13:00 a 13:15) se **nehlásí** — studie je pozná podle času a jsou v pořádku,
+offline engine je vidí stejně. Ověřeno na letech 2015–2026: 99 zkrácených seancí, všechny ve
+12:59, 13:00 nebo 13:14, ani jedna falešně nahlášená.
 
 ### Na co pozor
 

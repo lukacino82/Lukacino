@@ -65,11 +65,33 @@ chování při živých datech. Session handling, rollover a bar-po-baru doručo
 
 ## Výsledek Replay
 
-Replay z 29. 9. 2026, graf ES 1 minuta, *Days to Load* 400, mód *Signals only*, příkazy vypnuté.
-Běh byl zastaven dřív, než dojel do konce: ledger sahá od 2016-08-15 do 2019-12-04, tedy
-1 887 obchodů proti 6 504 v referenci za celé období.
+Druhý běh, 30. 9. 2026, dojel celé období: **2016-08-15 až 2026-09-25, 6 103 obchodů.**
 
-`check_replay.py` proti `reference_journal.csv` na překryvu 2016-08-15 … 2019-11-04:
+| Okno 2016-10-14 … 2026-08-24 | Replay | Offline |
+|---|---:|---:|
+| Obchodů | 5 923 | 5 925 |
+| P&L v bodech | 71 111 | 71 339 → **99,7 %** |
+| Presetů s identickou množinou vstupů | 34 ze 48 | |
+| Rozdílných vstupů | 26 z 5 923 | |
+
+**Všech 26 rozdílů leží na pěti dnech mezi 2023-08-09 a 2023-09-20 a mají jednu příčinu.**
+Seance 2023-08-09 skončila v replayi v 15:35 místo v 16:00 — poslední bar, který dorazil,
+dal close 5268,00, zatímco skutečný close je 5249,25. Ten close pak šel do ATR20 a klouzavých
+průměrů na dalších dvacet seancí, takže se rozjelo 26 vstupů napříč 14 presety. Nejčastější
+příčina je zastavení a znovuspuštění replaye uprostřed seance.
+
+Studie to teď pozná: `INCOMPLETE SESSION` v Message Logu a počítadlo ve status boxu, s
+plánovanými půldny odlišenými podle času (ověřeno na 99 zkrácených seancích z let 2015–2026,
+nula falešných poplachů). `check_replay.py` rozdíly shlukuje podle dnů a na tenhle vzorec sám
+upozorní.
+
+Mimo ten jeden týden se knihy neliší vůbec.
+
+### První běh, 29. 9., zahřívací fáze
+
+Graf ES 1 minuta, *Days to Load* 400, mód *Signals only*, příkazy vypnuté. Zastaven po
+1 887 obchodech, ledger 2016-08-15 až 2019-12-04. `check_replay.py` na překryvu
+2016-08-15 … 2019-11-04:
 
 | Kontrola | Výsledek |
 |---|---|

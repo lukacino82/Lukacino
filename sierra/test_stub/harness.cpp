@@ -22,7 +22,8 @@ enum { IN_TRADING_ENABLED = 0, IN_MODE, IN_SEND_LIVE, IN_DIRECTION, IN_PRESET_FI
        IN_RISK_UNIT, IN_INSTRUMENT, IN_EVAL_AT, IN_JOURNAL_FILE,
        IN_MAX_GROSS = 34, IN_MAX_CONCURRENT, IN_MAX_PER_FAMILY, IN_MAX_PER_ROLE,
        IN_ENTRY_EXPIRY = 44, IN_TIME_STOP = 47, IN_LOG_LEVEL = 50,
-       IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR = 53, IN_OV_RRR = 54 };
+       IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR = 53, IN_OV_RRR = 54,
+       IN_DAILY_LOSS = 38, IN_MAX_DD_STOP = 39, IN_FAMX_SL = 65, IN_FAMX_RRR = 66 };
 
 // the study keeps its daily bars inside a private struct; for the harness we re-read the
 // subgraphs it publishes, which is exactly what a Sierra user can see on the chart
@@ -45,6 +46,22 @@ int main(int argc, char** argv)
     if (const char* v = getenv("OV_SL_ATR"))      sc.Input[IN_OV_SL_ATR].SetFloat((float)atof(v));
     if (const char* v = getenv("OV_RRR"))         sc.Input[IN_OV_RRR].SetFloat((float)atof(v));
     if (const char* v = getenv("TIME_STOP"))      sc.Input[IN_TIME_STOP].SetInt(atoi(v));
+    if (const char* v = getenv("DAILY_LOSS"))     sc.Input[IN_DAILY_LOSS].SetFloat((float)atof(v));
+    if (const char* v = getenv("MAX_DD"))         sc.Input[IN_MAX_DD_STOP].SetFloat((float)atof(v));
+    // FAM_SL / FAM_RRR take "family:value" pairs, 1-based, e.g. FAM_SL="1:2.0,3:1.5"
+    for (int which = 0; which < 2; ++which) {
+        const char* v = getenv(which == 0 ? "FAM_SL" : "FAM_RRR");
+        if (!v) continue;
+        const int base = which == 0 ? IN_FAMX_SL : IN_FAMX_RRR;
+        std::stringstream ps(v); std::string tok;
+        while (std::getline(ps, tok, ',')) {
+            size_t colon = tok.find(':');
+            if (colon == std::string::npos) continue;
+            int fam = atoi(tok.substr(0, colon).c_str());
+            if (fam < 1 || fam > 12) continue;
+            sc.Input[base + 2 * (fam - 1)].SetFloat((float)atof(tok.substr(colon + 1).c_str()));
+        }
+    }
     sc.SecondsPerBar = 60;
 
     std::ifstream f(argv[1]);
