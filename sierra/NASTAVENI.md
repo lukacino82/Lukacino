@@ -35,6 +35,25 @@ Data Files Folder*. Do ní patří `swing_presets.csv`.
 3. *Analysis → Build Custom Studies DLL* → vyber soubor → **Build**
 4. V okně buildu musí být `The build is complete` bez chyb
 
+### Aktualizace studie: studii do grafu znovu nepřidáváš
+
+Po buildu Sierra DLL sama vymění za běhu. V Message Logu to vypadá takhle:
+
+```
+Unloaded DLL: C:\SierraChart\Data\Lukacino_MultiSwing.dll
+Loading DLL:  C:\SierraChart\Data\Lukacino_MultiSwing.dll
+Multi-Swing 2026-09-30.10: loaded 48 presets (48 valid) in 12 families
+```
+
+Studie zůstane na grafu, **nastavení Inputů si podrží** — nové Inputy se přidávají jen na konec a
+existující se nikdy nepřečíslovávají, takže reload nikdy nic nepřepíše. Přidávat studii znovu
+nebo přenastavovat Inputy není potřeba.
+
+**Zkontroluj ale, že se build opravdu povedl.** Sierra kompiluje na vzdáleném serveru
+(`build.sierrachart.com`) a když odpověď nepřijde — v logu `The compiler response is empty.` —
+zůstane nahraná **stará DLL** a v logu to vypadá stejně. Proto studie na začátku hlásí svoji
+verzi. Když se to číslo po buildu nezměnilo, build neprošel, ať okno tvrdí cokoliv.
+
 ---
 
 ## 3. Graf

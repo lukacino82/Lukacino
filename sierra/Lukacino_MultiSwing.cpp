@@ -47,6 +47,12 @@
 SCDLLName("Lukacino Multi-Swing")
 
 // ------------------------------------------------------------------ input indices (NEVER renumber)
+// Bumped by hand whenever the source changes. Sierra compiles on a remote build server and a
+// failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
+// so the study says which source it is, and a version that did not change means the build did not
+// take, however cleanly the build window reported it.
+static const char* STUDY_VERSION = "2026-09-30.10";
+
 static const int NUM_FAMILIES = 12;
 
 enum InputIdx {
@@ -1833,8 +1839,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         SCString m;
         if (ok) {
             int valid = 0; for (size_t i = 0; i < S->presets.size(); ++i) if (S->presets[i].valid) ++valid;
-            m.Format("Multi-Swing: loaded %d presets (%d valid) in %d families from %s. %s",
-                     (int)S->presets.size(), valid, S->familyCount, path.GetChars(), err.GetChars());
+            m.Format("Multi-Swing %s: loaded %d presets (%d valid) in %d families from %s. %s",
+                     STUDY_VERSION, (int)S->presets.size(), valid, S->familyCount,
+                     path.GetChars(), err.GetChars());
             sc.AddMessageToLog(m, 0);
             for (size_t i = 0; i < S->presets.size(); ++i)
                 if (!S->presets[i].valid) { SCString e; e.Format("  preset %s: %s",
