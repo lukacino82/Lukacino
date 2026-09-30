@@ -185,6 +185,9 @@ struct SCStudyInterface {
     // position after adding to it ratchets upward and never comes back down.
     bool   stubRefuseExits = getenv("STUB_ORDERS")
                            && strcmp(getenv("STUB_ORDERS"), "sim_noexit") == 0;
+    // on by default in sim: it is what Sierra does. STUB_COVERAGE=0 turns it off to show the
+    // difference a design makes.
+    bool   enforceCoverage = !(getenv("STUB_COVERAGE") && atoi(getenv("STUB_COVERAGE")) == 0);
     int    nextOrderId = 1;
     // STUB_START_POS=<n> starts the account already holding contracts nobody in this run placed,
     // which is exactly the state a reload or a Sierra restart leaves behind.
@@ -253,11 +256,26 @@ struct SCStudyInterface {
         if (stubPosition < want) ++oversoldEvents;   // the book wanted more than is held
     }
 
+    // Sierra's actual rule, quoted from a Trade Activity Log: "SellExit signal is ignored ... there
+    // are already working exit orders that will flatten the position. Current Position with working
+    // exit orders: 0." A market sell is refused for any contract already covered by a working stop
+    // or target. The stub enforces exactly that, so the offline run can no longer pass a design
+    // that only works because the stub was more permissive than Sierra.
+    int  exitsRefusedAsCovered = 0;
     int  SellExit(s_SCNewOrder& o)
     {
         ++ordersAttempted;
         if (!stubSim) return -1;
         if (stubRefuseExits) return -1;
+        if (enforceCoverage) {
+            int covered = 0;
+            for (std::map<int, StubOrder>::iterator it = working.begin(); it != working.end(); ++it)
+                if (bracket.count(it->second.parent)) covered += it->second.qty;
+            // each bracket is an OCO pair, so its two children cover the parent's quantity once
+            int uncovered = (int)stubPosition - covered / 2;
+            if (uncovered < 0) uncovered = 0;
+            if (o.OrderQuantity > uncovered) { ++exitsRefusedAsCovered; return -1; }
+        }
         if (o.OrderQuantity > stubPosition - pendingSellQty) ++trimOverSurplus;
         if (stubFillDelay > 0) {
             pendingSellQty += o.OrderQuantity;
@@ -278,6 +296,8 @@ struct SCStudyInterface {
         return o.InternalOrderID;
     }
 
+    double stubLast = 0;          // the harness sets this to the bar close before each call
+    int    bracketExits = 0;      // children steered to the market and filled
     int  ModifyOrder(s_SCNewOrder& o)
     {
         if (!stubSim) return -1;
@@ -285,6 +305,23 @@ struct SCStudyInterface {
         if (it == working.end()) { ++stopMovesOnDeadOrder; return -1; }
         it->second.price = o.Price1;
         ++stopMovesOk;
+        // A sell order moved to or below the market fills at once, which is how a preset the book
+        // has closed actually leaves the account. Its sibling goes with it: a bracket is OCO.
+        if (stubLast > 0 && o.Price1 <= stubLast) {
+            const int parent = it->second.parent;
+            const int qty    = it->second.qty;
+            std::map<int, std::pair<int,int> >::iterator b = bracket.find(parent);
+            if (b != bracket.end()) {
+                working.erase(b->second.first);
+                working.erase(b->second.second);
+                bracket.erase(b);
+            } else {
+                working.erase(it);
+            }
+            stubPosition -= qty;
+            if (stubPosition < 0) stubPosition = 0;
+            ++bracketExits;
+        }
         return 1;
     }
 

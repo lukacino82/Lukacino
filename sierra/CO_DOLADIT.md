@@ -225,6 +225,7 @@ jinak jen mate.
 | ~~P9 dva ACSIL přepínače~~ | hotovo, ověřeno offline simulací příkazů |
 | ~~P10 zapomenuté brackety + ratchet~~ | hotovo, ověřeno offline simulací příkazů |
 | ~~P11 osiřelé pozice z předchozího běhu~~ | hotovo, studie odmítne obchodovat |
+| **P12 odprodej přebytku** | **příčina potvrzena Sierrou, oprava rozpracovaná** |
 | P6 long core | strategické, až se rozhodneš měřit overlay proti jádru |
 | P2b, P4, P5 | nedělat, dokud nebude co implementovat |
 
@@ -336,6 +337,42 @@ Ve status boxu `NOT TRADING - flatten the account first` + řádek `FLATTEN`.
 
 Se vyrovnaným účtem je chování bit-identické s v14 (9 885 vstupů, 8 071 zrušených bracketů,
 1 171 posunů stopu, špička 49).
+
+### P12 (nové, 30. 9.) — odprodej přebytku nemůže fungovat. NEDOŘEŠENO
+
+Sierra to konečně řekla sama, v *Trade → Trade Activity Log*:
+
+```
+SellExit signal is ignored. ... there are already working exit orders that will flatten the
+position. Current Position with working exit orders: 0. Current Position: 21.
+```
+
+`Position with working exit orders: 0` je celá odpověď. Každý držený kontrakt je už krytý
+pracujícím stopem nebo targetem, takže nezůstalo nic nekrytého, co by další prodej mohl
+legitimně zavřít. **Proto v celé session prošel každý BUY a neprošel ani jeden SELL** — nebyl to
+špatně nastavený účet, ani zbytek z předchozího běhu, ani rychlost replaye. Byl to výstup, který
+z principu nemůže existovat. Opakovat ho na jakékoli rychlosti a jakémkoli účtu nemělo šanci.
+
+Tři moje předchozí diagnózy (menu Trade, zapomenuté brackety, osiřelé pozice) byly vedle. Každá
+z nich opravila něco reálného, ale příčina to nebyla.
+
+**Směr opravy je jistý:** výstup musí jít **skrz** bracket, ne okolo něj. Target presetu je
+pracující sell limit nad trhem; posunutý pod trh se vyplní okamžitě a sundá právě ty kontrakty.
+Preset bez targetu (signálový exit nenese cenu) má posunout stop. Sell limit pod trhem je vždy
+platná cena, sell stop nad trhem není — proto limit, kde existuje.
+
+**Implementace ale hotová není.** Stub teď vynucuje Sierřino skutečné pravidlo (prodej je odmítnut
+pro kontrakty krytý pracujícím příkazem), takže se to dá poprvé měřit offline:
+
+| varianta | vstupů | exitů přes bracket | prodejů odmítnutých jako krytých |
+|---|---|---|---|
+| `.15` (dnes v repu) | 46 | 3 | **15** |
+| prototyp přes bracket | 46 | 19 | **12** |
+| tentýž bez dvojího účtování | 41 | 14 | **15** |
+
+Prototyp je lepší, ale pořád ne čistý, takže se necommituje ani neposílá. Zbývající odmítnutí
+vznikají u nohou, k nimž se nedá dostat ID rodičovského příkazu — ty zůstanou kryté a zrušit se
+nedají. Doladit to chce návrh, ne úpravu o jeden řádek.
 
 ### Co se pořád vyčíst nedá
 

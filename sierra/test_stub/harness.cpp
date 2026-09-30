@@ -111,6 +111,7 @@ int main(int argc, char** argv)
             const int end = (done + chunk < n) ? done + chunk : n;
             sc.ArraySize = end;
             sc.UpdateStartIndex = done;
+            sc.stubLast = sc.BaseData[SC_LAST][end - 1];
             scsf_LukacinoMultiSwing(sc);
             // one "tick" of the stub's account per study call: pending fills land, and the
             // position is checked against what the study's own status line says the book wants
@@ -147,6 +148,8 @@ int main(int argc, char** argv)
                   << " cancels_on_dead_order " << sc.cancelsOnDeadOrder
                   << " peak_position " << sc.stubPeakPosition
                   << " final_position " << sc.stubPosition
+                  << " bracket_exits " << sc.bracketExits
+                  << " exits_refused_covered " << sc.exitsRefusedAsCovered
                   << " oversold_calls " << sc.oversoldEvents
                   << " min_position " << (sc.minPositionSeen > 1e8 ? 0 : sc.minPositionSeen)
                   << " working_at_end " << sc.working.size()
