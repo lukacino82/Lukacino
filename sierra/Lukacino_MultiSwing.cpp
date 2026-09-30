@@ -1367,11 +1367,20 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                      rc, qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price,
                      S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT);
             sc.AddMessageToLog(m, 1);
-            if (++S.orderFailures >= ORDER_FAILURE_LIMIT)
-                sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many rejections. "
-                                   "The account is not holding what the book thinks and nothing "
-                                   "more will be sent. Flatten the position by hand, fix the trade "
-                                   "account or Trade Simulation Mode, then reload the study.", 1);
+            // The cut-off was only tested once per study call, at the top of this function, while
+            // the loop below it runs all forty-eight presets. A day on which every order is
+            // refused therefore logged "6 of 5", "7 of 5" and so on, repeated the stopped notice
+            // once per preset, and kept firing orders at an account that had refused every one.
+            // Break here so the limit means what it says, and say it once.
+            if (++S.orderFailures >= ORDER_FAILURE_LIMIT) {
+                if (S.orderFailures == ORDER_FAILURE_LIMIT)
+                    sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many "
+                                       "rejections. The account is not holding what the book "
+                                       "thinks and nothing more will be sent. Flatten the position "
+                                       "by hand, fix the trade account or Trade Simulation Mode, "
+                                       "then toggle the Input 'Reload Presets' to start again.", 1);
+                return;
+            }
         }
     }
 

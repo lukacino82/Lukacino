@@ -465,8 +465,10 @@ neposílá, takže by jinak každý řádek hlásil nákup celé knihy místo je
 
 Co na těch řádcích čekat:
 
-- **`would BUY` má vždycky konkrétní preset a nenulový stop.** Stop `0.00` znamená, že exit model
-  presetu stop nenastavil — to je věc, kterou chci vidět, pošli mi ten řádek.
+- **`stop 0.00` není chyba.** 13 ze 48 presetů má čistě signálový exit (`IBS>0.8`, `C>PrevHigh`,
+  `C>SMA10`, `Time1`…) a žádný stop-loss nemá, protože se tak ověřily. U nich se posílá vstup bez
+  připojeného stopu a kniha je zavře signálem. `target 0.00` platí stejně pro presety, které mají
+  SL, ale žádné RRR. Ostatní presety nenulový stop mít musí.
 - **`would SELL x to hold y`** je srovnání pozice, ne chyba. Prodává se rozdíl proti tomu, co kniha
   chce držet, a jen tudy odcházejí výstupy `signal` a `time` — tedy 61 % všech výstupů knihy.
 - **Součet kontraktů** musí odpovídat *Risk Unit* × váha rodiny za každý otevřený preset. Řádek
