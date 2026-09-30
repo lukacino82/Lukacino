@@ -195,6 +195,13 @@ static const char* OrderRejectHint(int rc)
     if (rc == SCT_SKIPPED_FULL_RECALC_CODE)
         return "  Sierra skipped it because the chart was recalculating - this is a study bug, "
                "not an account problem; report it.";
+    if (rc == -1)
+        return "  -1 is Sierra's generic refusal and carries no reason of its own. Sierra logs the"
+               " actual reason separately: look in Window > Message Log at lines WITHOUT the"
+               " 'Study: Lukacino Multi-Swing' prefix at this same timestamp, and in"
+               " Trade > Trade Activity Log. Usual causes: Trade Simulation Mode off with no"
+               " connected trade account, auto trading not enabled, or no trade account selected"
+               " for this chart.";
     return "";
 }
 
