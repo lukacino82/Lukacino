@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.11";
+static const char* STUDY_VERSION = "2026-09-30.12";
 
 static const int NUM_FAMILIES = 12;
 
@@ -216,13 +216,21 @@ static const char* OrderRejectHint(int rc)
     if (rc == SCT_SKIPPED_FULL_RECALC_CODE)
         return "  Sierra skipped it because the chart was recalculating - this is a study bug, "
                "not an account problem; report it.";
+    // -1 says only "no". The reason lives in Sierra's own log lines, but the study can at least
+    // list the switches that have to be on, because every one of them refuses with this same -1
+    // and the dialog for this study cannot see or set any of them. Setting 'Send Orders To Trade
+    // Service' to Yes is necessary and not sufficient: Sierra gates study orders a second time at
+    // the Trade menu, globally and per chart, and a chart with no trade account selected has
+    // nowhere to send them.
     if (rc == -1)
-        return "  -1 is Sierra's generic refusal and carries no reason of its own. Sierra logs the"
-               " actual reason separately: look in Window > Message Log at lines WITHOUT the"
-               " 'Study: Lukacino Multi-Swing' prefix at this same timestamp, and in"
-               " Trade > Trade Activity Log. Usual causes: Trade Simulation Mode off with no"
-               " connected trade account, auto trading not enabled, or no trade account selected"
-               " for this chart.";
+        return "  -1 is Sierra's generic refusal and carries no reason of its own. Check, in this"
+               " order: (1) Trade > Auto Trading Enabled - Global is ticked; (2) Trade > Auto"
+               " Trading Enabled for Chart is ticked for THIS chart; (3) a trade account is"
+               " selected for this chart - Trade Window, or Chart Settings > Trading; (4) Trade >"
+               " Trade Simulation Mode On, unless you really mean to trade the live account. Then"
+               " toggle 'Reload Presets' to lift the cut-off. Sierra logs the real reason"
+               " separately: Window > Message Log at lines WITHOUT the 'Study: Lukacino"
+               " Multi-Swing' prefix at this same timestamp, and Trade > Trade Activity Log.";
     return "";
 }
 
