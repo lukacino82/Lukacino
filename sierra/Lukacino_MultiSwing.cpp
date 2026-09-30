@@ -1472,7 +1472,8 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                          : stopped            ? "STOPPED - rejections, nothing is being sent"
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
-                         : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE" : "FULL AUTO - not sending")
+                         : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
+                                                          : "FULL AUTO - not reaching the account")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
 
@@ -1987,7 +1988,12 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                                "Trade > Trade Simulation Mode decides whether that is the simulator "
                                "or a live account.", 1);
         else if (mode == MODE_FULL)
-            sc.AddMessageToLog("Multi-Swing: FULL AUTO but 'Send Orders To Trade Service' is No, "
-                               "so nothing is sent. Turn it on to trade the book.", 0);
+            // Deliberately says only what is certain. With the flag off the orders do not reach
+            // the trade account; whether Sierra still works them in the chart's own simulation is
+            // its business, not something this study can assert, and claiming "nothing is sent"
+            // would be a guess printed as fact.
+            sc.AddMessageToLog("Multi-Swing: FULL AUTO, but 'Send Orders To Trade Service' is No, "
+                               "so no order reaches the trade account and nothing appears in "
+                               "Trade Orders and Positions. Turn it on to trade the book.", 0);
     }
 }
