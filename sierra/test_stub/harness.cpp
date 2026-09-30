@@ -112,6 +112,9 @@ int main(int argc, char** argv)
             sc.ArraySize = end;
             sc.UpdateStartIndex = done;
             scsf_LukacinoMultiSwing(sc);
+            // one "tick" of the stub's account per study call: pending fills land, and the
+            // position is checked against what the study's own status line says the book wants
+            sc.StubTick((int)sc.Subgraph[5][end - 1]);
             done = end;
         }
     }
@@ -144,6 +147,8 @@ int main(int argc, char** argv)
                   << " cancels_on_dead_order " << sc.cancelsOnDeadOrder
                   << " peak_position " << sc.stubPeakPosition
                   << " final_position " << sc.stubPosition
+                  << " oversold_calls " << sc.oversoldEvents
+                  << " min_position " << (sc.minPositionSeen > 1e8 ? 0 : sc.minPositionSeen)
                   << " working_at_end " << sc.working.size()
                   << " max_position_allowed " << sc.MaximumPositionAllowed
                   << "\n";

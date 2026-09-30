@@ -234,12 +234,38 @@ struct SCStudyInterface {
         return id;
     }
 
+    // STUB_FILL_DELAY=<calls> accepts the exit but only reduces the position that many calls
+    // later, which is what a Replay running faster than fills settle looks like. Without it every
+    // fill is instant and the "sold the same surplus twice" bug cannot be reproduced offline.
+    int    stubFillDelay = getenv("STUB_FILL_DELAY") ? atoi(getenv("STUB_FILL_DELAY")) : 0;
+    int    pendingSellQty = 0, pendingSellCalls = 0;
+    int    oversoldEvents = 0;
+    double minPositionSeen = 1e9;
+    void StubTick(int want)
+    {
+        if (!stubSim) return;
+        if (pendingSellQty > 0 && --pendingSellCalls <= 0) {
+            stubPosition -= pendingSellQty;
+            if (stubPosition < 0) stubPosition = 0;
+            pendingSellQty = 0;
+        }
+        if (stubPosition < minPositionSeen) minPositionSeen = stubPosition;
+        if (stubPosition < want) ++oversoldEvents;   // the book wanted more than is held
+    }
+
     int  SellExit(s_SCNewOrder& o)
     {
         ++ordersAttempted;
         if (!stubSim) return -1;
         if (stubRefuseExits) return -1;
-        if (o.OrderQuantity > stubPosition) ++trimOverSurplus;   // would sell what is not held
+        if (o.OrderQuantity > stubPosition - pendingSellQty) ++trimOverSurplus;
+        if (stubFillDelay > 0) {
+            pendingSellQty += o.OrderQuantity;
+            pendingSellCalls = stubFillDelay;
+            ++trimsOk; trimQtyTotal += o.OrderQuantity;
+            o.InternalOrderID = nextOrderId++;
+            return o.InternalOrderID;
+        }
         stubPosition -= o.OrderQuantity;
         if (stubPosition < 0) stubPosition = 0;
         if (CancelAllOrdersOnEntriesAndReversals) {

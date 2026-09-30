@@ -486,6 +486,40 @@ Vyplněný stop sníží pozici okamžitě, zatímco kniha ten preset uzavře a�
 si to pamatuje, takže mezitím pozici nedokoupí zpátky — jinak by se z každé stopky stal
 round trip za horší cenu.
 
+### Rychlost replaye ve Full auto
+
+V *Signals only* a *Semi-auto* je rychlost jedno — nic se neposílá, takže si klidně dej `as fast
+as possible`. **Ve Full auto je rychlost součástí správnosti.**
+
+Srovnání pozice se posílá jako tržní příkaz a studie do dalšího volání předpokládá, že se vyplnil.
+Když replay běží rychleji, než se fily stihnou usadit, studie ten samý přebytek prodá podruhé a
+pozice se dostane **pod** knihu. Změřeno offline na 4 680 seancích (ES, risk unit 1, Max Gross 600),
+kde se fil záměrně zdržuje o daný počet volání studie:
+
+| zdržení filu | vstupů | přeprodejů |
+|---|---|---|
+| 0 volání | 9 885 | **0** |
+| 1 volání | 9 885 | **0** |
+| 2 volání | 159 | **52** |
+| 3 a více | 60 | 45 |
+
+Mezi jedním a dvěma voláními je to tedy útes, ne postupné zhoršování. Tolerance je **jedno volání
+studie**.
+
+Prakticky:
+
+- **Full auto replay jeď na 10× a níž.** Nikdy `as fast as possible`.
+- **Dlouhé běhy (2008–2026) jeď v *Semi-auto*.** Tam žádné fily nejsou, rychlost je neomezená, a
+  žurnál je stejně to, co se porovnává — parita 99,7 % se měřila takhle. Full auto nemá nad
+  osmnácti lety co dokázat navíc.
+- Full auto si nech na **pár měsíců**, na ověření, že příkazy a brackety opravdu chodí na graf.
+- Příznak, že to bylo moc rychle: ve status boxu je `position` trvale **pod** `book`, aniž by tomu
+  v logu odpovídaly řádky `EXIT ... sl` nebo `tp`.
+
+Pokus udělat to rychlostně nezávislé skončil dvakrát horší, než je stav teď (v jedné variantě to
+stálo 1 446 vstupů, v druhé se to rozpadlo i při okamžitých filech), takže tohle omezení platí a
+je lepší ho znát než ho obejít špatně.
+
 ### Tři režimy, ne dva
 
 Input 2 *Send Orders To Trade Service* není „posílat / neposílat". Rozhoduje, **kam** příkazy
