@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.13";
+static const char* STUDY_VERSION = "2026-09-30.14";
 
 static const int NUM_FAMILIES = 12;
 
@@ -1336,6 +1336,38 @@ static bool SkippedForRecalc(SCStudyInterfaceRef sc, StudyState& S, int rc, int 
 // The stop is only ever raised. These presets are long-only, and lowering a protective stop on a
 // live position to match a number the study recomputed is the one mistake here that could actually
 // cost money rather than basis points.
+// When the book closes a preset for its own reason - a signal exit, a time stop - Sierra is still
+// working the stop and the target that rode out with that entry. Nothing tells it the preset is
+// over. Left alone those two orders keep working for good: one of them eventually fills and moves
+// the position behind the book's back, and until then their quantity counts against the position.
+// That is what made a market SELL of the surplus come back -1 on a chart where every BUY was
+// accepted - the position was already fully covered by working sell orders, so selling more of it
+// was over-selling.
+//
+// Sierra's own answer to this is sc.CancelAllOrdersOnEntriesAndReversals, and it is the wrong
+// answer here: "all orders" would strip the stop off every preset still open. This cancels the two
+// orders belonging to the one preset that closed, and nothing else.
+//
+// A cancel that fails is not counted against the rejection cut-off. The usual reason is that the
+// bracket is already gone - Sierra filled the stop or the target itself - which is not a fault.
+static void CancelLegBracket(SCStudyInterfaceRef sc, StudyState& S, const AccountLeg& lg,
+                             size_t k, int logLevel)
+{
+    if (lg.parentOrderId == 0) return;
+    int targetId = 0, stopId = 0;
+    sc.GetAttachedOrderIDsForParentOrder((int)lg.parentOrderId, targetId, stopId);
+    if (targetId == 0 && stopId == 0) return;
+    if (targetId != 0) sc.CancelOrder(targetId);
+    if (stopId   != 0) sc.CancelOrder(stopId);
+    if (logLevel >= LOG_DEBUG) {
+        SCString m;
+        m.Format("Multi-Swing: cancelled the bracket of %s (target %d, stop %d) - the book closed "
+                 "it, so Sierra must stop working its orders.",
+                 S.presets[k].id.GetChars(), targetId, stopId);
+        sc.AddMessageToLog(m, 0);
+    }
+}
+
 static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, AccountLeg& lg,
                             const PresetState& st, bool send, int logLevel)
 {
@@ -1406,6 +1438,86 @@ struct FailureTally {
     FailureTally& operator=(const FailureTally&) = delete;
 };
 
+// ---- bring the total back down to what the book wants
+//
+// Because Sierra works each bracket, it closes a stopped-out preset without telling the study,
+// which makes the reported position - not the ledger - the only honest record of what is held.
+// Everything the book closed for its own reasons (a signal exit, a time stop) is exactly the
+// difference between that position and what the book still wants, and it goes out as one order
+// instead of being guessed at preset by preset.
+//
+// This runs BEFORE the entries now, and that ordering is the point. It used to run after them,
+// and a chart where the entries were accepted while the trims were refused then ratcheted: every
+// session added contracts and nothing ever came off, so the account walked from ten to nineteen
+// while the book still wanted ten, and only the five-rejection cut-off eventually stopped it -
+// after the drift, not before. Squaring the position first means the account can never grow while
+// its exits are being refused.
+enum TrimResult { TRIM_NOTHING, TRIM_SENT, TRIM_WAITING, TRIM_REFUSED };
+
+static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
+                              bool send, int logLevel, FailureTally& tally, int want, int account)
+{
+    // A market exit is not filled by the time the next study call runs, so the position still reads
+    // high and the same surplus would be sold again on every call until the fill landed.
+    //
+    // This used to be a gate: it compared the position against the one recorded when the trim went
+    // out and returned early while they matched. That was fine while nothing else could move the
+    // position in the same call, and it deadlocked the moment entries were allowed alongside a
+    // trim - a call that sold two and bought two left the position unchanged, so the gate read
+    // "still waiting" for ever and the order layer went quiet after twenty-nine entries.
+    //
+    // It is an adjustment now, not a gate: the in-flight sell is treated as already filled, and
+    // that is trusted for exactly one call. Nothing is resent, nothing can deadlock, and an entry
+    // decided in the same call is not held up by an exit.
+    int effective = account;
+    if (S.trimSentQty > 0) {
+        effective -= S.trimSentQty;
+        S.trimSentQty = 0;
+        S.trimSentAccount = -1;
+    }
+    if (effective <= want) return TRIM_NOTHING;
+
+    const int surplus = effective - want;
+
+    if (!send) {
+        S.semiPosition -= surplus;
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing SEMI: would SELL %d to hold %d contracts.",
+                                 surplus, want);
+            sc.AddMessageToLog(m, 0);
+        }
+        return TRIM_SENT;
+    }
+
+    s_SCNewOrder o;
+    o.OrderQuantity = surplus;
+    o.OrderType     = SCT_ORDERTYPE_MARKET;
+    o.TimeInForce   = SCT_TIF_DAY;
+    const int rc = (int)sc.SellExit(o);
+    if (SkippedForRecalc(sc, S, rc, logLevel)) return TRIM_WAITING;
+    if (rc > 0) {
+        S.trimSentQty     = surplus;
+        S.trimSentAccount = effective;
+        tally.anyOk       = true;
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing: SELL %d, position %d -> %d (book wants %d).",
+                                 surplus, effective, want, want);
+            sc.AddMessageToLog(m, 0);
+        }
+        return TRIM_SENT;
+    }
+
+    SCString m;
+    m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d to bring the position "
+             "from %d to %d. (%d of %d before order placement stops.)%s",
+             rc, surplus, effective, want, S.orderFailures + tally.fails + 1,
+             (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
+    sc.AddMessageToLog(m, 1);
+    if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
+        sc.AddMessageToLog(STOPPED_NOTICE, 1);
+    return TRIM_REFUSED;
+}
+
 static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                        int mode, bool enabled, int logLevel, double last)
 {
@@ -1434,20 +1546,58 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // trim is skipped for one call rather than selling the entry straight back out.
     bool entrySent = false;
 
-    // The book's own gross cap is enforced on the ledger, and the ledger can legitimately sit
-    // above the account for a call or two: a preset closes, the trim goes out as a market order,
-    // and until it fills the account still carries it. An entry decided in that window asked
-    // Sierra for one contract past sc.MaximumPositionAllowed and was refused - six times over
-    // eighteen years in the offline order simulation. Those refusals are not an account problem,
-    // but the rejection cut-off cannot tell them apart, and five in one call latch the whole order
-    // layer STOPPED. So the study declines them itself instead of offering them: the position is
-    // read once here and projected forward across the entries this call sends.
-    int projected = 0;
-    if (mode == MODE_FULL) {
+    // Retire the brackets of presets the book has closed, before anything is counted or sent.
+    // Their working quantity is part of why an exit can be refused, and a stale bracket that
+    // survives its preset is a position change waiting to happen behind the book's back.
+    for (size_t k = 0; k < S.states.size(); ++k) {
+        if (S.states[k].inPos != 0) continue;
+        AccountLeg& lg = S.legs[k];
+        if (lg.qtyOnAccount <= 0) continue;
+        if (send) CancelLegBracket(sc, S, lg, k, logLevel);
+        lg = AccountLeg();
+    }
+
+    // What the book wants to be holding, and what is actually held.
+    int want = 0;
+    for (size_t k = 0; k < S.states.size(); ++k)
+        if (S.states[k].inPos != 0) want += PresetQty(sc, S, k, cfg);
+
+    int account;
+    if (send) {
         s_SCPositionData pos;
         sc.GetTradePosition(pos);
-        projected = (int)pos.PositionQuantity;
+        account = (int)pos.PositionQuantity;
+    } else {
+        account = S.semiPosition;
     }
+
+    // Square the position before adding to it. An account that is above the book is the one state
+    // in which sending an entry is indefensible: it makes the gap worse, and if the exits are the
+    // orders being refused - which is what a chart did, entries accepted and every SELL refused -
+    // the position ratchets up session after session with nothing ever coming off. Ten became
+    // nineteen that way. So the trim goes first, and while the account is still above the book
+    // nothing new is offered.
+    const TrimResult trim = TrimSurplus(sc, S, cfg, send, logLevel, tally, want, account);
+    // A refused exit is the one state in which adding is indefensible: the way down is shut, so
+    // anything sent now can only widen the gap. A trim already in flight means the position has
+    // not settled and the numbers below would be guesses.
+    if (trim == TRIM_REFUSED || trim == TRIM_WAITING) return;
+    // A trim that went out is different, and blocking entries on it was too blunt: measured
+    // offline, returning here cost 796 entries out of 9821, because a session that had anything
+    // to sell sent nothing at all. The surplus belongs to presets the book has already closed and
+    // the new entries belong to presets it has just opened - independent decisions. So the
+    // entries go out, counted against where the trim is taking the position rather than where it
+    // started, which is also the number the exposure cap should be measured against.
+    if (trim == TRIM_SENT) account = send ? want : S.semiPosition;
+
+    // The book's own gross cap is enforced on the ledger, and the ledger can legitimately sit
+    // above the account for a call or two. An entry decided in that window asked Sierra for one
+    // contract past sc.MaximumPositionAllowed and was refused - six times over eighteen years in
+    // the offline order simulation. Those refusals are not an account problem, but the rejection
+    // cut-off cannot tell them apart, and five in one call latch the whole order layer STOPPED. So
+    // the study declines them itself instead of offering them, projecting the position forward
+    // across the entries this call sends.
+    int projected = account;
     const int accountCap = sc.MaximumPositionAllowed;
 
     for (size_t k = 0; k < S.states.size(); ++k) {
@@ -1554,77 +1704,8 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             }
         }
     }
-
-    // ---- bring the total back down to what the book wants
-    //
-    // Because Sierra works each bracket, it closes a stopped-out preset without telling the study,
-    // which makes the reported position - not the ledger - the only honest record of what is held.
-    // Everything the book closed for its own reasons (a signal exit, a time stop) is exactly the
-    // difference between that position and what the book still wants, and it goes out as one order
-    // instead of being guessed at preset by preset.
-    int want = 0;
-    for (size_t k = 0; k < S.states.size(); ++k)
-        if (S.states[k].inPos != 0) want += PresetQty(sc, S, k, cfg);
-
-    int account;
-    if (send) {
-        s_SCPositionData pos;
-        sc.GetTradePosition(pos);
-        account = (int)pos.PositionQuantity;
-    } else {
-        account = S.semiPosition;
-    }
-
-    // A market exit is not filled by the time the next study call runs, so the position still reads
-    // high. Without this the same surplus would be sold again on every call until the fill landed.
-    if (S.trimSentQty > 0) {
-        if (account != S.trimSentAccount) {
-            S.trimSentQty = 0;
-            S.trimSentAccount = -1;
-        } else {
-            return;
-        }
-    }
-    if (entrySent || account <= want) return;
-
-    const int surplus = account - want;
-
-    if (!send) {
-        S.semiPosition -= surplus;
-        if (logLevel >= LOG_INFO) {
-            SCString m; m.Format("Multi-Swing SEMI: would SELL %d to hold %d contracts.",
-                                 surplus, want);
-            sc.AddMessageToLog(m, 0);
-        }
-        return;
-    }
-
-    s_SCNewOrder o;
-    o.OrderQuantity = surplus;
-    o.OrderType     = SCT_ORDERTYPE_MARKET;
-    o.TimeInForce   = SCT_TIF_DAY;
-    const int rc = (int)sc.SellExit(o);
-    if (SkippedForRecalc(sc, S, rc, logLevel)) return;
-    if (rc > 0) {
-        S.trimSentQty     = surplus;
-        S.trimSentAccount = account;
-        tally.anyOk       = true;
-        if (logLevel >= LOG_INFO) {
-            SCString m; m.Format("Multi-Swing: SELL %d, position %d -> %d (book wants %d).",
-                                 surplus, account, want, want);
-            sc.AddMessageToLog(m, 0);
-        }
-    } else {
-        SCString m;
-        m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d to bring the position "
-                 "from %d to %d. (%d of %d before order placement stops.)%s",
-                 rc, surplus, account, want, S.orderFailures + tally.fails + 1,
-                 (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
-        sc.AddMessageToLog(m, 1);
-        if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
-            sc.AddMessageToLog(STOPPED_NOTICE, 1);
-    }
 }
+
 
 // ------------------------------------------------------------------ on-chart status box
 //

@@ -179,7 +179,12 @@ struct SCStudyInterface {
     int  ordersAttempted = 0;
 
     struct StubOrder { int id = 0, parent = 0, qty = 0; double price = 0; bool isStop = false; };
-    bool   stubSim = getenv("STUB_ORDERS") && strcmp(getenv("STUB_ORDERS"), "sim") == 0;
+    bool   stubSim = getenv("STUB_ORDERS") && strncmp(getenv("STUB_ORDERS"), "sim", 3) == 0;
+    // STUB_ORDERS=sim_noexit reproduces the one asymmetry that actually happened on a chart:
+    // entries accepted, every exit refused. It is the state in which a book that squares its
+    // position after adding to it ratchets upward and never comes back down.
+    bool   stubRefuseExits = getenv("STUB_ORDERS")
+                           && strcmp(getenv("STUB_ORDERS"), "sim_noexit") == 0;
     int    nextOrderId = 1;
     double stubPosition = 0;
     std::map<int, StubOrder> working;          // attached stops and targets still live
@@ -231,6 +236,7 @@ struct SCStudyInterface {
     {
         ++ordersAttempted;
         if (!stubSim) return -1;
+        if (stubRefuseExits) return -1;
         if (o.OrderQuantity > stubPosition) ++trimOverSurplus;   // would sell what is not held
         stubPosition -= o.OrderQuantity;
         if (stubPosition < 0) stubPosition = 0;
@@ -254,7 +260,16 @@ struct SCStudyInterface {
         return 1;
     }
 
-    int  CancelOrder(int) { return -1; }
+    int  cancelsOk = 0, cancelsOnDeadOrder = 0;
+    int  CancelOrder(int id)
+    {
+        if (!stubSim) return -1;
+        std::map<int, StubOrder>::iterator it = working.find(id);
+        if (it == working.end()) { ++cancelsOnDeadOrder; return -1; }
+        working.erase(it);
+        ++cancelsOk;
+        return 1;
+    }
     int  GetOrderByOrderID(int, s_SCTradeOrder&) { return 0; }   // 0 = no such order
     // Signature copied from the real sierrachart.h (void, int parent, two int out-params).
     void GetAttachedOrderIDsForParentOrder(int parent, int& r_TargetInternalOrderID, int& r_StopInternalOrderID)

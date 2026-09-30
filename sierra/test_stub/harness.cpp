@@ -140,6 +140,8 @@ int main(int argc, char** argv)
                   << " stop_moves " << sc.stopMovesOk
                   << " stop_moves_on_dead_order " << sc.stopMovesOnDeadOrder
                   << " cancelled_by_trim " << sc.cancelledByTrim
+                  << " bracket_cancels " << sc.cancelsOk
+                  << " cancels_on_dead_order " << sc.cancelsOnDeadOrder
                   << " peak_position " << sc.stubPeakPosition
                   << " final_position " << sc.stubPosition
                   << " working_at_end " << sc.working.size()

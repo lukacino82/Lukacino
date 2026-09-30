@@ -223,6 +223,7 @@ jinak jen mate.
 | ~~P7 dojet Replay~~ | hotovo, 99,7 % na 2016–2026 |
 | ~~P1 posuny stopu do Sierry~~ | hotovo |
 | ~~P9 dva ACSIL přepínače~~ | hotovo, ověřeno offline simulací příkazů |
+| ~~P10 zapomenuté brackety + ratchet~~ | hotovo, ověřeno offline simulací příkazů |
 | P6 long core | strategické, až se rozhodneš měřit overlay proti jádru |
 | P2b, P4, P5 | nedělat, dokud nebude co implementovat |
 
@@ -274,6 +275,41 @@ Dvě věci k té simulaci na rovinu: neplní brackety (proto na konci „visí" 
 příkazů) a běží na barech, jejichž denní OHLC a overnight extrémy jsou skutečné, ale
 vnitrodenní cesta je dosyntetizovaná — pro test order vrstvy to je jedno, pro paritu
 rozhodovacího jádra se používá jiný běh.
+
+### P10 (nové, 30. 9.) — zapomenuté brackety a ratchet. HOTOVO
+
+S opravenými přepínači prošlo všech 10 vstupů, ale **`SELL 9` na srovnání pozice padal na `-1`**,
+a to v *grafové simulaci*, kde žádný účet není — takže to nemohlo být menu Trade.
+
+Příčina: když kniha zavře preset vlastním důvodem (signálový exit, time stop), Sierra dál
+pracuje stop a target, které s tím vstupem odešly. Nic jí neřekne, že preset skončil. Ty
+příkazy zůstanou pracovat **natrvalo**, jejich množství se počítá proti pozici — a tržní prodej
+přebytku je pak z Sierřina pohledu přeprodej. Sierřina vlastní rada na tohle je
+`CancelAllOrdersOnEntriesAndReversals = true`, což by ale sebralo stop všem ostatním presetům.
+Správné řešení je zrušit brackety **jen těch presetů, které kniha zavřela**
+(`GetAttachedOrderIDsForParentOrder` + `CancelOrder`), a nic jiného.
+
+To samo je vážná chyba i bez toho `-1`: zapomenutý bracket zavřeného presetu se někdy vyplní a
+posune pozici za zády knihy.
+
+Druhá věc: srovnání pozice se dělalo **po** vstupech. Na grafu, kde vstupy procházely a exity
+padaly, to znamenalo ratchet — každá seance přidala a nic neubralo. Deset se tak stalo
+devatenácti. Srovnání jde teď první a dokud je účet nad knihou, nic nového se nenabízí.
+
+| | v13 | v14 |
+|---|---|---|
+| **exity padají:** špička pozice | **46** | **6** |
+| zrušených bracketů | 0 | 8 071 |
+| zrušení na mrtvém příkazu | 0 | **0** |
+| pracujících příkazů na konci | 10 144 | **2 164** |
+| vstupů přijato | 9 821 | 9 885 |
+| posunů stopu | 1 171 | 1 171 (beze změny) |
+| špička pozice / strop | 60 / 60 | 49 / 60 |
+
+Cestou jsem si v tom sám vyrobil deadlock: gate „počkej, dokud se pozice nezmění" se zablokoval
+navždy ve chvíli, kdy call prodal dva a koupil dva a pozice zůstala stejná — order vrstva po
+29 vstupech ztichla. Teď to není gate, ale korekce: nevyplněný prodej se jeden call počítá jako
+vyplněný.
 
 ### Co se pořád vyčíst nedá
 
