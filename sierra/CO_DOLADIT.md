@@ -534,10 +534,12 @@ Inputu 5 *Reload Presets*. Zapsáno do `NASTAVENI.md`, kapitola o zapnutí pro �
 
 Rozhodující bylo, že u toho `-1` Sierra do Message Logu **nenapsala ani řádek** — v celém bloku
 byly jen řádky s prefixem studie plus dva `Replay jump`. Sierra odmítá volání na vstupu, ještě
-než z něj postaví příkaz; kdyby příkaz postavila a odmítla ho až pak (cena, limit, účet), řádek
-o tom napíše. **Mlčící `-1` tedy znamená tuhle bránu nebo chybějící trade account, a nic jiného.**
-Použitelný signál, protože `-1` sám žádný důvod nenese, a zbytek nabídky v hintu studie
-(`OrderRejectHint`) jsou jen kandidáti.
+než z něj postaví příkaz; kdyby příkaz postavila a odmítla ho až pak (cena, zamítnutí účtem),
+řádek o tom napíše. **Mlčící `-1` tedy znamená, že Sierra odmítla ještě před vznikem příkazu.**
+
+**Opravuji, co tu stálo dřív:** tvrdil jsem, že to znamená „tuhle bránu nebo chybějící trade
+account, a nic jiného". To bylo úzké. Před vznikem příkazu odmítá i **strop pozice**
+(`sc.MaximumPositionAllowed`), viz P16 — a ten to nakonec byl podruhé.
 
 Rychlý rozhodovací test, který tu příště zkrátí hledání: nechat replay běžet a poslat **ručně
 z Trade Window** jeden market BUY s bracketem. Projde → brána je otevřená, hledej jinde.
@@ -557,3 +559,55 @@ auto replay v pořádku.
 `position 0`). Očekávané, dokud jde o latenci filu — příkazy odešly v tomhle volání a účet je
 ještě nenahlásil. Rozcházet se **trvale** přes několik volání by znamenalo desync a patří to do
 `P13`/`P14` mechaniky, ne sem.
+
+---
+
+## P16 — strop pozice byl šest kontraktů a nikde to nebylo vidět (`.20`)
+
+Po opravě brány z P15 jeden příkaz prošel a naplnil se (`Trade: 1@3818.25`), takže auto trading,
+účet i Trade Simulation Mode byly v pořádku. Následující dávka pěti vstupů přesto spadla na `-1`
+a status box přepnul na `STOPPED`. Ceny přitom byly v pořádku: při closu ~3836 šly stopy
+3717–3783 (pod trhem) a targety 3849–4093 (nad trhem), tedy na správných stranách.
+
+### Co to je
+
+`Max Gross Exposure` (Input 35 v dialogu, `IN_MAX_GROSS = 34`) se počítá **v MES ekvivalentech**
+a na `sc.MaximumPositionAllowed` se dělí multiplikátorem instrumentu:
+
+```cpp
+const double mult = sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? 10.0 : 1.0;
+sc.MaximumPositionAllowed = (int)std::max(1.0, std::floor(grossInput / mult));
+```
+
+Výchozích **60 MES** tedy na **ES** dává strop **6 kontraktů**. To je nejtvrdší limit v celém
+skriptu a byl jediný, který nikam nepsal svou hodnotu. Kniha se v něm přitom pohybuje přesně na
+hraně (`open 5`, `book 5`), takže každá další dávka vstupů do něj naráží.
+
+Vlastní pojistka skriptu to nezachytí: projektuje si dopředu jen **čistou pozici na účtu**
+(`projected = account`), zatímco Sierra ke stropu připočítává i **pracující děti bracketů**.
+Pět vstupů s bracketem je pro Sierru 5 parentů + 5 stopů + 5 targetů; proti stropu 6 to nemá
+šanci projít. Oba stropy si tedy nepočítají totéž.
+
+### Co je v `.20` opravené
+
+Nic v logice — jen se ten strop **jednou při loadu vypíše**, s hodnotou, s inputem, ze kterého
+vznikl, a s použitým multiplikátorem. Stálo to hodinu hledání ve špatném místě právě proto, že
+`-1` nenese důvod a nenesl ho ani tenhle limit.
+
+### Co ověřené NENÍ
+
+Přesné pravidlo, podle kterého Sierra ke `MaximumPositionAllowed` počítá pracující příkazy.
+Že tam brackety připočítává, je nejlepší vysvětlení pozorovaného (odmítnutí všech pěti vstupů
+při stropu 6 a téměř ploché pozici), ale z dokumentace to potvrzené nemám. Kdyby se ukázalo,
+že Sierra počítá jen parenty, zbývá vysvětlit odmítnutí prvního vstupu z ploché pozice —
+1 ≤ 6 projít mělo.
+
+### Co s tím dál
+
+Pro test 48 presetů na ES při risk unit 1 je potřeba strop řádu 48 kontraktů, tedy
+`Max Gross Exposure` okolo **480–600** MES ekvivalentů. Až bude potvrzeno, že to byl on,
+patří sem rozhodnutí, jestli:
+
+- zvýšit výchozí hodnotu (60 MES je rozumné pro MES, ale na ES je to 6 kontraktů), nebo
+- nechat projekci skriptu počítat i pracující děti bracketů, aby si oba stropy odpovídaly, nebo
+- oboje.
