@@ -489,13 +489,36 @@ přebytku nechá zbývajícím vstupům jejich připojené stopy. To ukáže až
 první věc, kterou tam kontrolovat: v *Trade → Trade Orders and Positions* musí být otevřených
 stop příkazů právě tolik, kolik je otevřených presetů se stopem.
 
-**Při plném přepočtu grafu se příkazy neposílají.** Sierra je během přepočtu odmítá (vrací
-`-8998`, `SCT_SKIPPED_FULL_RECALC`) a má pravdu: studie, která přepočítává roky historie, nesmí
-tu historii vystřelit na účet. Studie to proto ani nezkouší a napíše do logu jeden řádek. Účet se
-srovná na to, co kniha drží, **prvním barem po přepočtu** — u replaye tedy hned po spuštění.
+**Plný přepočet grafu.** Sierra během přepočtu příkazy odmítá (`-8998`,
+`SCT_SKIPPED_FULL_RECALC`) a má pravdu: studie, která přepočítává roky historie, nesmí tu
+historii vystřelit na účet. Studie se to **nesnaží předvídat** — příkaz nabídne a rozhodnutí
+nechá na Sierře. Když ho Sierra přeskočí, nezapočítá se to do limitu odmítnutých příkazů (na
+účet se nic nedostalo, takže se nic nerozešlo) a zbytek volání se zahodí, takže jedno
+odmítnutí stojí jednu řádku v logu místo osmačtyřiceti.
 
-Počítej s tím, že na tom prvním baru může odejít i deset příkazů naráz, protože tolik presetů
-kniha z historie drží otevřených. To je záměr, ne chyba: účet má držet to, co kniha.
+Dřív studie hádala podle `sc.UpdateStartIndex` a byla to chyba: **chart replay přepočítává graf
+na každém baru**, takže tím guardem se order vrstva na celý replay umlčela.
+
+Počítej s tím, že až Sierra příkazy pustí, může naráz odejít i deset kusů — tolik presetů kniha
+z historie drží otevřených. To je záměr, ne chyba: účet má držet to, co kniha.
+
+### Replay pro obchodování vs. pro paritu
+
+Nastavení se **liší** podle toho, co testuješ:
+
+| | Parita (kapitola 8) | Obchodování na Simu |
+|---|---|---|
+| Mode | Signals only | Full auto |
+| *Clear chart before replay* | **zapnuto** — čistý start | **vypnuto** — graf si nechá načtenou historii |
+| Replay Speed | Maximum | 50× až 200× |
+| *Replay Mode* | Standard | zkus volbu pro back-test obchodních systémů, pokud ji tvoje verze má |
+
+**Proč vypnout *Clear chart before replay*:** s ním graf začíná prázdný a staví se od baru 1, takže
+studie ztratí všech 400 seancí zahřátí a Sierra přepočítává minimální pole. Bez něj replay historii
+dopisuje, přepočty přestanou a signály jdou hned.
+
+**Proč ne Maximum:** simulované fily nemusí stíhat a testoval bys něco jiného, než co se stane
+naostro.
 
 **Než pustíš full auto, nastav limity ztrát.** Inputy 38 a 39 už fungují (kapitola 5), ale
 výchozí nula je vypíná. Spolu s 34 *Max Gross Exposure* jsou to jediné tři stropy, které

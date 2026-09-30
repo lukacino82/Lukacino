@@ -253,6 +253,7 @@ struct StudyState {
 
     long     dayCounter = -1;           // absolute number of completed trading days
     int      incompleteDays = 0;        // sessions finalised without reaching their RTH end
+    long     recalcSkips = 0;           // consecutive orders Sierra skipped for a full recalculation
 
     // Realised P&L in points, from the study's own ledger - not from the account, which the
     // study cannot read here. It is the same number the journal records, so the limits below
@@ -1257,6 +1258,31 @@ static bool RealPrice(double p, double ref)
     return p > 0 && ref > 0 && p > ref * 0.5 && p < ref * 2.0;
 }
 
+// Sierra refused because the chart is recalculating. That is its call to make, not something to
+// predict: a chart replay turned out to recalculate on EVERY bar, so a guard that skipped sending
+// whenever sc.UpdateStartIndex was 0 silenced the order layer for the whole replay. The study
+// therefore always offers the order and lets Sierra decide, and handles this one code separately:
+// it does not count toward the rejection cut-off - an account that never saw the order cannot be
+// out of step with the book - and the rest of the call is abandoned, so one refused order costs
+// one log line instead of forty-eight. Logged on the first and then every 500th, because at one
+// per replay bar it would otherwise be the only thing in the Message Log.
+static bool SkippedForRecalc(SCStudyInterfaceRef sc, StudyState& S, int rc, int logLevel)
+{
+    if (rc != SCT_SKIPPED_FULL_RECALC_CODE) return false;
+    ++S.recalcSkips;
+    if (logLevel >= LOG_INFO && (S.recalcSkips == 1 || S.recalcSkips % 500 == 0)) {
+        SCString m;
+        m.Format("Multi-Swing: Sierra is recalculating the chart and skipped the order "
+                 "(SCT_SKIPPED_FULL_RECALC, %ld so far, bar %d, replay %s). Nothing reached the "
+                 "account, so nothing is out of step; the book is offered again on the next call. "
+                 "If this never stops during a replay, the Chart Replay dialog's Replay Mode is "
+                 "the setting that decides whether a replay recalculates every bar.",
+                 S.recalcSkips, (int)sc.ArraySize, sc.IsReplayRunning() ? "RUNNING" : "off");
+        sc.AddMessageToLog(m, 0);
+    }
+    return true;
+}
+
 // Move a preset's protective stop to where the trail or breakeven now puts it.
 //
 // Sierra owns the attached bracket and never moves it on its own, so eight of the forty-eight
@@ -1300,6 +1326,7 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
     mod.InternalOrderID = stopId;
     mod.Price1 = onTick;
     const int rc = (int)sc.ModifyOrder(mod);
+    if (SkippedForRecalc(sc, S, rc, logLevel)) return;
     if (rc > 0) {
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing: STOP MOVED for %s from %.2f to %.2f (order %d)",
@@ -1336,22 +1363,6 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     //
     // Nothing is lost by waiting: the book's state survives the recalculation, and the first
     // incremental call reconciles the account to it through the same path as any other day.
-    if (sc.UpdateStartIndex == 0) {
-        // Carries the bar count and whether a replay is running, because the one thing this line
-        // cannot say on its own is whether the next call will be incremental. If a running replay
-        // only ever produces these, with the bar count climbing and no order ever sent, then
-        // Sierra is recalculating on every replay bar and the order layer cannot work that way.
-        if (logLevel >= LOG_INFO && sc.ArraySize > 0) {
-            SCString m;
-            m.Format("Multi-Swing: full recalculation at bar %d, replay %s - no orders sent while "
-                     "the chart rebuilds (Sierra refuses them, SCT_SKIPPED_FULL_RECALC). The "
-                     "account is brought to what the book holds on the first incremental bar.",
-                     (int)sc.ArraySize, sc.IsReplayRunning() ? "RUNNING" : "off");
-            sc.AddMessageToLog(m, 0);
-        }
-        return;
-    }
-
     const bool send = (mode == MODE_FULL);
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
@@ -1423,7 +1434,9 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // logged. An earlier version tested the call inline and printed a hardcoded 0, throwing
         // away the one number that says why - and then the failure cut-off silenced the rest.
         const int rc = (int)sc.BuyEntry(o);
+        if (SkippedForRecalc(sc, S, rc, logLevel)) { lg = AccountLeg(); return; }
         if (rc > 0) {
+            S.recalcSkips = 0;
             lg.qtyOnAccount = qty;
             lg.parentOrderId = (unsigned int)o.InternalOrderID;   // filled in by Sierra on success
             lg.stopOnAccount = o.Stop1Price;
@@ -1507,6 +1520,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     o.OrderType     = SCT_ORDERTYPE_MARKET;
     o.TimeInForce   = SCT_TIF_DAY;
     const int rc = (int)sc.SellExit(o);
+    if (SkippedForRecalc(sc, S, rc, logLevel)) return;
     if (rc > 0) {
         S.trimSentQty     = surplus;
         S.trimSentAccount = account;
