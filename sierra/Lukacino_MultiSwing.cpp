@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.19";
+static const char* STUDY_VERSION = "2026-09-30.20";
 
 static const int NUM_FAMILIES = 12;
 
@@ -321,6 +321,7 @@ struct StudyState {
     bool     orphanHalt = false;        // the account holds contracts this run did not place
     bool     orphanWarned = false;      // said once, not once per call
     bool     chartSimWarned = false;    // ... and for the chart-simulation-has-no-exits note
+    bool     capLogged = false;        // ... and for the one-time note naming Sierra's position cap
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -2262,6 +2263,23 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     sc.MaximumPositionAllowed = grossInput > 0
                               ? (int)std::max(1.0, std::floor(grossInput / mult))
                               : 1000;
+
+    // This number is the hardest limit in the whole study and it was the only one nobody could
+    // see. On ES the default Max Gross Exposure of 60 MES equivalents makes it SIX contracts, and
+    // Sierra refuses everything past it with a bare -1 that names no reason - which reads exactly
+    // like an account or auto-trading problem and sent us looking in the wrong place for an hour.
+    // Logged once per load, so the cap is on the record next to the rejections it causes.
+    if (!S->capLogged) {
+        S->capLogged = true;
+        SCString m;
+        m.Format("Multi-Swing: Sierra's position cap for this chart is %d %s contract(s) "
+                 "(Max Gross Exposure %d MES equivalents / %.0f). Entries past it are refused "
+                 "with -1 and no reason. Raise Max Gross Exposure if the book needs more.",
+                 sc.MaximumPositionAllowed,
+                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
+                 grossInput, mult);
+        sc.AddMessageToLog(m, 0);
+    }
 
     // ---------------- preset (re)load ----------------
     int reloadFlag = sc.Input[IN_RELOAD].GetYesNo();
