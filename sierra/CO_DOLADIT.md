@@ -224,6 +224,7 @@ jinak jen mate.
 | ~~P1 posuny stopu do Sierry~~ | hotovo |
 | ~~P9 dva ACSIL přepínače~~ | hotovo, ověřeno offline simulací příkazů |
 | ~~P10 zapomenuté brackety + ratchet~~ | hotovo, ověřeno offline simulací příkazů |
+| ~~P11 osiřelé pozice z předchozího běhu~~ | hotovo, studie odmítne obchodovat |
 | P6 long core | strategické, až se rozhodneš měřit overlay proti jádru |
 | P2b, P4, P5 | nedělat, dokud nebude co implementovat |
 
@@ -310,6 +311,31 @@ Cestou jsem si v tom sám vyrobil deadlock: gate „počkej, dokud se pozice nez
 navždy ve chvíli, kdy call prodal dva a koupil dva a pozice zůstala stejná — order vrstva po
 29 vstupech ztichla. Teď to není gate, ale korekce: nevyplněný prodej se jeden call počítá jako
 vyplněný.
+
+### P11 (nové, 30. 9.) — osiřelé pozice z předchozího běhu. HOTOVO
+
+Tři běhy za sebou nechaly na grafu pozici, kterou další běh neumí uklidit: 10 → 19 → 27.
+Mechanismus: reload presetů nebo restart Sierry přestaví knihu od nultého baru a **zahodí
+všechna ID příkazů**, která si studie držela. Brackety po předchozím běhu se tím stanou
+nedosažitelnými — dál pracují, jejich množství dál kryje pozici, a tržní prodej, který by ji
+srovnal, se odmítne. Každý běh přidal to, co předchozí už nedokázal ubrat.
+
+**Tohle se kódem zpětně spravit nedá** — ta ID jsou nenávratně pryč. Studie proto nově
+odmítne obchodovat, dokud není účet vyrovnaný, a řekne to (jednou, ne každý call):
+
+```
+Multi-Swing: NOT TRADING. The account holds 27 contracts that this run did not place ...
+```
+
+Ve status boxu `NOT TRADING - flatten the account first` + řádek `FLATTEN`.
+
+| start s 27 osiřelými kontrakty | v13 | v15 |
+|---|---|---|
+| vstupů přijato | 9 821 | **0** |
+| co to řekne | nic | jednou `NOT TRADING` |
+
+Se vyrovnaným účtem je chování bit-identické s v14 (9 885 vstupů, 8 071 zrušených bracketů,
+1 171 posunů stopu, špička 49).
 
 ### Co se pořád vyčíst nedá
 

@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.14";
+static const char* STUDY_VERSION = "2026-09-30.15";
 
 static const int NUM_FAMILIES = 12;
 
@@ -299,6 +299,10 @@ struct StudyState {
     int      orderFailures = 0;         // consecutive rejections; trading stops at the limit
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
     int      trimSentAccount = -1;      // the position it was sent against
+    int      ordersPlaced = 0;          // accepted orders since the last reload; 0 means this
+                                        // study has not touched the account in this run
+    bool     orphanHalt = false;        // the account holds contracts this run did not place
+    bool     orphanWarned = false;      // said once, not once per call
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1498,6 +1502,7 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
     if (rc > 0) {
         S.trimSentQty     = surplus;
         S.trimSentAccount = effective;
+        ++S.ordersPlaced;
         tally.anyOk       = true;
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing: SELL %d, position %d -> %d (book wants %d).",
@@ -1570,6 +1575,33 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     } else {
         account = S.semiPosition;
     }
+
+    // A position this run did not open cannot be managed by this run, and must not be traded
+    // around. Reloading the presets or restarting Sierra rebuilds the book from bar zero and
+    // throws away every order ID the study held, so the brackets left behind by the previous run
+    // become unreachable: they keep working, their quantity keeps covering the position, and the
+    // market sell that would square it comes back refused. That is how one chart went from ten
+    // contracts to nineteen and then to twenty-seven across three runs, each one adding what the
+    // last could no longer take off.
+    //
+    // No amount of code fixes it after the fact - the IDs are gone. So the study refuses to trade
+    // at all until the account is flat, and says so instead of quietly making it worse.
+    if (send && S.ordersPlaced == 0 && account > 0) {
+        S.orphanHalt = true;
+        if (!S.orphanWarned) {
+            S.orphanWarned = true;
+            SCString m;
+            m.Format("Multi-Swing: NOT TRADING. The account holds %d contracts that this run did "
+                     "not place - a reload or a restart loses the order IDs, so their stops and "
+                     "targets cannot be reached or cancelled from here, and an exit sent around "
+                     "them is refused. Trade > Flatten and Cancel All, then change the Input "
+                     "'Reload Presets' to the other value. Nothing will be sent until the account "
+                     "is flat.", account);
+            sc.AddMessageToLog(m, 1);
+        }
+        return;
+    }
+    S.orphanHalt = false;
 
     // Square the position before adding to it. An account that is above the book is the one state
     // in which sending an entry is indefensible: it makes the gap worse, and if the exits are the
@@ -1679,6 +1711,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             lg.stopOnAccount = o.Stop1Price;
             entrySent = true;
             projected += qty;
+            ++S.ordersPlaced;
             tally.anyOk = true;
             if (logLevel >= LOG_INFO) {
                 SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f",
@@ -1729,6 +1762,7 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     // "FULL AUTO - ORDERS LIVE" while a loss limit is blocking every entry would be a lie.
     const bool halted = S.haltedDd || S.haltedDaily;
     const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
+                         : S.orphanHalt       ? "NOT TRADING - flatten the account first"
                          : stopped            ? "STOPPED - rejections, nothing is being sent"
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
@@ -1752,6 +1786,12 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     else if ((int)S.daily.size() < WARMUP_SESSIONS)
         warn.Format("\nWARMING UP %d of %d sessions - no preset can signal until SMA200 exists",
                     (int)S.daily.size(), WARMUP_SESSIONS);
+    if (S.orphanHalt) {
+        SCString orp;
+        orp.Format("\nFLATTEN    the account holds contracts this run did not place - "
+                   "Trade > Flatten and Cancel All");
+        warn += orp;
+    }
     if (S.incompleteDays > 0) {
         SCString inc;
         inc.Format("\nWARNING   %d incomplete session%s - see the Message Log",
@@ -2022,6 +2062,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->legs.clear();
         S->trimSentQty = 0;
         S->trimSentAccount = -1;
+        S->ordersPlaced = 0;
+        S->orphanHalt = false;
+        S->orphanWarned = false;
         SCString m;
         if (ok) {
             int valid = 0; for (size_t i = 0; i < S->presets.size(); ++i) if (S->presets[i].valid) ++valid;
@@ -2105,6 +2148,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       S->journalRows = 0; S->semiPosition = 0;
                       S->orderFailures = 0; S->legs.clear();
                       S->trimSentQty = 0; S->trimSentAccount = -1;
+                      S->ordersPlaced = 0; S->orphanHalt = false; S->orphanWarned = false;
                       S->incompleteDays = 0;
                       S->realizedToday = S->realizedTotal = S->equityPeak = 0;
                       S->realizedDay = -1; S->haltedDaily = S->haltedDd = false;

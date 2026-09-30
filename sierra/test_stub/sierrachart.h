@@ -186,7 +186,9 @@ struct SCStudyInterface {
     bool   stubRefuseExits = getenv("STUB_ORDERS")
                            && strcmp(getenv("STUB_ORDERS"), "sim_noexit") == 0;
     int    nextOrderId = 1;
-    double stubPosition = 0;
+    // STUB_START_POS=<n> starts the account already holding contracts nobody in this run placed,
+    // which is exactly the state a reload or a Sierra restart leaves behind.
+    double stubPosition = getenv("STUB_START_POS") ? atof(getenv("STUB_START_POS")) : 0;
     std::map<int, StubOrder> working;          // attached stops and targets still live
     std::map<int, std::pair<int,int> > bracket; // parent -> (targetId, stopId)
     // counters the harness prints; every one of them was a question I could not answer before
