@@ -170,6 +170,10 @@ struct SCStudyInterface {
     int  ModifyOrder(s_SCNewOrder&) { return -1; }
     int  CancelOrder(int) { return -1; }
     int  GetOrderByOrderID(int, s_SCTradeOrder&) { return 0; }   // 0 = no such order
+    // Signature copied from the real sierrachart.h (void, int parent, two int out-params). The
+    // stub reports no attached orders, so the harness exercises the "bracket is gone" path.
+    void GetAttachedOrderIDsForParentOrder(int, int& r_TargetInternalOrderID, int& r_StopInternalOrderID)
+    { r_TargetInternalOrderID = 0; r_StopInternalOrderID = 0; }
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
     SCString DataFilesFolder() { return SCString("."); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }

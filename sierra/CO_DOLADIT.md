@@ -128,16 +128,13 @@ Co **nejde** a co bys pro nové nápady potřeboval, je níže jako P4 a P5.
 
 ## 3. Co ve skriptu chybí, podle priority
 
-### P1 — Posuny stopu se do Sierry nepřenášejí
+### ~~P1 — posuny stopu do Sierry~~ HOTOVO 30. 9.
 
-Bracket se nastaví při vstupu a už se nemění. 8 ze 48 presetů ale stop posouvá, což je
-**304 obchodů ze 6 504 (4,7 %)**. Na účtu skončí tržním příkazem místo na posunutém stopu:
-horší cena, systematicky v neprospěch. Není to díra v riziku — pozice zůstává chráněná
-původním, širším stopem.
-
-Oprava je `sc.ModifyOrder` na připojený stop. Potřebuju k tomu ověřit přesné názvy členů
-ACSIL; egress z kontejneru sierrachart.com nepustí. **Zkopíruj mi sem stránku *ACSIL Trading
-Functions*, sekci k připojeným příkazům, a dopíšu to.**
+Doděláno, jakmile přišly hlavičky z tvé instalace. Chybějící spojka byla
+`sc.GetAttachedOrderIDsForParentOrder(parent, target, stop)` — z ID vstupu dá ID připojeného
+stopu, ten se pak mění `sc.ModifyOrder` s `InternalOrderID` a `Price1`. Stop se posouvá **jen
+nahoru**. Ověřeno na 4 122 506 barech: 643 posunů a přesně těch 8 presetů, které mají v CSV
+`Trail` nebo `BE`. Podrobnosti v `README.md`, sekce *Co order vrstva zaručuje*.
 
 ### ~~P2 — kill switche~~ HOTOVO 30. 9.
 
@@ -176,22 +173,6 @@ Nejsou to zapomenuté nuly, ta logika neexistuje:
 
 Max Slippage má smysl až u živých fillů; na Simu je slippage stejně simulovaný.
 
-### P3 — Exit override je globální, ne per systém
-
-Input 52 přepíše TP/SL/RRR **všem 48 presetům naráz**. To je to, na co se ptáš: nastavit
-TP/SL/RRR u každého systému zvlášť dnes jde jen přes CSV, ne přes Inputy.
-
-Rozpočet na to je: studie používá 65 Inputů z limitu 128, volných je **63**. Návrh, který
-se vejde a nerozbije číslování (nové indexy jen na konec, existující nepřečíslovávat):
-
-```
-65..88   dvojice na rodinu: "Fam<k> Override SL (x ATR, 0 = použij preset)"
-                            "Fam<k> Override RRR (0 = použij preset)"
-```
-
-24 Inputů, celkem 89, rezerva 39. Nula znamená „nesahej", takže výchozí chování zůstane
-přesně to ověřené. Per preset už by se to nevešlo (48 × 2 = 96) a stejně patří do CSV.
-
 ### P4 — Exit jazyk neumí body a ticky
 
 `ParseExit` zná jen ATR násobky. Nové nápady stojí na **pevných bodových stopech**
@@ -220,10 +201,9 @@ jádrem. Jeden preset s `role = R0 core`, který drží 1 kontrakt trvale, by to
 
 Tohle je z celého seznamu ta nejvíc strategická věc, ne ta nejvíc urgentní.
 
-### P7 — Dojet Replay 2020–2026
+### ~~P7 — dojet Replay 2020–2026~~ HOTOVO 30. 9.
 
-Není to zásah do skriptu. Ověřeno máme 2016-08 → 2019-12 se 100% shodou po zahřátí;
-covid, 2022 a poslední roky ověřené nejsou.
+99,7 % P&L na celém 2016–2026, a jediná odchylka měla jednu příčinu — viz P0 výš.
 
 ### P8 — Shorty nejsou a nebudou
 
@@ -241,10 +221,14 @@ jinak jen mate.
 | ~~P3 override per rodinu~~ | hotovo |
 | ~~P0 nekompletní seance~~ | detekce hotová |
 | ~~P7 dojet Replay~~ | hotovo, 99,7 % na 2016–2026 |
-| **P1 posuny stopu do Sierry** | **jediná věc, která brání plnému full auto** — čeká na dokumentaci ACSIL |
+| ~~P1 posuny stopu do Sierry~~ | hotovo |
 | P6 long core | strategické, až se rozhodneš měřit overlay proti jádru |
 | P2b, P4, P5 | nedělat, dokud nebude co implementovat |
 
-Pro full auto na Simu je hotovo všechno kromě P1. Ten není blokující v tom smyslu, že by
-se nedalo obchodovat — 8 ze 48 presetů skončí tržním příkazem místo na posunutém stopu,
-což je 4,7 % obchodů za horší cenu, ne nechráněná pozice.
+**Pro full auto na Simu je hotovo všechno.** Order vrstva umí vstup s vlastním bracketem,
+posun stopu podle trailu i breakevenu, srovnání pozice na konci seance a dva limity ztrát.
+Co zbývá, je strategické (P6 long core), ne technické.
+
+Jediné, co se z kódu vyčíst nedá a ukáže až Sim účet: jestli Sierra po odprodeji přebytku
+tržním příkazem nechá zbývajícím vstupům jejich připojené stopy. V *Trade → Trade Orders and
+Positions* musí být otevřených stop příkazů právě tolik, kolik je otevřených presetů se stopem.

@@ -159,17 +159,24 @@ součet se pak srovnává proti pozici, kterou Sierra hlásí.
 | `sl` | 1 415 (21,8 %) | Sierra, připojený stop |
 | `tp` | 808 (12,4 %) | Sierra, připojený target |
 | `time` | 500 (7,7 %) | srovnání pozice na konci seance |
-| `breakeven` | 161 (2,5 %) | **nikdo — stop se v Sierře neposouvá** |
-| `trail` | 143 (2,2 %) | **nikdo — stop se v Sierře neposouvá** |
+| `breakeven` | 161 (2,5 %) | Sierra, stop posunutý `sc.ModifyOrder` |
+| `trail` | 143 (2,2 %) | Sierra, stop posunutý `sc.ModifyOrder` |
 
-**Známá mezera: posuny stopu se do Sierry nepřenášejí.** Bracket se nastaví při vstupu a už se
-nemění, zatímco výzkumný engine u 8 ze 48 presetů stop posouvá (trailing, breakeven). Těch
-**304 obchodů ze 6 504, tedy 4,7 %**, na účtu neskončí na posunutém stopu, ale až tržním
-příkazem, až je kniha zavře. Pozice přitom zůstává chráněná původním, širším stopem — není to
-díra v riziku, ale je to horší výstupní cena a systematicky v neprospěch. Opravit to znamená
-posílat `sc.ModifyOrder` na připojený stop; přesné názvy členů ACSIL si musím ověřit v
-dokumentaci Sierry, ke které z tohohle kontejneru není přístup (egress policy blokuje
-sierrachart.com). Než to půjde ověřit, je to popsané, ne zamlčené.
+**Posuny stopu (doplněno 30. 9.).** Bracket nastavený při vstupu se sám nehýbe, zatímco 8 ze 48
+presetů stop posouvá — trailing a breakeven, 304 obchodů ze 6 504. Studie proto po každém volání
+dopočítá, kam stop podle trailu a breakevenu patří, a když je to výš než to, co je v trhu, najde
+si dětský stop přes `sc.GetAttachedOrderIDsForParentOrder(parent, target, stop)` a pošle
+`sc.ModifyOrder` s `InternalOrderID` toho stopu a novou `Price1`.
+
+**Stop se posouvá jen nahoru.** Presety jsou long-only a snížit ochranný stop na živé pozici je
+jediná chyba tady, která by opravdu stála peníze, ne pár bodů. Odmítnutý posun se loguje, ale
+nezapočítává se do limitu odmítnutých příkazů — původní, širší stop zůstává v trhu, takže pozice
+je pořád chráněná a nemá smysl kvůli tomu zastavovat vstupy.
+
+Ověřeno offline na 4 122 506 barech (harness s `CHUNK`, který studii volá po dávkách tak jako
+Sierra): posun stopu si vyžádá **643×** a právě **8 presetů** — C06_3, D01_3, IBS<x_1, IBS<x_4,
+LMT_RSIx<x_xAT_4, P_HixDD>x&RSIx_4, WRx<x_1, WRx<x_2. To jsou přesně ty, které mají v
+`swing_presets.csv` ve sloupci `exit` `Trail` nebo `BE`. Žádný jiný preset o posun nežádá.
 
 **Co musí ukázat až Sim účet:** když srovnání pozice odprodá přebytek tržním příkazem, Sierra
 zmenší i připojené příkazy zbývajících vstupů. Jestli přitom některý preset zůstane bez stopu,

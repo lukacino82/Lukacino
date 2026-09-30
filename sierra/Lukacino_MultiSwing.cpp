@@ -144,6 +144,10 @@ struct PresetState {
     double initialStop = 0;
     bool   trailOn = false;
     double trailDist = 1e18, beR = 0;   // resolved at entry, frozen for the life of the trade
+    // Where the protective stop belongs in the market from tomorrow on: st.stop moved up by the
+    // trail and by breakeven, using the excursion INCLUDING today. It is only read by the order
+    // layer - the ledger still decides exits from the pre-bar excursion, so parity is untouched.
+    double accountStop = -1e18;
     int    timeStop = 0;
     bool   exitNextOpen = false;        // set by an "@open" signal exit, executed on the next session
     // day references are ABSOLUTE session numbers, never vector indices: the daily history is
@@ -169,6 +173,11 @@ struct PresetState {
 struct AccountLeg {
     int  qtyOnAccount = 0;      // what this preset actually put on the account
     long entryDay = -1;         // a re-entry the same session is a new trade, not the old one
+    // The entry order Sierra hung this preset's bracket on, and the stop price last working on it.
+    // Sierra owns the bracket; these are only what the study needs to move that stop when the
+    // trail or breakeven says so, and to not re-send a move that is already in the market.
+    unsigned int parentOrderId = 0;
+    double stopOnAccount = 0;
 };
 
 // Enough consecutive rejections to conclude the account is not doing what the study asks.
@@ -1004,6 +1013,14 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
                 }
                 if (!st.trailOn && p.trailActR > 0 && st.initialStop > 0 &&
                     (st.best - st.entry) >= p.trailActR * st.initialStop) st.trailOn = true;
+
+                // Re-derive where the account's stop should sit now that today's excursion counts.
+                double acc = st.stop;
+                if (st.trailOn && st.trailDist < 1e17)
+                    acc = std::max(acc, st.best - st.trailDist);
+                if (st.beR > 0 && st.initialStop > 0 && (st.best - st.entry) >= st.beR * st.initialStop)
+                    acc = std::max(acc, st.entry);
+                st.accountStop = acc;
             }
             if (code != 0) {
                 double pnl = px - st.entry;
@@ -1203,6 +1220,63 @@ static bool RealPrice(double p, double ref)
     return p > 0 && ref > 0 && p > ref * 0.5 && p < ref * 2.0;
 }
 
+// Move a preset's protective stop to where the trail or breakeven now puts it.
+//
+// Sierra owns the attached bracket and never moves it on its own, so eight of the forty-eight
+// presets - the trailing and breakeven ones, 304 of 6,504 trades in the reference ledger - used to
+// end on a market exit at whatever price the book happened to close them at, instead of on the
+// stop the research measured. The position was never unprotected, the original wider stop stayed
+// in the market, but the exit price was systematically worse.
+//
+// The stop is only ever raised. These presets are long-only, and lowering a protective stop on a
+// live position to match a number the study recomputed is the one mistake here that could actually
+// cost money rather than basis points.
+static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, AccountLeg& lg,
+                            const PresetState& st, bool send, int logLevel)
+{
+    const double want = st.accountStop;
+    if (want < -1e17) return;                                  // this preset has no stop at all
+    const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
+    if (want <= lg.stopOnAccount + tick / 2.0) return;         // already there, or would be a step down
+
+    if (!send) {
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing SEMI: would MOVE STOP for %s from %.2f to %.2f",
+                                 S.presets[k].id.GetChars(), lg.stopOnAccount, want);
+            sc.AddMessageToLog(m, 0);
+        }
+        lg.stopOnAccount = want;
+        return;
+    }
+
+    if (lg.parentOrderId == 0) return;                         // nothing to hang the lookup on
+    int targetId = 0, stopId = 0;
+    sc.GetAttachedOrderIDsForParentOrder((int)lg.parentOrderId, targetId, stopId);
+    if (stopId == 0) return;   // no working stop child: already filled, or the bracket is gone
+
+    s_SCNewOrder mod;
+    mod.InternalOrderID = stopId;
+    mod.Price1 = want;
+    const int rc = (int)sc.ModifyOrder(mod);
+    if (rc > 0) {
+        if (logLevel >= LOG_INFO) {
+            SCString m; m.Format("Multi-Swing: STOP MOVED for %s from %.2f to %.2f (order %d)",
+                                 S.presets[k].id.GetChars(), lg.stopOnAccount, want, stopId);
+            sc.AddMessageToLog(m, 0);
+        }
+        lg.stopOnAccount = want;
+    } else {
+        // Not counted against orderFailures: a refused stop move leaves the previous, wider stop
+        // working, so the position stays protected and the book stays consistent with the account.
+        // Cutting off entries over it would be a bigger problem than the one being reported.
+        SCString m;
+        m.Format("Multi-Swing: STOP MOVE REFUSED, Sierra returned %d: %s from %.2f to %.2f "
+                 "(stop order %d, parent %u). The earlier, wider stop is still working.",
+                 rc, S.presets[k].id.GetChars(), lg.stopOnAccount, want, stopId, lg.parentOrderId);
+        sc.AddMessageToLog(m, 1);
+    }
+}
+
 static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                        int mode, bool enabled, int logLevel, double last)
 {
@@ -1236,8 +1310,13 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             continue;
         }
 
-        // ---- already on the account for this trade, and Sierra is working its bracket
-        if (lg.entryDay == st.entryDay && lg.qtyOnAccount > 0) continue;
+        // ---- already on the account for this trade: Sierra works the bracket, but a trail or a
+        // breakeven may have moved where the stop belongs since the entry went out, and an
+        // attached order does not move by itself.
+        if (lg.entryDay == st.entryDay && lg.qtyOnAccount > 0) {
+            MoveAccountStop(sc, S, k, lg, st, send, logLevel);
+            continue;
+        }
 
         // ---- a new trade: one entry carrying its own stop and target
         lg = AccountLeg();
@@ -1254,6 +1333,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                 sc.AddMessageToLog(m, 0);
             }
             lg.qtyOnAccount = qty;
+            lg.stopOnAccount = RealPrice(st.stop, last) ? st.stop : 0.0;
             entrySent = true;
             continue;
         }
@@ -1271,6 +1351,8 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         const int rc = (int)sc.BuyEntry(o);
         if (rc > 0) {
             lg.qtyOnAccount = qty;
+            lg.parentOrderId = (unsigned int)o.InternalOrderID;   // filled in by Sierra on success
+            lg.stopOnAccount = o.Stop1Price;
             entrySent = true;
             S.orderFailures = 0;
             if (logLevel >= LOG_INFO) {

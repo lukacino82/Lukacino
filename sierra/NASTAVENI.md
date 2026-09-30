@@ -495,8 +495,16 @@ na účtu drží.
 
 ```
 Multi-Swing: FULL AUTO, orders ARE being sent to the trade service.
-Multi-Swing: BUY 3 -> position 12 (book wants 12)
+Multi-Swing: BUY 1 IBS<x_1  stop 5812.50  target 5934.75
+Multi-Swing: STOP MOVED for IBS<x_1 from 5812.50 to 5868.25 (order 41207)
+Multi-Swing: SELL 2 -> position 7 (book wants 7)
 ```
+
+Řádek `STOP MOVED` je trailing nebo breakeven: studie najde připojený stop přes
+`sc.GetAttachedOrderIDsForParentOrder` a přesune ho `sc.ModifyOrder`. **Posouvá se jen nahoru.**
+Žádá o to právě 8 ze 48 presetů — ty, které mají v `swing_presets.csv` ve sloupci `exit`
+`Trail` nebo `BE`. Když se posun odmítne, zaloguje se to jako chyba, ale vstupy se nezastaví:
+v trhu zůstává původní, širší stop, takže pozice je pořád chráněná.
 
 Odmítnutý příkaz se loguje jako chyba **pokaždé**, ne jen jednou. Má to důvod: po odmítnutí
 drží účet něco jiného, než si myslí ledger, a každé další dorovnání se počítá proti špatné

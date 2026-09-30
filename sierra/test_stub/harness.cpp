@@ -46,6 +46,10 @@ int main(int argc, char** argv)
     if (const char* v = getenv("OV_SL_ATR"))      sc.Input[IN_OV_SL_ATR].SetFloat((float)atof(v));
     if (const char* v = getenv("OV_RRR"))         sc.Input[IN_OV_RRR].SetFloat((float)atof(v));
     if (const char* v = getenv("TIME_STOP"))      sc.Input[IN_TIME_STOP].SetInt(atoi(v));
+    // MODE=1 is semi-auto: nothing is sent, but the order layer runs and logs what it would do,
+    // which is the only way to exercise it offline - the stub's BuyEntry always refuses.
+    if (const char* v = getenv("MODE"))           sc.Input[IN_MODE].SetCustomInputIndex(atoi(v));
+    if (const char* v = getenv("LOG_LEVEL"))      sc.Input[IN_LOG_LEVEL].SetCustomInputIndex(atoi(v));
     if (const char* v = getenv("DAILY_LOSS"))     sc.Input[IN_DAILY_LOSS].SetFloat((float)atof(v));
     if (const char* v = getenv("MAX_DD"))         sc.Input[IN_MAX_DD_STOP].SetFloat((float)atof(v));
     // FAM_SL / FAM_RRR take "family:value" pairs, 1-based, e.g. FAM_SL="1:2.0,3:1.5"
@@ -85,9 +89,27 @@ int main(int argc, char** argv)
         sc.BaseData[SC_VOLUME][n] = (float)v;
         ++n;
     }
-    sc.ArraySize = n;
-    sc.UpdateStartIndex = 0;
-    scsf_LukacinoMultiSwing(sc);
+    // One call with everything is how a chart recalculates; CHUNK=<bars> instead delivers the
+    // history in slices, which is how Sierra actually calls a study as bars arrive and the only
+    // way the order layer runs offline at all - it is invoked once per study call, so a single
+    // call only ever sees the final state. It is also a parity test in its own right: incremental
+    // and batch must produce the same ledger, and a session delivered short is exactly the class
+    // of bug that does not show up in one batch call.
+    const int chunk = getenv("CHUNK") ? atoi(getenv("CHUNK")) : 0;
+    if (chunk <= 0) {
+        sc.ArraySize = n;
+        sc.UpdateStartIndex = 0;
+        scsf_LukacinoMultiSwing(sc);
+    } else {
+        int done = 0;
+        while (done < n) {
+            const int end = (done + chunk < n) ? done + chunk : n;
+            sc.ArraySize = end;
+            sc.UpdateStartIndex = done;
+            scsf_LukacinoMultiSwing(sc);
+            done = end;
+        }
+    }
 
     // dump the per-bar published series; the Python side reduces them to one row per RTH day
     std::ofstream out(argv[3]);
