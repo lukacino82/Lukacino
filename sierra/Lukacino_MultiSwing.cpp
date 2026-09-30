@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.10";
+static const char* STUDY_VERSION = "2026-09-30.11";
 
 static const int NUM_FAMILIES = 12;
 
@@ -260,6 +260,7 @@ struct StudyState {
     long     dayCounter = -1;           // absolute number of completed trading days
     int      incompleteDays = 0;        // sessions finalised without reaching their RTH end
     long     recalcSkips = 0;           // consecutive orders Sierra skipped for a full recalculation
+    bool     grossCapWarned = false;    // the "cap is below one preset" notice is said once
 
     // Realised P&L in points, from the study's own ledger - not from the account, which the
     // study cannot read here. It is the same number the journal records, so the limits below
@@ -982,6 +983,22 @@ static void ProcessDay(SCStudyInterfaceRef sc, StudyState& S, const std::vector<
     }
     const bool halted = S.haltedDaily || S.haltedDd;
 
+    // Max Gross Exposure is in MES equivalents, so one preset costs riskUnit x 1 on MES and
+    // riskUnit x 10 on ES. Set the cap below that and CapsAllow refuses the very first entry of
+    // every session forever - and the symptom, an empty book, looks exactly like a quiet market.
+    // Nothing else in the study can distinguish those two, so it says which one it is.
+    const double onePreset = cfg.riskUnit * cfg.contractMult;
+    if (!S.grossCapWarned && cfg.maxGross > 0 && onePreset > cfg.maxGross) {
+        S.grossCapWarned = true;
+        SCString m;
+        m.Format("Multi-Swing: MAX GROSS EXPOSURE (%.0f) IS SMALLER THAN ONE PRESET (%.0f = risk "
+                 "unit %.2f x %.0f for %s). No preset can ever enter and the book will stay empty. "
+                 "The cap counts MES equivalents, so on ES one preset costs ten of them.",
+                 cfg.maxGross, onePreset, cfg.riskUnit, cfg.contractMult,
+                 cfg.contractMult > 1.5 ? "ES" : "MES");
+        sc.AddMessageToLog(m, 1);
+    }
+
     for (size_t k = 0; k < S.presets.size(); ++k) {
         Preset& p = S.presets[k];
         PresetState& st = S.states[k];
@@ -1589,7 +1606,11 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     // sessions is the study working, not the study broken. Said outright because the only other
     // way to know was to count the 'days' line yourself and know what it had to reach.
     const int WARMUP_SESSIONS = 200;
-    if ((int)S.daily.size() < WARMUP_SESSIONS)
+    const double onePreset = cfg.riskUnit * cfg.contractMult;
+    if (cfg.maxGross > 0 && onePreset > cfg.maxGross)
+        warn.Format("\nBLOCKED    Max Gross %.0f < one preset (%.0f) - no preset can ever enter",
+                    cfg.maxGross, onePreset);
+    else if ((int)S.daily.size() < WARMUP_SESSIONS)
         warn.Format("\nWARMING UP %d of %d sessions - no preset can signal until SMA200 exists",
                     (int)S.daily.size(), WARMUP_SESSIONS);
     if (S.incompleteDays > 0) {

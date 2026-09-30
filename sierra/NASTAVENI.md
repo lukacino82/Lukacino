@@ -322,13 +322,28 @@ popisky smaže.
 
 ## 6. Sizing
 
-48 presetů má dohromady průměrnou expozici 9,5 ES ekvivalentu, ve špičce zhruba 4–5× tolik.
+48 presetů drží v průměru 12 pozic současně, ve špičce až všech 48.
 
-| Co chceš | Instrument | Risk Unit | Max Gross | Průměrná expozice |
+**Max Gross Exposure (Input 34) se počítá v MES ekvivalentech.** Jeden otevřený preset stojí
+*Risk Unit* × 1 na MES, ale *Risk Unit* × **10** na ES. Když dáš cap pod tuhle hodnotu, odmítne
+se **první vstup každé seance navždy** a kniha zůstane prázdná — a v grafu to vypadá úplně
+stejně jako klidný trh. Proto to studie od verze `2026-09-30.11` hlásí sama:
+
+```
+BLOCKED    Max Gross 6 < one preset (10) - no preset can ever enter
+```
+
+| Co chceš | Instrument | Risk Unit | Max Gross | Kolik je reálně v trhu |
 |---|---|---|---|---|
-| Doporučeno | MES | 1.0 | 60 | 0,95 ES, špička 4,8 ES |
-| Poloviční riziko | MES | 0.5 | 30 | 0,48 ES |
-| Velké kontrakty | ES | 1.0 | 6 | 9,5 ES, pro většinu účtů moc |
+| Doporučeno | MES | 1.0 | **60** | průměr 12 MES = 1,2 ES, špička 4,8 ES |
+| Poloviční riziko | MES | 0.5 | **30** | průměr 0,6 ES |
+| Velké kontrakty | ES | 1.0 | **600** | průměr **12 ES**, špička 48 ES — pro většinu účtů moc |
+
+Změřeno na 4 122 506 barech: `ES / 1.0 / cap 600` i `MES / 1.0 / cap 60` dají celou knihu
+6 637 obchodů, **`ES / 1.0 / cap 6` dá nulu.**
+
+Cap 60 na ES **není stejné riziko jako 60 na MES** — pustí jen 6 otevřených presetů, což knihu
+ořeže stejně tvrdě jako *Max Concurrent Presets* 6 a výsledky z reportu tím přestanou platit.
 
 ---
 
