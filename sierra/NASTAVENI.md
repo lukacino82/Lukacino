@@ -49,10 +49,13 @@ Studie zůstane na grafu, **nastavení Inputů si podrží** — nové Inputy se
 existující se nikdy nepřečíslovávají, takže reload nikdy nic nepřepíše. Přidávat studii znovu
 nebo přenastavovat Inputy není potřeba.
 
-**Zkontroluj ale, že se build opravdu povedl.** Sierra kompiluje na vzdáleném serveru
-(`build.sierrachart.com`) a když odpověď nepřijde — v logu `The compiler response is empty.` —
-zůstane nahraná **stará DLL** a v logu to vypadá stejně. Proto studie na začátku hlásí svoji
-verzi. Když se to číslo po buildu nezměnilo, build neprošel, ať okno tvrdí cokoliv.
+**Zkontroluj ale, že se build opravdu povedl** — podle čísla verze, ne podle ničeho jiného.
+Sierra kompiluje na vzdáleném serveru (`build.sierrachart.com`) a stará DLL umí zůstat nahraná,
+přičemž `Unloaded DLL` / `Loading DLL` v logu vypadá naprosto stejně jako úspěšná výměna.
+
+Hláška **`The compiler response is empty.` nic neznamená** — objevuje se i u buildů, které
+proběhnou správně. Změřeno na dvou po sobě jdoucích buildech: oba ji měly, první nahrál starou
+DLL (bez verze), druhý novou (`Multi-Swing 2026-09-30.10:`). Jediné spolehlivé je to číslo.
 
 ---
 
