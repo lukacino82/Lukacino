@@ -477,3 +477,39 @@ Obě posouvaly číslo víc než změny ve studii, takže stojí za zápis:
 ji odmítne, spadne to na zrušení stopky jako v `.16` a v logu bude
 `could not steer <preset>'s stop (... Sierra returned -1)` — z toho se to pozná na první pohled a
 ty kontrakty jsou pak chvíli nekryté, než je vezme tržní prodej. Zbytek `.17` na tom nestojí.
+
+## P14 — vlastní simulace grafu neumí řídit brackety, a jedna noha uměla zaplavit log (hotovo, `.19`)
+
+Jeho Message Log z `.17` rozhodl dvě věci, jednu o Sieře a jednu o mém kódu.
+
+### Sierra: `ModifyOrder` v `Send Orders To Trade Service = No` neexistuje
+
+S `Yes` (běh `.16`) projde `EXIT ... through its own bracket - target order 162534 moved to
+7729.50`. S `No` přijde na tentýž příkaz `could not steer C<wvwapxsd_4's target (order 162689 to
+3654.00, Sierra returned -1)` — a `CancelOrder` je odmítnutý taky, protože ten samý `targetId` se
+vrací z `GetAttachedOrderIDsForParentOrder` i po zrušení. Vstupy se přijímají v obou režimech.
+
+**Takže moje rada „pro replay dej Input 3 = No" byla špatná a platí obráceně: pro Full auto musí
+být Yes.** `No` je plnohodnotné jen tam, kde se nic neposílá, tedy Signals only a Semi-auto.
+Teorie, že replay do trade service nemůže fungovat kvůli cenám, se tím nepotvrdila — `.16` běžel
+s `Yes` a brackety se řídit daly.
+
+### Můj kód: noha, kterou nešlo zavřít, se zkoušela každé volání
+
+`.17` u neúspěšného řízení nechala nohu žít, počítala ji jako drženou (správně) a **zkusila to
+znovu v každém dalším volání studie** — se stejným logovacím řádkem. Při replayi na 30720X to je
+tisíc identických řádek za sekundu, jeden a týž příkaz, celý běh. Nic se tím na účtu nezměnilo a
+všechno ostatní v logu to pohřbilo.
+
+Přidán stubový režim `STUB_ORDERS=sim_nomodify` (přijme vstupy s brackety, odmítne `ModifyOrder`
+i `CancelOrder`), který ten stav reprodukuje. Na 468 barech:
+
+| | řádek logu | z toho `could not steer` |
+|---|---|---|
+| `.17` | 8 779 | **6 970** |
+| `.19` | 1 844 | **34** |
+
+34 = jedna zpráva na nohu. Po `RETIRE_TRIES` pokusech se noha nechá být úplně: dál se počítá jako
+držená (kniha zůstane poctivá), ohlásí se jednou `CANNOT CLOSE` s tím, co to nejčastěji znamená, a
+víc se pro ni nezkouší nic. Objednávková vrstva jinak nezměněná a znovu přeměřená — žurnál
+bit-identický, 9 367 vstupů, 0 odmítnutých jako krytých při zdržení filu 0, 1 i 5 volání.

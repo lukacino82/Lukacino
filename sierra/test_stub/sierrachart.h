@@ -185,6 +185,13 @@ struct SCStudyInterface {
     // position after adding to it ratchets upward and never comes back down.
     bool   stubRefuseExits = getenv("STUB_ORDERS")
                            && strcmp(getenv("STUB_ORDERS"), "sim_noexit") == 0;
+    // STUB_ORDERS=sim_nomodify is the chart's own simulation as his Message Log showed it:
+    // entries accepted with their brackets, but ModifyOrder and CancelOrder both refused, so a
+    // bracket can be neither steered nor cancelled and the contracts can only leave when Sierra
+    // itself fills a child. It is the state in which a study that retries every call buries the
+    // log - thousands of identical lines a second at replay speed.
+    bool   stubRefuseModify = getenv("STUB_ORDERS")
+                            && strcmp(getenv("STUB_ORDERS"), "sim_nomodify") == 0;
     // on by default in sim: it is what Sierra does. STUB_COVERAGE=0 turns it off to show the
     // difference a design makes.
     bool   enforceCoverage = !(getenv("STUB_COVERAGE") && atoi(getenv("STUB_COVERAGE")) == 0);
@@ -345,6 +352,7 @@ struct SCStudyInterface {
     int  ModifyOrder(s_SCNewOrder& o)
     {
         if (!stubSim) return -1;
+        if (stubRefuseModify) return -1;
         std::map<int, StubOrder>::iterator it = working.find(o.InternalOrderID);
         if (it == working.end()) { ++stopMovesOnDeadOrder; return -1; }
         it->second.price = o.Price1;
@@ -377,6 +385,7 @@ struct SCStudyInterface {
     int  CancelOrder(int id)
     {
         if (!stubSim) return -1;
+        if (stubRefuseModify) return -1;
         std::map<int, StubOrder>::iterator it = working.find(id);
         if (it == working.end()) { ++cancelsOnDeadOrder; return -1; }
         working.erase(it);

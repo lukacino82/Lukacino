@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.18";
+static const char* STUDY_VERSION = "2026-09-30.19";
 
 static const int NUM_FAMILIES = 12;
 
@@ -320,7 +320,7 @@ struct StudyState {
                                         // study has not touched the account in this run
     bool     orphanHalt = false;        // the account holds contracts this run did not place
     bool     orphanWarned = false;      // said once, not once per call
-    bool     replayLiveWarned = false;  // ... and the same for the replay-into-trade-service note
+    bool     chartSimWarned = false;    // ... and for the chart-simulation-has-no-exits note
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1491,7 +1491,7 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, Account
     if (targetId != 0) sc.CancelOrder(targetId);
     if (stopId   != 0) sc.CancelOrder(stopId);
     lg.exitPrice = 0.0; lg.exitCalls = 0;
-    if (logLevel >= LOG_INFO) {
+    if (logLevel >= LOG_INFO && lg.retireTries == 0) {
         SCString m;
         m.Format("Multi-Swing: could not steer %s's %s (order %d to %.2f, Sierra returned %d); "
                  "cancelled the bracket, so those %d contract(s) go out at market once the cancel "
@@ -1686,25 +1686,27 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     const bool send = (mode == MODE_FULL);
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
-    // A replay sending orders to the trade service cannot work, and it costs a whole run to find
-    // out, because every refusal is the same reasonless -1.
+    // Full auto in the chart's own simulation cannot work the brackets, and it costs a run to
+    // find out.
     //
-    // The chart's own simulation is fed by the replay's bars. The trade service - Sim included -
-    // works off the symbol's real market data. A replay sitting in 2019 at 2,900 asking the trade
-    // service to buy a contract that is trading at 7,700 is not a request Sierra can act on, so it
-    // refuses, five times, and the order layer latches. Nothing in the study can fix that; the
-    // combination itself is wrong. Said once, and only once, because the study cannot tell whether
-    // it is what the user meant.
-    if (send && sc.SendOrdersToTradeService && sc.IsReplayRunning() && !S.replayLiveWarned) {
-        S.replayLiveWarned = true;
+    // His Message Log settled it. With 'Send Orders To Trade Service' = Yes the steer works:
+    // "EXIT ... through its own bracket - target order 162534 moved to 7729.50". With it set to No
+    // the same call comes back "could not steer ... Sierra returned -1", and CancelOrder is
+    // refused too, so a bracket can be neither moved nor removed. Entries are accepted either way,
+    // which is what makes it look like a working configuration: the position climbs and nothing
+    // can take it off except Sierra filling a child on its own.
+    //
+    // So this is not the safe half of a choice. For Full auto the Input has to be Yes; No is for
+    // Signals only and Semi-auto, where nothing is sent at all.
+    if (send && !sc.SendOrdersToTradeService && !S.chartSimWarned) {
+        S.chartSimWarned = true;
         sc.AddMessageToLog(
-            "Multi-Swing: this is a REPLAY with 'Send Orders To Trade Service' = Yes. The trade "
-            "service works off the symbol's real market data, not the replay's bars, so orders "
-            "priced in the replay's past are refused - with the same reasonless -1 as every other "
-            "gate, five of which stop order placement. For a replay set that Input to No: orders "
-            "then go to the chart's own simulation, fill against the chart's bars and draw on the "
-            "chart, which is the mode a replay is meant to be traded in. Set it to Yes only for a "
-            "live or realtime-Sim chart.", 1);
+            "Multi-Swing: FULL AUTO with 'Send Orders To Trade Service' = No. Entries will be "
+            "accepted, but the chart's own simulation refuses ModifyOrder and CancelOrder, so no "
+            "preset's exit can be steered through its bracket and its contracts can only leave "
+            "when Sierra fills a stop or target by itself. The position will run above the book "
+            "and the log will say CANNOT CLOSE. Set that Input to Yes for Full auto; No is for "
+            "Signals only and Semi-auto.", 1);
     }
 
     // A rejection means the account no longer holds what the book thinks, so every later order is
@@ -1729,6 +1731,13 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         if (st.inPos != 0 && lg.entryDay == st.entryDay) continue;
         if (!send) { lg = AccountLeg(); continue; }
 
+        // A leg that has already been given up on is left completely alone. Retrying it on every
+        // call is what turned one unsteerable bracket into thousands of identical log lines a
+        // second on a fast replay: the same two orders, the same refusal, the same cancel, for as
+        // long as the run lasted. It changed nothing on the account and buried every other line.
+        // Its contracts still count as held, and the report below has already said so once.
+        if (lg.retireTries >= RETIRE_TRIES) { stillCovered += lg.qtyOnAccount; continue; }
+
         const RetireVerdict v = RetireLegNow(sc, S, lg, k, last, logLevel);
         if (v == RETIRE_ALREADY) {
             // The bracket has no live children, so these contracts are off the account. If they
@@ -1745,11 +1754,14 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
 
         // No reachable bracket, or a cancel that keeps not taking. Saying so once is the only
         // honest move: the study cannot close these, and latching silently would hide it.
-        if (++lg.retireTries == RETIRE_TRIES) {
+        if (++lg.retireTries >= RETIRE_TRIES) {
             SCString m;
-            m.Format("Multi-Swing: CANNOT CLOSE %s - %d contract(s) on the account with no "
-                     "reachable bracket after %d attempts. Close them by hand in Trade > Trade "
-                     "Orders and Positions; the book has already written this preset off.",
+            m.Format("Multi-Swing: CANNOT CLOSE %s - %d contract(s) on the account whose bracket "
+                     "will not be steered or cancelled after %d attempts. Nothing further will be "
+                     "tried for them and they keep counting as held, so the book stays honest. "
+                     "Close them by hand in Trade > Trade Orders and Positions. If every preset "
+                     "says this, 'Send Orders To Trade Service' is No: the chart's own simulation "
+                     "refuses ModifyOrder, so set that Input to Yes for Full auto.",
                      S.presets[k].id.GetChars(), lg.qtyOnAccount, RETIRE_TRIES);
             sc.AddMessageToLog(m, 1);
         }
@@ -1975,14 +1987,10 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                          : stopped            ? "STOPPED - rejections, nothing is being sent"
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
-                         // A replay routing orders to the trade service is a configuration that
-                         // cannot fill anything, so the box says which switch to move rather than
-                         // reading like a healthy live run.
-                         : mode == MODE_FULL  ? (sending ? (sc.IsReplayRunning()
-                                                           ? "FULL AUTO - REPLAY into trade service:"
-                                                             " set Input 3 to No"
-                                                           : "FULL AUTO - ORDERS LIVE")
-                                                          : "FULL AUTO - chart simulation only")
+                         // Full auto without the trade service cannot work a bracket, so the box
+                         // says which switch to move rather than reading like a healthy run.
+                         : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
+                                                         : "FULL AUTO - no exits: set Input 3 to Yes")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
 
@@ -2280,7 +2288,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->ordersPlaced = 0;
         S->orphanHalt = false;
         S->orphanWarned = false;
-        S->replayLiveWarned = false;
+        S->chartSimWarned = false;
         S->bracketsSeen = S->bracketsEmpty = 0;
         S->modifyOk = S->modifyFail = 0;
         SCString m;
@@ -2367,7 +2375,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       S->orderFailures = 0; S->legs.clear();
                       S->trimSentQty = 0; S->trimWaited = 0;
                       S->ordersPlaced = 0; S->orphanHalt = false; S->orphanWarned = false;
-                      S->replayLiveWarned = false;
+                      S->chartSimWarned = false;
                       S->bracketsSeen = S->bracketsEmpty = 0; S->modifyOk = S->modifyFail = 0;
                       S->incompleteDays = 0;
                       S->realizedToday = S->realizedTotal = S->equityPeak = 0;
