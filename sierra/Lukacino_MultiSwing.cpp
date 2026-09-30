@@ -1579,9 +1579,19 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     pnl.Format("P&L       %+.0f pts today   %+.0f total   %.0f off peak",
                S.realizedToday, S.realizedTotal, S.equityPeak - S.realizedTotal);
     SCString warn;
-    if (S.incompleteDays > 0)
-        warn.Format("\nWARNING   %d incomplete session%s - see the Message Log",
-                    S.incompleteDays, S.incompleteDays == 1 ? "" : "s");
+    // Before SMA200 exists no preset can signal, so an empty book during the first two hundred
+    // sessions is the study working, not the study broken. Said outright because the only other
+    // way to know was to count the 'days' line yourself and know what it had to reach.
+    const int WARMUP_SESSIONS = 200;
+    if ((int)S.daily.size() < WARMUP_SESSIONS)
+        warn.Format("\nWARMING UP %d of %d sessions - no preset can signal until SMA200 exists",
+                    (int)S.daily.size(), WARMUP_SESSIONS);
+    if (S.incompleteDays > 0) {
+        SCString inc;
+        inc.Format("\nWARNING   %d incomplete session%s - see the Message Log",
+                   S.incompleteDays, S.incompleteDays == 1 ? "" : "s");
+        warn += inc;
+    }
 
     SCString text;
     text.Format("LUKACINO MULTI-SWING\n"
