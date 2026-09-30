@@ -8,6 +8,8 @@
 #include <cstdarg>
 #include <cctype>
 #include <vector>
+#include <map>
+#include <utility>
 #include <cmath>
 
 // the real scstructures.h defines these as macros; reproduce that so std::max / std::min
@@ -151,29 +153,119 @@ struct SCStudyInterface {
     // the off-line harness is never a replay; the study must still not depend on the wall clock
     int IsReplayRunning() { return 0; }
 
-    // Trading API. The off-line harness has no account, so orders are counted and refused: the
-    // study must still compile against the same calls, and the parity run must stay a paper run.
+    // Trading API. Two behaviours, chosen by the STUB_ORDERS environment variable:
+    //
+    //   refuse (default) - every order comes back -1, which is what the parity run wants: the
+    //                      back-test must stay a paper run, and the rejection paths get exercised.
+    //   sim              - a small order book that enforces the same three rules Sierra documents
+    //                      for a study's orders: MaximumPositionAllowed, AllowEntryWithWorkingOrders
+    //                      and CancelAllOrdersOnEntriesAndReversals, and that keeps each entry's
+    //                      attached stop and target so GetAttachedOrderIDsForParentOrder and
+    //                      ModifyOrder mean something.
+    //
+    // 'sim' tests THIS study against Sierra's contract, not Sierra itself. It cannot prove what
+    // Sierra does; it can prove that the study never asks for something the contract forbids -
+    // that it does not trim more than the surplus, does not leave a preset's stop unmoved, and
+    // does not depend on orders being cancelled behind its back. Those were all unanswerable from
+    // the code before, and every one of them is a way to end up holding an unprotected book.
     int  SendOrdersToTradeService = 0;
     int  AllowMultipleEntriesInSameDirection = 0;
     int  SupportReversals = 0;
     int  AllowOnlyOneTradePerBar = 0;
     int  MaximumPositionAllowed = 0;
     int  SupportAttachedOrdersForTrading = 0;
+    int  AllowEntryWithWorkingOrders = 0;
+    int  CancelAllOrdersOnEntriesAndReversals = 0;
     int  ordersAttempted = 0;
-    void GetTradePosition(s_SCPositionData& p) { p = s_SCPositionData(); }
+
+    struct StubOrder { int id = 0, parent = 0, qty = 0; double price = 0; bool isStop = false; };
+    bool   stubSim = getenv("STUB_ORDERS") && strcmp(getenv("STUB_ORDERS"), "sim") == 0;
+    int    nextOrderId = 1;
+    double stubPosition = 0;
+    std::map<int, StubOrder> working;          // attached stops and targets still live
+    std::map<int, std::pair<int,int> > bracket; // parent -> (targetId, stopId)
+    // counters the harness prints; every one of them was a question I could not answer before
+    int    entriesOk = 0, entriesRefused = 0, refusedByWorkingOrders = 0, refusedByMaxPosition = 0;
+    int    trimsOk = 0, trimQtyTotal = 0, trimOverSurplus = 0;
+    int    stopMovesOk = 0, stopMovesOnDeadOrder = 0, cancelledByTrim = 0;
+    double stubPeakPosition = 0;
+
+    void GetTradePosition(s_SCPositionData& p)
+    { p = s_SCPositionData(); p.PositionQuantity = stubSim ? stubPosition : 0; }
     int  ChartNumber = 1;
     double TickSize = 0.25;
     void UseTool(const s_UseTool&) {}
     void DeleteACSChartDrawing(int, int, int) {}
-    int  BuyEntry(s_SCNewOrder&)  { ++ordersAttempted; return -1; }
-    int  SellExit(s_SCNewOrder&)  { ++ordersAttempted; return -1; }
-    int  ModifyOrder(s_SCNewOrder&) { return -1; }
+
+    int  BuyEntry(s_SCNewOrder& o)
+    {
+        ++ordersAttempted;
+        if (!stubSim) return -1;
+        if (!AllowEntryWithWorkingOrders && !working.empty()) {
+            ++entriesRefused; ++refusedByWorkingOrders; return -1;
+        }
+        if (MaximumPositionAllowed > 0 && stubPosition + o.OrderQuantity > MaximumPositionAllowed) {
+            ++entriesRefused; ++refusedByMaxPosition; return -1;
+        }
+        const int id = nextOrderId++;
+        o.InternalOrderID = id;
+        stubPosition += o.OrderQuantity;
+        if (stubPosition > stubPeakPosition) stubPeakPosition = stubPosition;
+        int targetId = 0, stopId = 0;
+        if (o.Target1Price != 0) {
+            targetId = nextOrderId++;
+            StubOrder t; t.id = targetId; t.parent = id; t.qty = o.OrderQuantity;
+            t.price = o.Target1Price; t.isStop = false; working[targetId] = t;
+        }
+        if (o.Stop1Price != 0) {
+            stopId = nextOrderId++;
+            StubOrder t; t.id = stopId; t.parent = id; t.qty = o.OrderQuantity;
+            t.price = o.Stop1Price; t.isStop = true; working[stopId] = t;
+        }
+        bracket[id] = std::make_pair(targetId, stopId);
+        ++entriesOk;
+        return id;
+    }
+
+    int  SellExit(s_SCNewOrder& o)
+    {
+        ++ordersAttempted;
+        if (!stubSim) return -1;
+        if (o.OrderQuantity > stubPosition) ++trimOverSurplus;   // would sell what is not held
+        stubPosition -= o.OrderQuantity;
+        if (stubPosition < 0) stubPosition = 0;
+        if (CancelAllOrdersOnEntriesAndReversals) {
+            cancelledByTrim += (int)working.size();
+            working.clear();
+            bracket.clear();
+        }
+        ++trimsOk; trimQtyTotal += o.OrderQuantity;
+        o.InternalOrderID = nextOrderId++;
+        return o.InternalOrderID;
+    }
+
+    int  ModifyOrder(s_SCNewOrder& o)
+    {
+        if (!stubSim) return -1;
+        std::map<int, StubOrder>::iterator it = working.find(o.InternalOrderID);
+        if (it == working.end()) { ++stopMovesOnDeadOrder; return -1; }
+        it->second.price = o.Price1;
+        ++stopMovesOk;
+        return 1;
+    }
+
     int  CancelOrder(int) { return -1; }
     int  GetOrderByOrderID(int, s_SCTradeOrder&) { return 0; }   // 0 = no such order
-    // Signature copied from the real sierrachart.h (void, int parent, two int out-params). The
-    // stub reports no attached orders, so the harness exercises the "bracket is gone" path.
-    void GetAttachedOrderIDsForParentOrder(int, int& r_TargetInternalOrderID, int& r_StopInternalOrderID)
-    { r_TargetInternalOrderID = 0; r_StopInternalOrderID = 0; }
+    // Signature copied from the real sierrachart.h (void, int parent, two int out-params).
+    void GetAttachedOrderIDsForParentOrder(int parent, int& r_TargetInternalOrderID, int& r_StopInternalOrderID)
+    {
+        r_TargetInternalOrderID = 0; r_StopInternalOrderID = 0;
+        if (!stubSim) return;
+        std::map<int, std::pair<int,int> >::iterator it = bracket.find(parent);
+        if (it == bracket.end()) return;
+        if (working.count(it->second.first))  r_TargetInternalOrderID = it->second.first;
+        if (working.count(it->second.second)) r_StopInternalOrderID  = it->second.second;
+    }
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
     SCString DataFilesFolder() { return SCString("."); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }

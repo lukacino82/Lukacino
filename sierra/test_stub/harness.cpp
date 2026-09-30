@@ -126,5 +126,25 @@ int main(int argc, char** argv)
             << sc.Subgraph[7][i] << "," << sc.Subgraph[8][i] << "," << sc.Subgraph[9][i] << ","
             << sc.Subgraph[10][i] << "," << sc.Subgraph[11][i] << "\n";
     std::cerr << "bars " << n << " done\n";
+    // The order layer's own report. Written to stderr next to the bar count so a regression run
+    // diffs it like anything else; with STUB_ORDERS=sim these are the numbers that answer the
+    // questions the source alone could not.
+    if (sc.stubSim) {
+        std::cerr << "ORDERS entries_ok " << sc.entriesOk
+                  << " refused " << sc.entriesRefused
+                  << " (working_orders " << sc.refusedByWorkingOrders
+                  << ", max_position " << sc.refusedByMaxPosition << ")"
+                  << " trims " << sc.trimsOk
+                  << " trim_qty " << sc.trimQtyTotal
+                  << " trim_over_surplus " << sc.trimOverSurplus
+                  << " stop_moves " << sc.stopMovesOk
+                  << " stop_moves_on_dead_order " << sc.stopMovesOnDeadOrder
+                  << " cancelled_by_trim " << sc.cancelledByTrim
+                  << " peak_position " << sc.stubPeakPosition
+                  << " final_position " << sc.stubPosition
+                  << " working_at_end " << sc.working.size()
+                  << " max_position_allowed " << sc.MaximumPositionAllowed
+                  << "\n";
+    }
     return 0;
 }

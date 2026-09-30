@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.12";
+static const char* STUDY_VERSION = "2026-09-30.13";
 
 static const int NUM_FAMILIES = 12;
 
@@ -211,6 +211,17 @@ static double ToTick(double price, double tick, bool roundDown)
 }
 
 // What a Sierra return code means, where the study can say something useful about it.
+// Said on both rejection paths, so the two cannot drift apart. "Toggle Reload Presets" was not
+// enough of an instruction: the Input already reads Yes on most charts, and setting Yes to Yes is
+// not a change, so nothing reloads and the cut-off stays latched. It has to say which way to move
+// it.
+static const char* STOPPED_NOTICE =
+    "Multi-Swing: ORDER PLACEMENT STOPPED after too many rejections. The account is not holding "
+    "what the book thinks and nothing more will be sent. Flatten the position by hand, fix the "
+    "trade account or Trade Simulation Mode, then change the Input 'Reload Presets' to the OTHER "
+    "value (Yes to No, or No to Yes) - it reloads on the change, so setting it to what it already "
+    "says does nothing.";
+
 static const char* OrderRejectHint(int rc)
 {
     if (rc == SCT_SKIPPED_FULL_RECALC_CODE)
@@ -1379,6 +1390,22 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
     }
 }
 
+// The rejection cut-off used to be cleared by any single accepted order. A configuration that
+// refused nine orders in ten therefore never latched: the tenth reset the counter, the next call
+// started from zero, and the account drifted further from the book on every bar while the status
+// box stayed green. Counted per call instead - a call that got everything it asked for clears the
+// pressure, a call with refusals adds its refusals to it - and committed from a destructor so
+// that every path out of SyncOrders, including the early returns, records the same thing.
+struct FailureTally {
+    StudyState& S;
+    int  fails = 0;
+    bool anyOk = false;
+    explicit FailureTally(StudyState& s) : S(s) {}
+    ~FailureTally() { if (fails > 0) S.orderFailures += fails; else if (anyOk) S.orderFailures = 0; }
+    FailureTally(const FailureTally&) = delete;
+    FailureTally& operator=(const FailureTally&) = delete;
+};
+
 static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                        int mode, bool enabled, int logLevel, double last)
 {
@@ -1401,10 +1428,27 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // computed against a wrong position. Rather than repeat that for the rest of the run - the
     // first Sim Replay logged the same rejection thousands of times - trading stops and says so.
     if (S.orderFailures >= ORDER_FAILURE_LIMIT) return;
+    FailureTally tally(S);
 
     // An entry sent in this call is not filled yet, so the position read below still lags it. The
     // trim is skipped for one call rather than selling the entry straight back out.
     bool entrySent = false;
+
+    // The book's own gross cap is enforced on the ledger, and the ledger can legitimately sit
+    // above the account for a call or two: a preset closes, the trim goes out as a market order,
+    // and until it fills the account still carries it. An entry decided in that window asked
+    // Sierra for one contract past sc.MaximumPositionAllowed and was refused - six times over
+    // eighteen years in the offline order simulation. Those refusals are not an account problem,
+    // but the rejection cut-off cannot tell them apart, and five in one call latch the whole order
+    // layer STOPPED. So the study declines them itself instead of offering them: the position is
+    // read once here and projected forward across the entries this call sends.
+    int projected = 0;
+    if (mode == MODE_FULL) {
+        s_SCPositionData pos;
+        sc.GetTradePosition(pos);
+        projected = (int)pos.PositionQuantity;
+    }
+    const int accountCap = sc.MaximumPositionAllowed;
 
     for (size_t k = 0; k < S.states.size(); ++k) {
         PresetState& st = S.states[k];
@@ -1453,6 +1497,18 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             continue;
         }
 
+        if (accountCap > 0 && projected + qty > accountCap) {
+            if (logLevel >= LOG_DEBUG) {
+                SCString m;
+                m.Format("Multi-Swing: holding back %s - the account is at %d and %d is the "
+                         "maximum position allowed. Usually a trim that has not filled yet.",
+                         S.presets[k].id.GetChars(), projected, accountCap);
+                sc.AddMessageToLog(m, 0);
+            }
+            lg = AccountLeg();
+            continue;
+        }
+
         s_SCNewOrder o;
         o.OrderQuantity = qty;
         o.OrderType     = SCT_ORDERTYPE_MARKET;
@@ -1472,7 +1528,8 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             lg.parentOrderId = (unsigned int)o.InternalOrderID;   // filled in by Sierra on success
             lg.stopOnAccount = o.Stop1Price;
             entrySent = true;
-            S.orderFailures = 0;
+            projected += qty;
+            tally.anyOk = true;
             if (logLevel >= LOG_INFO) {
                 SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f",
                                      qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price);
@@ -1483,20 +1540,16 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: BUY %d %s at market, "
                      "stop %.2f target %.2f. (%d of %d before order placement stops.)%s",
                      rc, qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price,
-                     S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
+                     S.orderFailures + tally.fails + 1, (int)ORDER_FAILURE_LIMIT,
+                     OrderRejectHint(rc));
             sc.AddMessageToLog(m, 1);
             // The cut-off was only tested once per study call, at the top of this function, while
             // the loop below it runs all forty-eight presets. A day on which every order is
             // refused therefore logged "6 of 5", "7 of 5" and so on, repeated the stopped notice
             // once per preset, and kept firing orders at an account that had refused every one.
-            // Break here so the limit means what it says, and say it once.
-            if (++S.orderFailures >= ORDER_FAILURE_LIMIT) {
-                if (S.orderFailures == ORDER_FAILURE_LIMIT)
-                    sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many "
-                                       "rejections. The account is not holding what the book "
-                                       "thinks and nothing more will be sent. Flatten the position "
-                                       "by hand, fix the trade account or Trade Simulation Mode, "
-                                       "then toggle the Input 'Reload Presets' to start again.", 1);
+            // Return here so the limit means what it says, and say it once.
+            if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT) {
+                sc.AddMessageToLog(STOPPED_NOTICE, 1);
                 return;
             }
         }
@@ -1555,7 +1608,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     if (rc > 0) {
         S.trimSentQty     = surplus;
         S.trimSentAccount = account;
-        S.orderFailures   = 0;
+        tally.anyOk       = true;
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing: SELL %d, position %d -> %d (book wants %d).",
                                  surplus, account, want, want);
@@ -1565,14 +1618,11 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         SCString m;
         m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d to bring the position "
                  "from %d to %d. (%d of %d before order placement stops.)%s",
-                 rc, surplus, account, want, S.orderFailures + 1, (int)ORDER_FAILURE_LIMIT,
-                 OrderRejectHint(rc));
+                 rc, surplus, account, want, S.orderFailures + tally.fails + 1,
+                 (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
         sc.AddMessageToLog(m, 1);
-        if (++S.orderFailures >= ORDER_FAILURE_LIMIT)
-            sc.AddMessageToLog("Multi-Swing: ORDER PLACEMENT STOPPED after too many rejections. "
-                               "The account is not holding what the book thinks and nothing more "
-                               "will be sent. Flatten the position by hand, fix the trade account "
-                               "or Trade Simulation Mode, then reload the study.", 1);
+        if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
+            sc.AddMessageToLog(STOPPED_NOTICE, 1);
     }
 }
 
@@ -1602,7 +1652,7 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
                          : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
-                                                          : "FULL AUTO - not reaching the account")
+                                                          : "FULL AUTO - chart simulation only")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
 
@@ -1839,9 +1889,35 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     sc.AllowMultipleEntriesInSameDirection = 1;
     sc.SupportReversals               = 0;
     sc.AllowOnlyOneTradePerBar        = 0;
-    sc.MaximumPositionAllowed         = sc.Input[IN_MAX_GROSS].GetInt() > 0
-                                      ? sc.Input[IN_MAX_GROSS].GetInt() : 1000;
     sc.SupportAttachedOrdersForTrading = 1;      // the stop and target ride with each entry
+
+    // Every preset after the first is submitted while the earlier presets' stops and targets are
+    // still working orders, because that is what this book IS: many brackets riding one net
+    // position. Sierra's default for this is false, which refuses exactly that - the first entry
+    // of a session fills and every later one is rejected, leaving the account holding one contract
+    // while the book believes it holds ten. Nothing in the study could have told you that apart
+    // from the rejection code, and the count in the status box.
+    sc.AllowEntryWithWorkingOrders    = 1;
+
+    // The other half of the same requirement, and the more dangerous one. Sierra's own guidance is
+    // to turn this ON when using attached orders, so that reducing a position cancels the attached
+    // orders that no longer match it. That guidance is written for a system holding ONE bracket.
+    // Here a trim closes one preset out of ten, and cancelling "all orders" would strip the stop
+    // off the nine presets that are still open - the book would keep reporting them as protected
+    // while nothing stood behind them. Set to false explicitly, never left to the default, because
+    // the cost of the default changing under us is an unprotected book.
+    sc.CancelAllOrdersOnEntriesAndReversals = 0;
+
+    // Max Gross Exposure is counted in MES equivalents, so on ES one preset at risk unit 1 costs
+    // ten of them. sc.MaximumPositionAllowed is counted in contracts of the instrument actually
+    // being traded. Passing the MES-equivalent number straight through therefore made Sierra's
+    // hard cap ten times looser than the book's own on ES - 600 contracts allowed where the book
+    // would never ask for more than 60. Converted, so the two agree.
+    const int grossInput = sc.Input[IN_MAX_GROSS].GetInt();
+    const double mult    = sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? 10.0 : 1.0;
+    sc.MaximumPositionAllowed = grossInput > 0
+                              ? (int)std::max(1.0, std::floor(grossInput / mult))
+                              : 1000;
 
     // ---------------- preset (re)load ----------------
     int reloadFlag = sc.Input[IN_RELOAD].GetYesNo();
@@ -2141,12 +2217,18 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                                "Trade > Trade Simulation Mode decides whether that is the simulator "
                                "or a live account.", 1);
         else if (mode == MODE_FULL)
-            // Deliberately says only what is certain. With the flag off the orders do not reach
-            // the trade account; whether Sierra still works them in the chart's own simulation is
-            // its business, not something this study can assert, and claiming "nothing is sent"
-            // would be a guess printed as fact.
-            sc.AddMessageToLog("Multi-Swing: FULL AUTO, but 'Send Orders To Trade Service' is No, "
-                               "so no order reaches the trade account and nothing appears in "
-                               "Trade Orders and Positions. Turn it on to trade the book.", 0);
+            // This used to hedge, because the study cannot see where Sierra routed the order. A
+            // chart settled it: with the flag off the orders are still placed and still fill, in
+            // the chart's own simulation, against the chart's own bars - the position appears on
+            // the chart and sc.GetTradePosition reports it. It is a real third mode, and the right
+            // one for a Replay: deterministic fills, nothing routed anywhere, no account to
+            // misconfigure. What it is NOT is the Sim account, so Trade Orders and Positions
+            // stays empty and no broker ever sees it.
+            sc.AddMessageToLog("Multi-Swing: FULL AUTO with 'Send Orders To Trade Service' = No. "
+                               "Orders ARE placed and filled in the CHART'S OWN simulation - they "
+                               "draw on the chart and count in the status box - but no trade "
+                               "account is touched and Trade Orders and Positions stays empty. "
+                               "This is the safe way to test a Replay. Set it to Yes only when you "
+                               "want the orders on the Sim or live account.", 0);
     }
 }

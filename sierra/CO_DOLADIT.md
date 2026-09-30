@@ -222,6 +222,7 @@ jinak jen mate.
 | ~~P0 nekompletní seance~~ | detekce hotová |
 | ~~P7 dojet Replay~~ | hotovo, 99,7 % na 2016–2026 |
 | ~~P1 posuny stopu do Sierry~~ | hotovo |
+| ~~P9 dva ACSIL přepínače~~ | hotovo, ověřeno offline simulací příkazů |
 | P6 long core | strategické, až se rozhodneš měřit overlay proti jádru |
 | P2b, P4, P5 | nedělat, dokud nebude co implementovat |
 
@@ -229,6 +230,55 @@ jinak jen mate.
 posun stopu podle trailu i breakevenu, srovnání pozice na konci seance a dva limity ztrát.
 Co zbývá, je strategické (P6 long core), ne technické.
 
-Jediné, co se z kódu vyčíst nedá a ukáže až Sim účet: jestli Sierra po odprodeji přebytku
-tržním příkazem nechá zbývajícím vstupům jejich připojené stopy. V *Trade → Trade Orders and
-Positions* musí být otevřených stop příkazů právě tolik, kolik je otevřených presetů se stopem.
+### P9 (nové, 30. 9.) — dva chybějící ACSIL přepínače. HOTOVO
+
+Na grafu se v *Full auto* otevřel **jeden** kontrakt, kniha chtěla deset, a zbytek se odmítl.
+Příčina nebyla v knize ani v účtu: Sierra má `sc.AllowEntryWithWorkingOrders` **defaultně
+false**, takže každý vstup po prvním se odmítne, protože pracují stopy a targety těch
+předchozích. A tahle kniha je právě to — mnoho bracketů na jedné netto pozici.
+
+Druhý přepínač je nebezpečnější. Sierra sama radí zapnout
+`sc.CancelAllOrdersOnEntriesAndReversals` při použití připojených příkazů, aby se při zmenšení
+pozice zrušily připojené příkazy, které už neodpovídají. Ta rada je napsaná pro systém s
+**jednou** pozicí. Tady odprodej přebytku zavírá jeden preset z deseti a „zruš všechny příkazy"
+by sebralo stop zbývajícím devíti — kniha by je dál hlásila jako chráněné a nestálo by za nimi
+nic. Nastaveno explicitně na `false`, ne ponecháno na defaultu.
+
+Třetí věc, kterou ten rozbor našel: Max Gross se posílal do `sc.MaximumPositionAllowed`
+nepřevedený, přitom se počítá v MES ekvivalentech a Sierřin strop v kontraktech obchodovaného
+instrumentu. Na ES byl ten záchytný strop 10× volnější než strop knihy.
+
+### Offline simulace příkazů (nové, 30. 9.)
+
+`test_stub/sierrachart.h` s `STUB_ORDERS=sim` už není jen „všechno odmítni". Je to malá
+knížka příkazů, která vynucuje stejná tři pravidla, jaká Sierra dokumentuje pro příkazy ze
+studie, a drží každému vstupu jeho stop a target. **Netestuje Sierru** — testuje, že si studie
+nevyžádá něco, co ta pravidla zakazují. Právě tohle se z kódu vyčíst nedalo.
+
+Měřeno na 4 680 seancích, ES, risk unit 1, Max Gross 600:
+
+| | před (`99543aa`) | po (`2026-09-30.13`) |
+|---|---|---|
+| vstupů přijato | **2** | **9 821** |
+| odmítnuto kvůli pracujícím příkazům | **5** → `STOPPED` | **0** |
+| odmítnuto kvůli stropu pozice | 0 | **0** |
+| odprodej přebytku větší, než se drží | 0 | **0** |
+| stopů zrušených odprodejem | 0 | **0** |
+| posunů stopu / z toho na mrtvý příkaz | 0 / 0 | 1 171 / **0** |
+| špička pozice vs. `MaximumPositionAllowed` | 2 / 600 | 60 / **60** |
+
+`ES / cap 600` a `MES / cap 60` teď dávají **identické** číslo vstupů i špičku pozice. Před
+opravou převodu se lišily.
+
+Dvě věci k té simulaci na rovinu: neplní brackety (proto na konci „visí" 10 144 pracujících
+příkazů) a běží na barech, jejichž denní OHLC a overnight extrémy jsou skutečné, ale
+vnitrodenní cesta je dosyntetizovaná — pro test order vrstvy to je jedno, pro paritu
+rozhodovacího jádra se používá jiný běh.
+
+### Co se pořád vyčíst nedá
+
+Simulace dokazuje, že studie **nepožádá** o zrušení cizích stopů a že odprodej nikdy neprodá
+víc, než se drží. Nedokazuje, co Sierra udělá sama od sebe. V *Trade → Trade Orders and
+Positions* musí být otevřených stop příkazů právě tolik, kolik je otevřených presetů se
+stopem. To platí jen pro Input 2 = Yes; v grafové simulaci to okno zůstává prázdné a počítat
+se musí z grafu.

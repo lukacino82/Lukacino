@@ -110,7 +110,7 @@ bezpečný provoz, takže **měnit musíš jen ty, které mají v posledním slo
 |---|---|---|---|
 | 0 | Trading Enabled | No | **zapni na Yes**, jinak se nic nepočítá |
 | 1 | Mode | Signals only | pro obchodování na Simu přepni na **Full auto**, viz kapitola 9 |
-| 2 | Send Orders To Trade Service | No | **zapni jen spolu s Trade Simulation Mode**, viz kapitola 9 |
+| 2 | Send Orders To Trade Service | No | rozhoduje mezi **grafovou simulací** (No) a **účtem** (Yes), viz kapitola 9 |
 | 3 | Direction Filter | Long only | nech |
 | 4 | Preset File | swing_presets.csv | jen když sis soubor přejmenoval |
 | 5 | Reload Presets (toggle) | No | přepni tam a zpět po úpravě CSV |
@@ -305,9 +305,14 @@ Barva rámečku říká, v čem jsi, aniž bys musel číst:
 
 | Barva | Stav |
 |---|---|
-| **červená** | Full auto a *Send Orders* = Yes — příkazy opravdu odcházejí |
-| zelená | signály nebo semi, nic se neposílá |
+| **červená** | Full auto a *Send Orders* = Yes — příkazy odcházejí na účet |
+| zelená | signály, semi, nebo Full auto v grafové simulaci — žádný účet |
+| žlutá | `STOPPED` (odmítnuté příkazy) nebo `HALTED` (limit ztráty) — nové vstupy neodcházejí |
 | šedá | *Trading Enabled* = No, studie nepočítá |
+
+Pozor na zelenou u *Full auto*: znamená „žádný účet", ne „nic se nedělá". V grafové simulaci
+příkazy odcházejí a plní se, jen se jich nedotkne účet — řádek `mode` to řekne přesně
+(`FULL AUTO - chart simulation only`).
 
 Řádek `book ... position ...` je nejdůležitější: první číslo je, kolik kontraktů kniha chce
 držet, druhé kolik jich na účtu skutečně je. Když se ta dvě čísla rozejdou a nedorovnají,
@@ -341,6 +346,13 @@ BLOCKED    Max Gross 6 < one preset (10) - no preset can ever enter
 
 Změřeno na 4 122 506 barech: `ES / 1.0 / cap 600` i `MES / 1.0 / cap 60` dají celou knihu
 6 637 obchodů, **`ES / 1.0 / cap 6` dá nulu.**
+
+Max Gross zároveň nastavuje `sc.MaximumPositionAllowed`, Sierřin vlastní tvrdý strop na
+pozici. Ten se ale počítá v kontraktech obchodovaného instrumentu, ne v MES ekvivalentech,
+takže se převádí (`Max Gross ÷ 10` na ES, `÷ 1` na MES). Do verze `2026-09-30.13` se tam
+posílalo nepřevedené číslo a na ES byl ten záchytný strop 10× volnější než strop knihy.
+Ověřeno v offline simulaci příkazů: `ES / cap 600` a `MES / cap 60` teď dávají **identických
+9 821 vstupů a špičku pozice 60**; předtím se lišily.
 
 Cap 60 na ES **není stejné riziko jako 60 na MES** — pustí jen 6 otevřených presetů, což knihu
 ořeže stejně tvrdě jako *Max Concurrent Presets* 6 a výsledky z reportu tím přestanou platit.
@@ -474,18 +486,54 @@ Vyplněný stop sníží pozici okamžitě, zatímco kniha ten preset uzavře a�
 si to pamatuje, takže mezitím pozici nedokoupí zpátky — jinak by se z každé stopky stal
 round trip za horší cenu.
 
-### Zapnutí
+### Tři režimy, ne dva
+
+Input 2 *Send Orders To Trade Service* není „posílat / neposílat". Rozhoduje, **kam** příkazy
+jdou, a obě polohy jsou plnohodnotný běh:
+
+| Input 2 | Kam příkazy jdou | Vidět na grafu | Vidět v *Trade Orders and Positions* | Potřebuje účet |
+|---|---|---|---|---|
+| **No** | do **vlastní simulace grafu** — plní se proti barům grafu | **ano** | ne | **ne** |
+| **Yes** | do trade service (Sim nebo ostrý účet podle menu *Trade*) | ano | ano | ano |
+
+`No` **není paper mód**. Příkazy se opravdu zadávají, opravdu se plní, pozice se kreslí na graf
+a `sc.GetTradePosition` ji hlásí, takže i status box ukazuje `position`. Jen se jí nedotkne
+žádný účet. Pro test replaye je to **ten správný režim**: fily jsou deterministické z barů
+grafu, není co špatně nastavit a k brokerovi nemůže nic uniknout.
+
+### Zapnutí pro účet (Input 2 = Yes)
+
+Input 2 = Yes je **nutná, ale nestačí**. Sierra brání příkazům ze studií ještě podruhé, na
+úrovni menu Trade, a ani jeden z těch přepínačů není z dialogu studie vidět. Každý z nich
+odmítá stejným generickým `-1`.
 
 | Kde | Co |
 |---|---|
-| *Trade → Trade Simulation Mode On* | **zapnout** — tohle rozhoduje, jestli jde o simulaci nebo o ostrý účet, ne studie |
-| Graf → *Trade* → Trade Account | vybrat Sim účet |
+| *Trade → Trade Simulation Mode On* | **zapnout první** — tohle rozhoduje simulace vs. ostrý účet, ne studie |
+| *Trade → Auto Trading Enabled - Global* | zaškrtnout |
+| *Trade → Auto Trading Enabled for Chart* | zaškrtnout **pro tenhle graf** (globální ho nenahradí) |
+| Graf → *Trade Window*, nebo *Chart Settings → Trading* | vybrat Sim účet |
 | Input 0 *Trading Enabled* | Yes |
 | Input 1 *Mode* | **Full auto** |
 | Input 2 *Send Orders To Trade Service* | **Yes** |
 
 Pořadí dodrž: Trade Simulation Mode **nejdřív**. Input 2 sám o sobě neříká „simulace" —
 říká „posílej", a kam to jde, určuje menu Trade.
+
+Po každém `-1` zůstane objednávková vrstva zamčená (`STOPPED` ve status boxu). Odemkne ji
+jedině **změna** Inputu 5 *Reload Presets* — z Yes na No, nebo z No na Yes. Nastavit ho na to,
+co už tam je, nedělá nic.
+
+### Co studie nastavuje za tebe
+
+Tyhle tři věci si studie nastavuje sama a jsou nutné pro to, aby kniha vůbec mohla držet víc
+presetů najednou. Jsou tu proto, aby bylo jasné, co se děje, ne aby se měnily:
+
+| ACSIL | Hodnota | Proč |
+|---|---|---|
+| `sc.AllowEntryWithWorkingOrders` | `1` | Každý preset po prvním jde ven, když už pracují stopy a targety těch předchozích. Sierra to má **defaultně zakázané** — bez toho se vyplní první vstup seance a všechny další se odmítnou. |
+| `sc.CancelAllOrdersOnEntriesAndReversals` | `0` | Sierra sama radí tohle zapnout při připojených příkazech, ale ta rada počítá s **jednou** pozicí. Tady odprodej přebytku zavírá jeden preset z deseti a „zruš všechny příkazy" by sebralo stop zbývajícím devíti. |
+| `sc.MaximumPositionAllowed` | Max Gross ÷ multiplikátor | Max Gross se počítá v **MES ekvivalentech**, tohle v **kontraktech obchodovaného instrumentu**. Na ES se to liší 10×. |
 
 Než to pustíš naostro, projeď *Mode = Semi-auto*. Ten nic neposílá, jen do Message Logu píše,
 co by udělal — jeden řádek na každý vstup, s jeho vlastním stopem a targetem, a jeden souhrnný
