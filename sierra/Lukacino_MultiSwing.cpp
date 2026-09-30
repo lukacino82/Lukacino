@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.16";
+static const char* STUDY_VERSION = "2026-09-30.17";
 
 static const int NUM_FAMILIES = 12;
 
@@ -190,6 +190,13 @@ struct AccountLeg {
     // still covered. Permanently stuck, on every run. Counted now, so a retry is possible and a
     // dead end is reportable instead of silent.
     int  retireTries = 0;
+    // The price this preset's own target was last steered to, when its exit is going out through
+    // that target. Non-zero means "an exit is working on the market for these contracts": they are
+    // covered, so they must never be offered to a market sell, and if the market walks away from
+    // that limit it is moved down again rather than abandoned. Zero means no exit is working.
+    double exitPrice = 0.0;
+    bool   exitIsStop = false;  // a steered stop needs the market at or below it, a limit at or above
+    int    exitCalls = 0;       // calls it has been working; a child that never fills is cancelled
 };
 
 // Enough consecutive rejections to conclude the account is not doing what the study asks.
@@ -304,7 +311,8 @@ struct StudyState {
     std::vector<AccountLeg> legs;       // parallel to states, but outliving each trade's reset
     int      orderFailures = 0;         // consecutive rejections; trading stops at the limit
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
-    int      trimSentAccount = -1;      // the position it was sent against
+    int      trimWaited = 0;            // calls it has been waited for, so a sell that never
+                                        // lands cannot lock the trim out for ever
     int      bracketsSeen = 0;          // a live stop or target child was found for a leg
     int      bracketsEmpty = 0;         // ... none was: Sierra's bracket had already taken it
     int      modifyOk = 0, modifyFail = 0;   // ModifyOrder verdicts on those children
@@ -1364,46 +1372,88 @@ static bool SkippedForRecalc(SCStudyInterfaceRef sc, StudyState& S, int rc, int 
 //
 // So the exit goes THROUGH the bracket. The preset's own target is a working sell limit above the
 // market; moved to just under the market it fills at once and takes exactly that preset's
-// contracts off. A preset with no target - a signal-only exit carries no price - has its stop
-// moved instead. A sell limit below the market is always a valid price where a sell stop above it
-// is not, so the limit is preferred wherever one exists.
+// contracts off. The thirteen presets whose exit carries no price have no target, only a stop, and
+// that stop is moved just above the market instead, where a sell stop triggers immediately. Some
+// routes refuse that price; the refusal is handled rather than assumed, because the alternative -
+// cancelling the stop and waiting for a market sell - leaves those contracts unprotected in the
+// meantime, and that is a real risk where a rejected modification costs only a call.
+//
+// A steered child is a working order like any other: it is not filled by the time the next study
+// call runs, and in a fast replay it may take many calls, or the market may walk away from the
+// price it was moved to. So the leg is NOT forgotten when the exit goes out. It is kept, its
+// contracts keep counting as held, and every later call either leaves the order where it is - the
+// market can still fill it - or moves it to follow the market. The leg is only let go once the
+// bracket reports no live children, which is Sierra's own way of saying the contracts have left
+// the account.
+//
+// Forgetting the leg after one call is what produced the last refusal on the chart: the exit was
+// steered, the leg was wiped, the fill had not landed, and on the next call those contracts looked
+// like a surplus nobody owned - so they went out as a market sell, which Sierra refused because the
+// moved target was still covering them. Five of those latch the whole order layer.
 enum RetireVerdict {
-    RETIRE_SENT,        // a child was steered to the market; the contracts are on their way off
-    RETIRE_ALREADY,     // no live child: Sierra's own bracket has already taken them
-    RETIRE_UNCOVERED,   // could not steer it, so the bracket was cancelled - now sellable
+    RETIRE_SENT,        // a child was just steered to the market
+    RETIRE_WORKING,     // a steered child is already sitting at a price the market can fill
+    RETIRE_ALREADY,     // no live child: the bracket is done, so the contracts are off
+    RETIRE_UNCOVERED,   // the bracket was cancelled - sellable, but not in this same call
     RETIRE_STUCK        // no handle on the bracket at all; nothing this study can do
 };
 
-static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, const AccountLeg& lg,
+static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, AccountLeg& lg,
                                   size_t k, double last, int logLevel)
 {
+    // A steered child that has not filled after this many calls is not going to: cancel the
+    // bracket and let the market sell take the contracts instead. It is a long way past any
+    // plausible fill, and the alternative - waiting for ever on an order the route is holding
+    // rather than working - hides contracts the book has already written off.
+    enum { EXIT_PATIENCE = 8 };
+
     if (lg.parentOrderId == 0) return RETIRE_STUCK;
     int targetId = 0, stopId = 0;
     sc.GetAttachedOrderIDsForParentOrder((int)lg.parentOrderId, targetId, stopId);
-    if (targetId == 0 && stopId == 0) { ++S.bracketsEmpty; return RETIRE_ALREADY; }
+    if (targetId == 0 && stopId == 0) {
+        ++S.bracketsEmpty;                 // the bracket is done, so the contracts are off
+        lg.exitPrice = 0.0; lg.exitCalls = 0;
+        return RETIRE_ALREADY;
+    }
     ++S.bracketsSeen;
 
-    // Only a target can be steered into an immediate fill. It is a sell limit above the market, so
-    // moving it under the market makes it fillable at once at a valid price. A stop is a sell stop
-    // BELOW the market: moving it down does nothing, and moving it above the market to force a
-    // trigger is a price most routes reject outright. So a preset whose exit carries no target -
-    // the signal-only ones - has its stop cancelled instead, which uncovers its contracts and lets
-    // the market sell below take them. Both routes use only operations already known to work.
-    if (targetId == 0) {
-        sc.CancelOrder(stopId);
-        if (logLevel >= LOG_INFO) {
-            SCString m;
-            m.Format("Multi-Swing: EXIT %s - no target to steer, so its stop (order %d) was "
-                     "cancelled and its %d contract(s) go out at market.",
-                     S.presets[k].id.GetChars(), stopId, lg.qtyOnAccount);
-            sc.AddMessageToLog(m, 0);
-        }
-        return RETIRE_UNCOVERED;
-    }
+    const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
 
-    const double tick    = sc.TickSize > 0 ? sc.TickSize : 0.25;
-    const int    childId = targetId;
-    const double price   = ToTick(last - tick, tick, true);
+    // Which child is steered, and where to.
+    //
+    // A target is a sell limit above the market: moved just under the market it is fillable at
+    // once, at a price every route accepts. A stop is a sell stop below the market: moved just
+    // above the market it triggers at once, which is a price some routes reject - so it is tried
+    // and the refusal is handled, rather than assumed either way. The thirteen presets whose exit
+    // carries no price at all have only a stop, and this is the whole reason to try: cancelling it
+    // leaves their contracts unprotected until a market sell takes them, and steering it does not.
+    const bool   useStop = (targetId == 0);
+    const int    childId = useStop ? stopId : targetId;
+    const double price   = useStop ? ToTick(last + tick, tick, false) : ToTick(last - tick, tick, true);
+
+    if (lg.exitPrice > 0.0) {
+        // An exit already at a price the market can fill is left alone: re-sending the same price
+        // on every call would be thousands of pointless modifications in one replay. It is moved
+        // only when the market has walked past it, which is the one case where leaving it means it
+        // never fills - a sell limit needs the market at or above it, a triggered sell stop at or
+        // below.
+        const bool fillable = lg.exitIsStop ? (last <= lg.exitPrice) : (last >= lg.exitPrice);
+        if (fillable && ++lg.exitCalls <= EXIT_PATIENCE) return RETIRE_WORKING;
+        if (lg.exitCalls > EXIT_PATIENCE) {
+            if (targetId != 0) sc.CancelOrder(targetId);
+            if (stopId   != 0) sc.CancelOrder(stopId);
+            if (logLevel >= LOG_INFO) {
+                SCString m;
+                m.Format("Multi-Swing: EXIT %s did not fill in %d calls at %.2f; its bracket was "
+                         "cancelled and its %d contract(s) go out at market instead.",
+                         S.presets[k].id.GetChars(), (int)EXIT_PATIENCE, lg.exitPrice,
+                         lg.qtyOnAccount);
+                sc.AddMessageToLog(m, 0);
+            }
+            lg.exitPrice = 0.0; lg.exitCalls = 0;
+            return RETIRE_UNCOVERED;
+        }
+    }
 
     s_SCNewOrder mod;
     mod.InternalOrderID = childId;
@@ -1412,26 +1462,41 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, const A
     if (SkippedForRecalc(sc, S, rc, logLevel)) return RETIRE_STUCK;   // retried next call
     if (rc > 0) {
         ++S.modifyOk;
-        if (logLevel >= LOG_INFO) {
+        const bool again = lg.exitPrice > 0.0;
+        if (logLevel >= (again ? LOG_DEBUG : LOG_INFO)) {
             SCString m;
-            m.Format("Multi-Swing: EXIT %s through its own bracket - target order %d moved to "
-                     "%.2f for %d contract(s).",
-                     S.presets[k].id.GetChars(), childId, price, lg.qtyOnAccount);
+            if (again)
+                m.Format("Multi-Swing: EXIT %s still working - the market left it behind, so its "
+                         "%s order %d follows from %.2f to %.2f.",
+                         S.presets[k].id.GetChars(), useStop ? "stop" : "target", childId,
+                         lg.exitPrice, price);
+            else
+                m.Format("Multi-Swing: EXIT %s through its own bracket - %s order %d moved to "
+                         "%.2f for %d contract(s).",
+                         S.presets[k].id.GetChars(), useStop ? "stop" : "target", childId, price,
+                         lg.qtyOnAccount);
             sc.AddMessageToLog(m, 0);
         }
+        lg.exitPrice  = price;
+        lg.exitIsStop = useStop;
+        lg.exitCalls  = 0;
         return RETIRE_SENT;
     }
 
     ++S.modifyFail;
-    // Steering failed. Cancel the bracket so the contracts stop counting as covered; a market sell
-    // for them is then something Sierra will accept.
+    // The route would not take the price. Cancel the bracket so the contracts stop counting as
+    // covered; a market sell for them is then something Sierra will accept - a call later, once
+    // the cancel has actually taken.
     if (targetId != 0) sc.CancelOrder(targetId);
     if (stopId   != 0) sc.CancelOrder(stopId);
+    lg.exitPrice = 0.0; lg.exitCalls = 0;
     if (logLevel >= LOG_INFO) {
         SCString m;
-        m.Format("Multi-Swing: could not steer %s's bracket (order %d, Sierra returned %d); "
-                 "cancelled it, so those %d contract(s) will be sold at market instead.",
-                 S.presets[k].id.GetChars(), childId, rc, lg.qtyOnAccount);
+        m.Format("Multi-Swing: could not steer %s's %s (order %d to %.2f, Sierra returned %d); "
+                 "cancelled the bracket, so those %d contract(s) go out at market once the cancel "
+                 "has taken.",
+                 S.presets[k].id.GetChars(), useStop ? "stop" : "target", childId, price, rc,
+                 lg.qtyOnAccount);
         sc.AddMessageToLog(m, 0);
     }
     return RETIRE_UNCOVERED;
@@ -1515,6 +1580,13 @@ struct FailureTally {
 // difference between that position and what the book still wants, and it goes out as one order
 // instead of being guessed at preset by preset.
 //
+// What reaches this order is now only what nothing else covers: contracts whose bracket was
+// cancelled on an earlier call, and contracts the account still reports after their bracket has
+// gone. Every preset the book has closed leaves through its own target instead (RetireLegNow),
+// and its contracts count as wanted here until they are genuinely off. That distinction is the
+// whole fix: a market sell for a contract that still has a working stop or target on it is
+// over-selling by construction, Sierra refuses it, and five refusals latch the order layer.
+//
 // This runs BEFORE the entries now, and that ordering is the point. It used to run after them,
 // and a chart where the entries were accepted while the trims were refused then ratcheted: every
 // session added contracts and nothing ever came off, so the account walked from ten to nineteen
@@ -1526,27 +1598,33 @@ enum TrimResult { TRIM_NOTHING, TRIM_SENT, TRIM_WAITING, TRIM_REFUSED };
 static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                               bool send, int logLevel, FailureTally& tally, int want, int account)
 {
-    // A market exit is not filled by the time the next study call runs, so the position still reads
-    // high and the same surplus would be sold again on every call until the fill landed.
+    // What this order may take, and when.
     //
-    // This used to be a gate: it compared the position against the one recorded when the trim went
-    // out and returned early while they matched. That was fine while nothing else could move the
-    // position in the same call, and it deadlocked the moment entries were allowed alongside a
-    // trim - a call that sold two and bought two left the position unchanged, so the gate read
-    // "still waiting" for ever and the order layer went quiet after twenty-nine entries.
+    // WHAT: only contracts no preset claims. Every contract the study puts on the account is
+    // recorded on the preset that bought it and carries that preset's bracket; Sierra refuses a
+    // market sell for anything a bracket covers, and a preset's contracts leave through its own
+    // target instead (RetireLegNow). So the quantity here is the position minus everything the
+    // legs account for: contracts left behind by a bracket that was cancelled, and contracts the
+    // book cannot place with anybody. Deriving it from the legs rather than remembering what was
+    // sent is what makes it self-correcting - as the fills land, the position falls and this
+    // number falls with it, with nothing to decay, expire or get out of step.
     //
-    // It is an adjustment now, not a gate: the in-flight sell is treated as already filled, and
-    // that is trusted for exactly one call. Nothing is resent, nothing can deadlock, and an entry
-    // decided in the same call is not held up by an exit.
-    int effective = account;
-    if (S.trimSentQty > 0) {
-        effective -= S.trimSentQty;
-        S.trimSentQty = 0;
-        S.trimSentAccount = -1;
-    }
-    if (effective <= want) return TRIM_NOTHING;
+    // WHEN: once, then not again for a few calls. A market order is not reported filled by the
+    // time the next study call runs - above real-time replay speeds it can take several - and the
+    // calls in between still see those contracts. Offering them again is the refusal that latches
+    // the whole order layer, and offline, against a two-call fill, it sold 193,679 contracts where
+    // the book wanted 8,800. The wait is a plain countdown rather than a test on the position,
+    // because the position also moves for reasons that have nothing to do with this order - any
+    // bracket filling in the meantime made a "has it landed yet" test read yes and resend.
+    enum { TRIM_COOLDOWN = 8 };
+    if (S.trimWaited > 0) { --S.trimWaited; return TRIM_NOTHING; }
 
-    const int surplus = effective - want;
+    int ownedByLegs = 0;
+    for (size_t k = 0; k < S.legs.size(); ++k) ownedByLegs += S.legs[k].qtyOnAccount;
+    int surplus = account - ownedByLegs;
+    // The book's own view is the second opinion: it can only make this smaller, never larger.
+    if (surplus > account - want) surplus = account - want;
+    if (surplus <= 0) return TRIM_NOTHING;
 
     if (!send) {
         S.semiPosition -= surplus;
@@ -1565,22 +1643,23 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
     const int rc = (int)sc.SellExit(o);
     if (SkippedForRecalc(sc, S, rc, logLevel)) return TRIM_WAITING;
     if (rc > 0) {
-        S.trimSentQty     = surplus;
-        S.trimSentAccount = effective;
+        S.trimSentQty     = surplus;          // what is on its way, for the diagnostics
+        S.trimWaited      = TRIM_COOLDOWN;    // nothing further offered until the fill can land
         ++S.ordersPlaced;
         tally.anyOk       = true;
         if (logLevel >= LOG_INFO) {
-            SCString m; m.Format("Multi-Swing: SELL %d, position %d -> %d (book wants %d).",
-                                 surplus, effective, want, want);
+            SCString m; m.Format("Multi-Swing: SELL %d - %d contract(s) on the account that no "
+                                 "preset claims, position %d -> %d (book wants %d).",
+                                 surplus, surplus, account, account - surplus, want);
             sc.AddMessageToLog(m, 0);
         }
         return TRIM_SENT;
     }
 
     SCString m;
-    m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d to bring the position "
-             "from %d to %d. (%d of %d before order placement stops.)%s",
-             rc, surplus, effective, want, S.orderFailures + tally.fails + 1,
+    m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d unclaimed contract(s) to "
+             "bring the position from %d to %d. (%d of %d before order placement stops.)%s",
+             rc, surplus, account, account - surplus, S.orderFailures + tally.fails + 1,
              (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
     sc.AddMessageToLog(m, 1);
     if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
@@ -1612,10 +1691,6 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     if (S.orderFailures >= ORDER_FAILURE_LIMIT) return;
     FailureTally tally(S);
 
-    // An entry sent in this call is not filled yet, so the position read below still lags it. The
-    // trim is skipped for one call rather than selling the entry straight back out.
-    bool entrySent = false;
-
     // Take the presets the book has closed off the account, before anything is counted or sent.
     // Each goes out through its own bracket. A leg is only forgotten once it is genuinely gone -
     // wiping one whose exit failed is what left contracts belonging to nobody, uncloseable by any
@@ -1623,32 +1698,38 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     const int RETIRE_TRIES = 3;
     int stillCovered = 0;          // held, closed by the book, but not yet sellable
     for (size_t k = 0; k < S.states.size(); ++k) {
-        if (S.states[k].inPos != 0) continue;
-        AccountLeg& lg = S.legs[k];
+        PresetState& st = S.states[k];
+        AccountLeg&  lg = S.legs[k];
         if (lg.qtyOnAccount <= 0) continue;
+        // Everything this preset has on the account that the book no longer wants: the trade it
+        // has closed, and also the trade it closed and re-entered between two calls, which the
+        // entry loop used to overwrite. Both are retired here and nowhere else.
+        if (st.inPos != 0 && lg.entryDay == st.entryDay) continue;
         if (!send) { lg = AccountLeg(); continue; }
 
         const RetireVerdict v = RetireLegNow(sc, S, lg, k, last, logLevel);
-        if (v == RETIRE_SENT) {
-            S.trimSentQty += lg.qtyOnAccount;   // on its way out; do not sell it a second time
+        if (v == RETIRE_ALREADY) {
+            // The bracket has no live children, so these contracts are off the account. If they
+            // somehow are not, the position read below still sees them and, with no order left
+            // covering them, the market sell can legitimately take them.
             lg = AccountLeg();
-        } else if (v == RETIRE_ALREADY) {
-            lg = AccountLeg();                  // Sierra's bracket already took it
-        } else if (v == RETIRE_UNCOVERED) {
-            lg = AccountLeg();                  // uncovered now: the market sell below takes it
-        } else if (++lg.retireTries < RETIRE_TRIES) {
-            stillCovered += lg.qtyOnAccount;    // try again next call; not sellable meanwhile
-        } else {
-            // Out of retries with no handle on the bracket. Saying so is the only honest move:
-            // the study cannot close these and silently latching would hide it.
+            continue;
+        }
+        // Everything else is still held and still covered - by a working exit, or by a bracket
+        // whose cancel has not taken yet. Offering any of it to a market sell earns the refusal
+        // that latches the order layer, so it counts as wanted until it is genuinely gone.
+        stillCovered += lg.qtyOnAccount;
+        if (v == RETIRE_SENT || v == RETIRE_WORKING) { lg.retireTries = 0; continue; }
+
+        // No reachable bracket, or a cancel that keeps not taking. Saying so once is the only
+        // honest move: the study cannot close these, and latching silently would hide it.
+        if (++lg.retireTries == RETIRE_TRIES) {
             SCString m;
             m.Format("Multi-Swing: CANNOT CLOSE %s - %d contract(s) on the account with no "
                      "reachable bracket after %d attempts. Close them by hand in Trade > Trade "
                      "Orders and Positions; the book has already written this preset off.",
                      S.presets[k].id.GetChars(), lg.qtyOnAccount, RETIRE_TRIES);
             sc.AddMessageToLog(m, 1);
-            stillCovered += lg.qtyOnAccount;
-            lg.retireTries = 0;                 // report again if it is still there next session
         }
     }
 
@@ -1656,8 +1737,15 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // pending count as wanted: they are covered, so offering them to a market sell only earns a
     // refusal, and five of those latch the whole order layer.
     int want = stillCovered;
-    for (size_t k = 0; k < S.states.size(); ++k)
-        if (S.states[k].inPos != 0) want += PresetQty(sc, S, k, cfg);
+    for (size_t k = 0; k < S.states.size(); ++k) {
+        const PresetState& st = S.states[k];
+        if (st.inPos == 0) continue;
+        // A preset whose previous trade is still coming off the account does not enter in this
+        // call - the entry loop below holds it back - so what it is about to hold is not counted
+        // yet. What it still holds is already in stillCovered.
+        if (S.legs[k].qtyOnAccount > 0 && S.legs[k].entryDay != st.entryDay) continue;
+        want += PresetQty(sc, S, k, cfg);
+    }
 
     int account;
     if (send) {
@@ -1752,13 +1840,13 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // overwriting the leg - throwing away the record of contracts the previous trade may still
         // have on the account, with their bracket still working. Those contracts then belonged to
         // nobody: not to the book, not to any leg, and a market sell for them was refused because
-        // they were covered. It is the same leak as wiping a leg whose exit failed, in a second
-        // place. Retire the old trade first, and only take the new one when the old one is gone.
-        if (send && lg.qtyOnAccount > 0) {
-            const RetireVerdict v = RetireLegNow(sc, S, lg, k, last, logLevel);
-            if (v == RETIRE_SENT) S.trimSentQty += lg.qtyOnAccount;
-            else if (v == RETIRE_STUCK) { stillCovered += lg.qtyOnAccount; continue; }
-        }
+        // they were covered.
+        //
+        // One leg cannot hold two trades, so the new one waits instead. The pre-pass above is
+        // already working the old contracts off through their own bracket; the entry goes out on
+        // the call after they are gone, which costs a call and keeps the account and the ledger
+        // describing the same contracts.
+        if (lg.qtyOnAccount > 0) continue;
         lg = AccountLeg();
         lg.entryDay = st.entryDay;
         if (qty <= 0) continue;
@@ -1776,7 +1864,6 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             lg.qtyOnAccount = qty;
             lg.stopOnAccount = RealPrice(st.stop, last)
                              ? ToTick(st.stop, sc.TickSize > 0 ? sc.TickSize : 0.25, true) : 0.0;
-            entrySent = true;
             continue;
         }
 
@@ -1810,7 +1897,6 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             lg.qtyOnAccount = qty;
             lg.parentOrderId = (unsigned int)o.InternalOrderID;   // filled in by Sierra on success
             lg.stopOnAccount = o.Stop1Price;
-            entrySent = true;
             projected += qty;
             ++S.ordersPlaced;
             tally.anyOk = true;
@@ -2162,7 +2248,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->orderFailures = 0;
         S->legs.clear();
         S->trimSentQty = 0;
-        S->trimSentAccount = -1;
+        S->trimWaited = 0;
         S->ordersPlaced = 0;
         S->orphanHalt = false;
         S->orphanWarned = false;
@@ -2250,7 +2336,7 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState();
                       S->journalRows = 0; S->semiPosition = 0;
                       S->orderFailures = 0; S->legs.clear();
-                      S->trimSentQty = 0; S->trimSentAccount = -1;
+                      S->trimSentQty = 0; S->trimWaited = 0;
                       S->ordersPlaced = 0; S->orphanHalt = false; S->orphanWarned = false;
                       S->bracketsSeen = S->bracketsEmpty = 0; S->modifyOk = S->modifyFail = 0;
                       S->incompleteDays = 0;

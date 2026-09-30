@@ -488,37 +488,58 @@ round trip za horší cenu.
 
 ### Rychlost replaye ve Full auto
 
-V *Signals only* a *Semi-auto* je rychlost jedno — nic se neposílá, takže si klidně dej `as fast
-as possible`. **Ve Full auto je rychlost součástí správnosti.**
+V *Signals only* a *Semi-auto* je rychlost jedno — nic se neposílá. Ve Full auto na ní **od verze
+`.17` prakticky nezáleží**, a stojí za to vědět proč, protože předtím na ní záleželo hodně.
 
-Srovnání pozice se posílá jako tržní příkaz a studie do dalšího volání předpokládá, že se vyplnil.
-Když replay běží rychleji, než se fily stihnou usadit, studie ten samý přebytek prodá podruhé a
-pozice se dostane **pod** knihu. Změřeno offline na 4 680 seancích (ES, risk unit 1, Max Gross 600),
-kde se fil záměrně zdržuje o daný počet volání studie:
+Preset, který kniha zavřela, odchází **svým vlastním bracketem**: jeho target (sell limit nad trhem)
+se posune tick pod trh a vyplní se; preset bez targetu má posunutou stopku tick nad trh, kde se
+spustí okamžitě. Ten příkaz je normální pracující příkaz — studie si ho pamatuje, nechá ho běžet,
+a když trh odejde jinam, posune ho za ním. Kontrakty se pustí ze evidence teprve ve chvíli, kdy
+Sierra ohlásí, že bracket už žádné živé děti nemá. Do té doby se počítají jako držené, takže se
+nikdy nenabídnou tržnímu prodeji — a to byl přesně ten refusal, co ti dvakrát zamkl objednávkovou
+vrstvu.
 
-| zdržení filu | vstupů | přeprodejů |
-|---|---|---|
-| 0 volání | 9 885 | **0** |
-| 1 volání | 9 885 | **0** |
-| 2 volání | 159 | **52** |
-| 3 a více | 60 | 45 |
+Tržní prodej zůstal jen pro kontrakty, které **nehlásí žádný preset**: co po sobě nechal zrušený
+bracket a co studie na účtu najde a nedokáže nikomu přiřadit. Ty krycí příkaz nemají, takže je
+Sierra přijme. Posílají se jednou a pak se osm volání nic dalšího nenabízí, aby se ten samý
+kontrakt neprodal dvakrát, než se fil ohlásí.
 
-Mezi jedním a dvěma voláními je to tedy útes, ne postupné zhoršování. Tolerance je **jedno volání
-studie**.
+Změřeno offline na 4 680 seancích (ES, risk unit 1), kde se fil záměrně zdržuje o daný počet volání
+studie — sloupec „odmítnuto jako kryté" je ten stav, co končil `STOPPED`:
+
+| zdržení filu | vstupů (`.16`) | vstupů (`.17`) | odmítnuto jako kryté (`.16` → `.17`) | přeprodejů (`.17`) |
+|---|---|---|---|---|
+| 0 volání | 9 332 | 9 367 | 5 → **0** | **0** |
+| 1 volání | 46 | 9 367 | 5 → **0** | **0** |
+| 2 volání | 46 | 9 367 | 5 → **0** | **0** |
+| 5 volání | 142 | 9 367 | 19 → **0** | **0** |
+| 10 volání | 73 | 9 367 | 8 → **0** | 117 |
+
+Ve `.16` se to při jakémkoli zdržení složilo — z 9 332 vstupů zbylo 46. Ve `.17` je to na zdržení
+filu **nezávislé** až k sedmi voláním studie; teprve za tou hranicí se začne nabízet kontrakt,
+který je ještě na cestě z účtu.
 
 Prakticky:
 
-- **Full auto replay jeď na 10× a níž.** Nikdy `as fast as possible`.
-- **Dlouhé běhy (2008–2026) jeď v *Semi-auto*.** Tam žádné fily nejsou, rychlost je neomezená, a
-  žurnál je stejně to, co se porovnává — parita 99,7 % se měřila takhle. Full auto nemá nad
-  osmnácti lety co dokázat navíc.
+- **Full auto replay můžeš pustit rychle.** `10×` je pořád rozumné číslo, ale `7680×` už samo o sobě
+  není důvod, proč by se příkazy odmítaly.
+- **Dlouhé běhy (2008–2026) jeď stejně v *Semi-auto*.** Žurnál je to, co se porovnává, parita
+  99,7 % se měřila takhle, a Full auto nemá nad osmnácti lety co dokázat navíc.
 - Full auto si nech na **pár měsíců**, na ověření, že příkazy a brackety opravdu chodí na graf.
-- Příznak, že to bylo moc rychle: ve status boxu je `position` trvale **pod** `book`, aniž by tomu
-  v logu odpovídaly řádky `EXIT ... sl` nebo `tp`.
+- Co ve Full auto sleduj místo rychlosti: `position` ve status boxu trvale **nad** `book`. Znamená
+  to, že něco na účtu drží a nikdo se k tomu nehlásí; v logu k tomu bude řádek
+  `CANNOT CLOSE <preset>` nebo `EXIT ... did not fill in 8 calls`.
 
-Pokus udělat to rychlostně nezávislé skončil dvakrát horší, než je stav teď (v jedné variantě to
-stálo 1 446 vstupů, v druhé se to rozpadlo i při okamžitých filech), takže tohle omezení platí a
-je lepší ho znát než ho obejít špatně.
+Co v logu uvidíš nově:
+
+| řádek | znamená |
+|---|---|
+| `EXIT <preset> through its own bracket - target order N moved to X` | normální odchod presetu, přes jeho vlastní target |
+| `EXIT <preset> through its own bracket - stop order N moved to X` | totéž u presetu, co nemá target (signální výstup) |
+| `EXIT <preset> still working - the market left it behind` | trh odešel od posunutého příkazu, studie ho posouvá za ním (jen při `Log Level = Debug`) |
+| `EXIT <preset> did not fill in 8 calls` | příkaz se nevyplnil, bracket se zrušil, kontrakty jdou na trh |
+| `SELL N - N contract(s) on the account that no preset claims` | úklid kontraktů bez vlastníka; **N by mělo být malé** |
+| `CANNOT CLOSE <preset>` | ty kontrakty studie zavřít neumí — zavři je ručně v *Trade > Trade Orders and Positions* |
 
 ### Tři režimy, ne dva
 

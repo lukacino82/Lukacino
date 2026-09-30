@@ -406,3 +406,74 @@ víc, než se drží. Nedokazuje, co Sierra udělá sama od sebe. V *Trade → T
 Positions* musí být otevřených stop příkazů právě tolik, kolik je otevřených presetů se
 stopem. To platí jen pro Input 2 = Yes; v grafové simulaci to okno zůstává prázdné a počítat
 se musí z grafu.
+
+## P13 — tržní prodej, který nešel, a proč už nejde potřeba (hotovo, `.17`)
+
+`.16` na jeho grafu poprvé prokazatelně odvedla exit přes bracket:
+
+```
+EXIT C<wvwapxsd_3 through its own bracket - target order 162534 moved to 7729.50 for 1 contract(s).
+EXIT RSIx<x_1 - no target to steer, so its stop (order 162552) was cancelled ...
+```
+
+Takže `GetAttachedOrderIDsForParentOrder`, `ModifyOrder` i `CancelOrder` na jeho účtu fungují a
+`parentOrderId` je platné — to je ta podmínka, kterou offline potvrdit nešlo. Zbytkový tržní
+`SELL 2 from 29 to 27` se ale pořád vracel s `-1` a po pěti odmítnutích zamkl vrstvu.
+
+Důvod byl v účtování, ne v Sieře. Noha se zahazovala ve chvíli, kdy exit **odešel**, ne když
+dorazil. Fil nebyl potvrzený do dalšího volání, takže ty kontrakty v dalším volání nikdo nehlásil,
+staly se z nich přebytek a šly na trh — kde je Sierra odmítla, protože posunutý target je pořád
+krył. Pět takových a `ORDER PLACEMENT STOPPED`.
+
+Co se změnilo:
+
+1. **Noha přežije svůj exit.** Posunutý target/stop je pracující příkaz; studie si pamatuje jeho
+   cenu, kontrakty se dál počítají jako držené, a když trh od té ceny odejde, příkaz se za ním
+   posune. Noha se pustí teprve, když bracket nehlásí žádné živé dítě. Po osmi voláních bez filu
+   se bracket zruší a kontrakty jdou na trh — to je jediná cesta, jak se dají ztratit z dohledu,
+   a je to vidět v logu.
+2. **Preset bez targetu se taky řídí bracketem.** Třináct presetů má jen stopku. Dřív se rušila a
+   čekalo se na tržní prodej — což ty kontrakty mezitím nechávalo **nekryté**. Teď se stopka posune
+   tick nad trh, kde se spustí okamžitě; když to routa odmítne, spadne se na zrušení jako dřív.
+   V offline běhu to snížilo počet zrušených bracketů z 2 933 na 0.
+3. **Tržní prodej prodává jen to, co nehlásí žádný preset.** Množství se nepočítá z rozdílu proti
+   knize, ale jako *pozice mínus součet nohou*. Co drží nějaký preset, tam nikdy nejde, protože to
+   je krytý a Sierra to odmítne. Odvozuje se to z nohou, ne z paměti na to, co se poslalo — jak fily
+   dosedají, pozice klesá a to číslo klesá s ní, takže není co nechat vyexpirovat nebo rozejít.
+4. **Znovuvstup čeká.** Jedna noha neunese dvě obchody, takže preset, který zavřel a hned otevírá,
+   nedostane vstup, dokud staré kontrakty nejsou z účtu. Přepsání nohy bylo to, co z nich dělalo
+   kontrakty bez vlastníka.
+
+Změřeno na 4 680 seancích (ES, risk unit 1), se záměrným zdržením filu o daný počet volání studie:
+
+| zdržení filu | vstupů `.16` | vstupů `.17` | odmítnuto jako kryté `.16` | `.17` | přeprodejů `.17` |
+|---|---|---|---|---|---|
+| 0 volání | 9 332 | 9 367 | 5 | **0** | **0** |
+| 1 volání | 46 | 9 367 | 5 | **0** | **0** |
+| 2 volání | 46 | 9 367 | 5 | **0** | **0** |
+| 5 volání | 142 | 9 367 | 19 | **0** | **0** |
+| 10 volání | 73 | 9 367 | 8 | **0** | 117 |
+
+`.16` se složila při jakémkoli zdržení; `.17` je na zdržení nezávislá až k sedmi voláním. Rozhodovací
+jádro je pořád bit-identické (feature dump i žurnál 10 206 řádků), pojistka proti osiřelé pozici i
+cut-off fungují, dávkový a inkrementální běh se rovnají.
+
+### Ve stubu se cestou našly další dvě chyby modelu
+
+Obě posouvaly číslo víc než změny ve studii, takže stojí za zápis:
+
+- **Fronta zdržených filů byla jedna hromada s jedním odpočtem.** Druhý prodej odpočet restartoval,
+  takže graf, který prodává v každém volání, se nikdy neusadil a pozice dojela na strop bez ohledu
+  na to, co studie dělá. Teď má každý prodej svůj vlastní odpočet.
+- **Prodej rušil brackety živých obchodů.** Při vynuceném krytí může tržní prodej vzít jen
+  nekryté kontrakty, takže žádný bracket rušit nemá — a rušením si stub sám bral záznam o živém
+  obchodu: studie pak viděla prázdný bracket u presetu, který kontrakty pořád držel, pustila nohu,
+  a z těch kontraktů se stal přebytek, který prodala. 3 216 kontraktů z offline prodejů byl stub,
+  jak si žere vlastní stav.
+
+### Co ověřené pořád není
+
+Že Sierra přijme **stopku posunutou nad trh**. Stub ji plní, jeho routa ji přijmout nemusí. Když
+ji odmítne, spadne to na zrušení stopky jako v `.16` a v logu bude
+`could not steer <preset>'s stop (... Sierra returned -1)` — z toho se to pozná na první pohled a
+ty kontrakty jsou pak chvíli nekryté, než je vezme tržní prodej. Zbytek `.17` na tom nestojí.

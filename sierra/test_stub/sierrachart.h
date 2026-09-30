@@ -241,17 +241,26 @@ struct SCStudyInterface {
     // later, which is what a Replay running faster than fills settle looks like. Without it every
     // fill is instant and the "sold the same surplus twice" bug cannot be reproduced offline.
     int    stubFillDelay = getenv("STUB_FILL_DELAY") ? atoi(getenv("STUB_FILL_DELAY")) : 0;
-    int    pendingSellQty = 0, pendingSellCalls = 0;
+    // One entry per sell still in flight, each with its own countdown. Lumping them into a single
+    // quantity and a single countdown was wrong in the one case the delay exists to model: a second
+    // sell restarted the clock, so a chart that sold on every call never settled at all and the
+    // position ran to the cap no matter what the study did. That was the stub, not the study.
+    std::vector<std::pair<int,int> > pendingSells;   // qty, calls remaining
+    int    pendingSellQty = 0;
     int    oversoldEvents = 0;
     double minPositionSeen = 1e9;
     void StubTick(int want)
     {
         if (!stubSim) return;
-        if (pendingSellQty > 0 && --pendingSellCalls <= 0) {
-            stubPosition -= pendingSellQty;
-            if (stubPosition < 0) stubPosition = 0;
-            pendingSellQty = 0;
+        for (size_t i = 0; i < pendingSells.size(); ) {
+            if (--pendingSells[i].second <= 0) {
+                stubPosition -= pendingSells[i].first;
+                if (stubPosition < 0) stubPosition = 0;
+                pendingSellQty -= pendingSells[i].first;
+                pendingSells.erase(pendingSells.begin() + i);
+            } else ++i;
         }
+        if (pendingSellQty < 0) pendingSellQty = 0;
         if (stubPosition < minPositionSeen) minPositionSeen = stubPosition;
         if (stubPosition < want) ++oversoldEvents;   // the book wanted more than is held
     }
@@ -287,19 +296,24 @@ struct SCStudyInterface {
         }
         if (o.OrderQuantity > stubPosition - pendingSellQty) ++trimOverSurplus;
         if (stubFillDelay > 0) {
+            pendingSells.push_back(std::make_pair((int)o.OrderQuantity, stubFillDelay));
             pendingSellQty += o.OrderQuantity;
-            pendingSellCalls = stubFillDelay;
             ++trimsOk; trimQtyTotal += o.OrderQuantity;
             o.InternalOrderID = nextOrderId++;
             return o.InternalOrderID;
         }
         stubPosition -= o.OrderQuantity;
         if (stubPosition < 0) stubPosition = 0;
-        // Attached orders belong to a position, so closing contracts retires their brackets.
-        // Leaving them working was the last modelling gap in this stub: children outnumbered
-        // contracts, coverage stayed high while the position fell, and later sells were refused
-        // for contracts nothing was actually protecting.
-        for (int left = o.OrderQuantity; left > 0; ) {
+        // Attached orders belong to a position, so closing contracts retires their brackets - but
+        // only the brackets of the contracts actually closed. Under coverage enforcement above,
+        // a market sell can only ever take contracts that NOTHING covers, so there is no bracket
+        // to retire and retiring one anyway destroys the caller's own record of a live trade: the
+        // study then saw an empty bracket for a preset whose contracts were still held, let the leg
+        // go, and those contracts became a surplus it sold - which retired another live bracket,
+        // and so on. 3,216 contracts of the offline run's market sells were this stub eating its
+        // own state. With coverage off (STUB_COVERAGE=0) the sell does reach covered contracts, and
+        // then their brackets do have to go.
+        for (int left = enforceCoverage ? 0 : o.OrderQuantity; left > 0; ) {
             std::map<int, std::pair<int,int> >::iterator b = bracket.begin();
             bool retired = false;
             for (; b != bracket.end(); ++b) {
