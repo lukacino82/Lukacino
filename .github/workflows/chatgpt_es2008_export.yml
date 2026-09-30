@@ -1,0 +1,17 @@
+name: Export ES2008
+on:
+  push:
+    branches: [chatgpt-es2008-research]
+permissions:
+  contents: read
+jobs:
+  export:
+    if: contains(github.event.head_commit.message, 'Trigger ES2008 export')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: es2008-raw
+          path: ES2008.txt
+          retention-days: 1
