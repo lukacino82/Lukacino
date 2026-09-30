@@ -572,4 +572,6 @@ offline engine je vidí stejně. Ověřeno na letech 2015–2026: 99 zkrácenýc
 | Rozdíl jen v rodinách `C<wvwap#sd` a `D01` | studie z verze, kde týdenní VWAP kotvil na středu místo pondělí — přebuildi DLL |
 | Ledger má dvakrát tytéž obchody | starý soubor z verze před touto opravou, smaž ho |
 | Všechny příkazy odmítnuty s `Sierra returned -8998` | `SCT_SKIPPED_FULL_RECALC` — studie posílala příkazy během plného přepočtu grafu, což Sierra zásadně odmítá. Opraveno; přebuilduj DLL |
+| Všechny příkazy odmítnuty s `Sierra returned -1` | Obecné odmítnutí, **důvod píše Sierra jinam** — *Trade → Trade Activity Log* a řádky v Message Logu **bez** prefixu `Study:`. Nejčastěji vypnutý *Trade Simulation Mode* bez připojeného účtu, nezapnuté auto trading, nebo nevybraný Trade Account |
+| Ceny stopů a targetů v logu nejsou na ticku | verze před opravou zaokrouhlování; přebuilduj DLL |
 | `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |

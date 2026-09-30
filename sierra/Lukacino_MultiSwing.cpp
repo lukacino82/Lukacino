@@ -189,6 +189,21 @@ enum { ORDER_FAILURE_LIMIT = 5 };
 // account's - see the guard at the top of SyncOrders.
 static const int SCT_SKIPPED_FULL_RECALC_CODE = -8998;
 
+// Put a price on the instrument's tick grid, rounding away from the market.
+//
+// The research engine works in continuous prices, so a stop of 1.5 x ATR20 lands wherever the
+// arithmetic puts it - 7631.68 on an instrument whose tick is 0.25. An exchange has no such price
+// and Sierra refuses the order. Rounding away from the market (a long's stop down, its target up)
+// keeps the account's exit no EARLIER than the ledger's: at worst the book closes the trade first
+// and the position reconciliation sells at market, which is the path the order layer already
+// handles. Rounding the other way would let the account stop out on a tick the research never saw.
+static double ToTick(double price, double tick, bool roundDown)
+{
+    if (tick <= 0 || price <= 0 || price > 1e17) return price;
+    const double n = price / tick;
+    return (roundDown ? floor(n) : ceil(n)) * tick;
+}
+
 // What a Sierra return code means, where the study can say something useful about it.
 static const char* OrderRejectHint(int rc)
 {
@@ -1259,15 +1274,20 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
     const double want = st.accountStop;
     if (want < -1e17) return;                                  // this preset has no stop at all
     const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
-    if (want <= lg.stopOnAccount + tick / 2.0) return;         // already there, or would be a step down
 
+    // Decide on the price that would actually be sent, not on the unrounded wish. Rounding the
+    // stop down can leave it up to a tick below what the trail asked for, so comparing the wish
+    // against what is working made the same tick look like a move still owed on every call: 643
+    // real moves became 6,573 re-sends of prices already in the market.
+    const double onTick = ToTick(want, tick, true);
+    if (onTick <= lg.stopOnAccount + tick / 2.0) return;       // already there, or a step down
     if (!send) {
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing SEMI: would MOVE STOP for %s from %.2f to %.2f",
-                                 S.presets[k].id.GetChars(), lg.stopOnAccount, want);
+                                 S.presets[k].id.GetChars(), lg.stopOnAccount, onTick);
             sc.AddMessageToLog(m, 0);
         }
-        lg.stopOnAccount = want;
+        lg.stopOnAccount = onTick;
         return;
     }
 
@@ -1278,15 +1298,17 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
 
     s_SCNewOrder mod;
     mod.InternalOrderID = stopId;
-    mod.Price1 = want;
+    mod.Price1 = onTick;
     const int rc = (int)sc.ModifyOrder(mod);
     if (rc > 0) {
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing: STOP MOVED for %s from %.2f to %.2f (order %d)",
-                                 S.presets[k].id.GetChars(), lg.stopOnAccount, want, stopId);
+                                 S.presets[k].id.GetChars(), lg.stopOnAccount, mod.Price1, stopId);
             sc.AddMessageToLog(m, 0);
         }
-        lg.stopOnAccount = want;
+        // Record what is actually working in the market, not the unrounded wish, or every later
+        // call would see the tick of difference as a move still owed and keep re-sending it.
+        lg.stopOnAccount = mod.Price1;
     } else {
         // Not counted against orderFailures: a refused stop move leaves the previous, wider stop
         // working, so the position stays protected and the book stays consistent with the account.
@@ -1367,14 +1389,16 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         if (!send) {
             S.semiPosition += qty;
             if (logLevel >= LOG_INFO) {
+                const double tk = sc.TickSize > 0 ? sc.TickSize : 0.25;
                 SCString m; m.Format("Multi-Swing SEMI: would BUY %d for %s, stop %.2f target %.2f",
                                      qty, S.presets[k].id.GetChars(),
-                                     RealPrice(st.stop, last) ? st.stop : 0.0,
-                                     RealPrice(st.target, last) ? st.target : 0.0);
+                                     RealPrice(st.stop, last) ? ToTick(st.stop, tk, true) : 0.0,
+                                     RealPrice(st.target, last) ? ToTick(st.target, tk, false) : 0.0);
                 sc.AddMessageToLog(m, 0);
             }
             lg.qtyOnAccount = qty;
-            lg.stopOnAccount = RealPrice(st.stop, last) ? st.stop : 0.0;
+            lg.stopOnAccount = RealPrice(st.stop, last)
+                             ? ToTick(st.stop, sc.TickSize > 0 ? sc.TickSize : 0.25, true) : 0.0;
             entrySent = true;
             continue;
         }
@@ -1383,8 +1407,9 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         o.OrderQuantity = qty;
         o.OrderType     = SCT_ORDERTYPE_MARKET;
         o.TimeInForce   = SCT_TIF_DAY;
-        if (RealPrice(st.stop, last))   o.Stop1Price   = st.stop;
-        if (RealPrice(st.target, last)) o.Target1Price = st.target;
+        const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
+        if (RealPrice(st.stop, last))   o.Stop1Price   = ToTick(st.stop, tick, true);
+        if (RealPrice(st.target, last)) o.Target1Price = ToTick(st.target, tick, false);
 
         // Sierra's return code is the whole diagnosis of a refused order, so it is captured and
         // logged. An earlier version tested the call inline and printed a hardcoded 0, throwing
