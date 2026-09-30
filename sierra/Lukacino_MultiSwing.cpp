@@ -1337,10 +1337,18 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // Nothing is lost by waiting: the book's state survives the recalculation, and the first
     // incremental call reconciles the account to it through the same path as any other day.
     if (sc.UpdateStartIndex == 0) {
-        if (logLevel >= LOG_INFO && sc.ArraySize > 0)
-            sc.AddMessageToLog("Multi-Swing: full recalculation - no orders sent while the chart "
-                               "rebuilds (Sierra refuses them). The account is brought to what the "
-                               "book holds on the first bar after this.", 0);
+        // Carries the bar count and whether a replay is running, because the one thing this line
+        // cannot say on its own is whether the next call will be incremental. If a running replay
+        // only ever produces these, with the bar count climbing and no order ever sent, then
+        // Sierra is recalculating on every replay bar and the order layer cannot work that way.
+        if (logLevel >= LOG_INFO && sc.ArraySize > 0) {
+            SCString m;
+            m.Format("Multi-Swing: full recalculation at bar %d, replay %s - no orders sent while "
+                     "the chart rebuilds (Sierra refuses them, SCT_SKIPPED_FULL_RECALC). The "
+                     "account is brought to what the book holds on the first incremental bar.",
+                     (int)sc.ArraySize, sc.IsReplayRunning() ? "RUNNING" : "off");
+            sc.AddMessageToLog(m, 0);
+        }
         return;
     }
 
