@@ -1108,3 +1108,59 @@ Sedm scénářů, **jeden a tentýž md5 žurnálu** ve všech. Rozhodovací eng
 Proč `ModifyOrder` v jeho replayi selhává tak často, vysvětlené není. Nová cesta to přežije
 (uvolní nohu a jede dál), ale příčina sama je dál neznámá — a dokud nevím, že to není nějaké
 pravidlo Sierry k attached orderům na `[CB]` grafu, nebudu na to psát hypotézu.
+
+---
+
+## P25 — „proč není mode červený" a past, která `STOPPED` umí udělat nekonečným (`.28`)
+
+Status box hlásil žlutě `STOPPED - rejections, nothing is being sent`, `book 15 / position 0`.
+Otázka byla, proč není červený.
+
+**Protože je `STOPPED`.** Barva se váže na to, co opravdu může odejít:
+
+```cpp
+stopped || halted                                     → žlutá
+enabled && FULL && sending && confirmed               → červená
+!enabled                                              → šedá
+jinak                                                 → zelená
+```
+
+Červená znamená „příkazy mohou odcházet". Je žlutá, takže nemohou. Správná otázka není, proč není
+červený, ale proč je zastavený — a na to je ta diagnostická závorka u `ORDER REJECTED`.
+
+### `book 15 / position 0` tady není ta chyba z P24
+
+`book` ve status boxu je `TargetContracts()`, tedy **papírová kniha rozhodovacího enginu** (presety
+s `inPos != 0`), ne nohy na účtu. Když se všechny příkazy odmítají, engine obchoduje dál na papíře
+a účet nenásleduje — tohle číslo pak hlásí přesně to. Chyba z P24 byla o něčem jiném: o nohách,
+které si trvale rezervovaly kapacitu.
+
+### Past, kterou jsem při tom našel
+
+Samouvolnění západky z P22 bylo podmíněné `send`, a `send = (mode == FULL) && confirmed`. Takže:
+
+1. běh si nastaví západku (5 odmítnutí)
+2. pojistka `LIVE TRADING CONFIRMED` je vypnutá → `send` je false
+3. samouvolnění se přeskočí → **západka žije navěky**
+4. box svítí žlutě `STOPPED` a nejde to nijak zrušit než přepnutím `Reload Presets`
+
+A navíc v tom stavu box hlásil `STOPPED`, přestože skutečný důvod, proč se nic neposílá, byla
+vypnutá pojistka — tedy ta věc, kterou uživatel zapne jedním klikem.
+
+Opraveno obojí:
+
+- Samouvolnění už není podmíněné `send`, jen `mode == MODE_FULL`. Zatuchlá západka nemá pro nikoho
+  žádnou hodnotu, takže na plochém účtu padá nezávisle na pojistce.
+- Pojistka se ve status boxu hlásí **před** západkou: `FULL AUTO - ARMED, not sending:
+  Live Trading Confirmed = No`. Je to ten z obou důvodů, se kterým se dá něco udělat hned.
+
+### Měřeno
+
+| scénář | vstupů | odmítnutí | CANNOT | recon | žurnál |
+|---|---|---|---|---|---|
+| čistý běh | 135 | 0 | 0 | 0 | identický s `.27` |
+| `sim_nomodify` | 21 | 0 | 21 | 0 | identický |
+| nomodify + pozice 0 | 127 | 0 | 126 | 1 | identický |
+| pojistka zavřená | 0 | 0 | 0 | 0 | identický |
+
+Jeden md5 žurnálu přes všechny čtyři.

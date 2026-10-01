@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.27";
+static const char* STUDY_VERSION = "2026-10-01.28";
 
 static const int NUM_FAMILIES = 12;
 
@@ -1805,7 +1805,12 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // Bounded on purpose. A configuration that refuses everything would otherwise latch, heal,
     // latch again forever; the cooldown and the ceiling make that terminate, and the ceiling is
     // high enough that a long replay with quarterly contract rolls does not reach it.
-    if (S.orderFailures >= ORDER_FAILURE_LIMIT && send) {
+    // Not gated on 'send'. With the seatbelt off, send is false, this used to be skipped, and a
+    // latch set by an earlier run then lived forever: the box read STOPPED in yellow with no way
+    // to clear it but toggling Reload Presets, and nothing in it said which of the two reasons
+    // was stopping the orders. A stale latch is worth nothing to anybody, so it is cleared on a
+    // flat account in Full auto whatever the seatbelt says.
+    if (S.orderFailures >= ORDER_FAILURE_LIMIT && mode == MODE_FULL) {
         enum { LATCH_HEAL_WAIT = 8, LATCH_HEAL_MAX = 500 };
         if (S.latchWait > 0) --S.latchWait;
         else if (S.latchReleases < LATCH_HEAL_MAX) {
@@ -2226,6 +2231,10 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     const bool halted = S.haltedDd || S.haltedDaily;
     const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
                          : S.orphanHalt       ? "NOT TRADING - flatten the account first"
+                         // Before the latch: if the seatbelt is off then nothing is being sent for
+                         // that reason, and that is the one the reader can act on in one click.
+                         : mode == MODE_FULL && !confirmed
+                                              ? "FULL AUTO - ARMED, not sending: Live Trading Confirmed = No"
                          : stopped            ? (IsSkipCode(S.lastRejectCode)
                                                   ? "STOPPED - Sierra SKIPPED every order; nothing was sent"
                                                   : "STOPPED - rejections, nothing is being sent")
@@ -2233,8 +2242,6 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
                          // Full auto without the trade service cannot work a bracket, so the box
                          // says which switch to move rather than reading like a healthy run.
-                         : mode == MODE_FULL && !confirmed
-                                              ? "FULL AUTO - ARMED, not sending: Live Trading Confirmed = No"
                          : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
                                                          : "FULL AUTO - no exits: set Input 3 to Yes")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
