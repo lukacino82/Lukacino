@@ -780,3 +780,77 @@ offline engine je vidí stejně. Ověřeno na letech 2015–2026: 99 zkrácenýc
 | Všechny příkazy odmítnuty s `Sierra returned -1` | Obecné odmítnutí, **důvod píše Sierra jinam** — *Trade → Trade Activity Log* a řádky v Message Logu **bez** prefixu `Study:`. Nejčastěji vypnutý *Trade Simulation Mode* bez připojeného účtu, nezapnuté auto trading, nebo nevybraný Trade Account |
 | Ceny stopů a targetů v logu nejsou na ticku | verze před opravou zaokrouhlování; přebuilduj DLL |
 | `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |
+
+---
+
+# Live checklist
+
+Jedna stránka. Projdi ji odshora, nic nepřeskakuj. Platí stejně pro Sim replay i pro ostrý účet —
+rozdíl je **jediný řádek**, a je v menu Sierry, ne ve studii.
+
+## 1. Co nastavit v Sierře (v tomhle pořadí)
+
+| # | Kde | Co | Proč pořadí |
+|---|---|---|---|
+| 1 | *Trade → Trade Simulation Mode* | **Sim: zapnuto. Live: vypnuto.** | Tohle je ten jediný řádek, který rozhoduje o reálných penězích. Studie ho nevidí. |
+| 2 | *Trade Window* nebo *Chart Settings → Trading* | vybrat účet | Graf bez účtu nemá kam posílat. |
+| 3 | *Trade → Auto Trading Enabled - Global* | zaškrtnout | |
+| 4 | **spustit replay** (u live přeskoč) | | Start replaye shazuje bod 5. |
+| 5 | *Trade → Auto Trading Enabled for Chart* | zaškrtnout **až teď** | Sierra to shazuje při startu replaye, reloadu grafu a změně symbolu. |
+
+## 2. Co nastavit ve studii
+
+| Input | Hodnota | Pozn. |
+|---|---|---|
+| 1 `Trading Enabled` | Yes | |
+| 2 `Mode` | **Full auto** | |
+| 3 `Send Orders To Trade Service` | **Yes** | Pro Full auto to volba není. `No` je grafová simulace, která neumí řídit brackety. |
+| 8 `Instrument` | ES nebo MES | musí odpovídat symbolu grafu |
+| 35 `Max Gross Exposure` | **v MES ekvivalentech** | na ES děl deseti: `600` = strop 60 kontraktů. Status box ti to přepočítá. |
+| 39 `Daily Loss Limit USD` | **pro live nastav číslo** | `0` = vypnuto, což je špatný default pro ostrý účet |
+| 40 `Max Drawdown Stop USD` | **pro live nastav číslo** | dtto |
+| 89 `LIVE TRADING CONFIRMED` | **No, dokud si nejsi jistý** | dokud je No, nic neodejde |
+
+Nakonec přepni Input 6 `Reload Presets` na **opačnou** hodnotu. Zvedne to případnou západku
+`STOPPED`. Nastavit ho na to, co už tam je, nedělá nic.
+
+## 3. Co musí status box hlásit, než odejdeš od počítače
+
+```
+mode      FULL AUTO - ORDERS LIVE          ← červeně
+presets   48 in 12 families
+open      N presets
+book      N contracts   position N         ← tato dvě čísla si musí odpovídat
+days      N   risk unit 1.00 ES
+cap       60 ES contracts   (Max Gross 600 MES)
+P&L       ...
+```
+
+Čeho si všímat:
+
+- **`mode` musí být červený `ORDERS LIVE`.** Žluté `STOPPED` nebo `HALTED` znamená, že se
+  neposílá nic. `ARMED, not sending` znamená, že Input 89 je pořád No.
+- **`book` a `position` si musí odpovídat.** Rozdíl o jeden dva po pár volání je latence filu.
+  Rozdíl, který se drží, je desync a je to důvod zasáhnout.
+- **`cap` musí být vyšší než co kniha chce.** Při 48 presetech a risk unit 1 na ES potřebuješ
+  řádově 48, tedy `Max Gross` okolo 600.
+- Řádek `BLOCKED` nebo `WARMING UP` znamená, že nevstoupí nic, a říká proč.
+
+## 4. Kontrola v logu po prvním dni
+
+V *Window → Message Log* musí být vidět řádky:
+
+```
+Multi-Swing: Sierra's position cap for this chart is 60 ES contract(s) ...
+Multi-Swing 2026-10-01.21: loaded 48 presets (48 valid) in 12 families ...
+Multi-Swing: BUY 1 <preset>  stop 3783.75  target 3891.50
+```
+
+Ten **třetí řádek je ten rozhodující** — loguje se u každého *přijatého* příkazu. Když tam není
+ani jeden a přitom vidíš `SIGNAL` a `EXIT` řádky, **neprošel ani jeden příkaz** a kniha ve status
+boxu je papírová. Přesně tahle kombinace nás stála den hledání, viz `CO_DOLADIT.md` P17.
+
+## 5. Když to zastaví
+
+`STOPPED` znamená pět odmítnutí v jednom volání. Postup: zavři pozici ručně, srovnej, co hlásí
+odmítnutí, pak přepni Input 6 `Reload Presets`. Západka se jinak nezvedne.

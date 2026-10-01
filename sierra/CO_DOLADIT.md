@@ -611,3 +611,95 @@ patří sem rozhodnutí, jestli:
 - zvýšit výchozí hodnotu (60 MES je rozumné pro MES, ale na ES je to 6 kontraktů), nebo
 - nechat projekci skriptu počítat i pracující děti bracketů, aby si oba stropy odpovídaly, nebo
 - oboje.
+
+---
+
+## P17 — proč Sierra odmítala KAŽDÝ příkaz: trading flagy byly nastavené na špatném místě (`.21`)
+
+Tohle byla po celou dobu chyba v mém kódu, ne v nastavení Sierry. Prošel jsem P15 (brána) i P16
+(strop pozice) a ani jedno to nebylo — uživatel potvrdil, že `Auto Trading Enabled - Global`,
+`Auto Trading Enabled for Chart` i `Trade Simulation Mode` jsou **všechny zatržené**, strop byl
+po opravě 60 kontraktů proti poptávce 7, účet byl `Flat`, ceny na správných stranách trhu.
+
+### Co to bylo
+
+Šest ACSIL proměnných není runtime stav, ale **konfigurace studie**. Sierra je čte, když se studie
+konfiguruje, tedy v bloku `if (sc.SetDefaults)`. Já je nastavoval **až v normálním průchodu**,
+za `return` toho bloku:
+
+```cpp
+if (sc.SetDefaults) {
+    ...
+    return;            // ← Sierra čte konfiguraci sem
+}
+...
+sc.SupportAttachedOrdersForTrading = 1;   // ← a já ji nastavoval až tady
+```
+
+Zůstávaly tedy na Sierřiných vlastních defaultech. A `sc.SupportAttachedOrdersForTrading` má
+default **false**. Každý vstup přitom nese `Stop1Price` a `Target1Price`, takže to byl příkaz,
+který Sierra přijmout nemůže — a odmítla ho generickým `-1` bez důvodu.
+
+### Proč to sedí na všechno, co jsme viděli
+
+| pozorování | vysvětlení |
+|---|---|
+| odmítnuto **každé** `BuyEntry`, vždy, i z ploché pozice | bracket je nepřijatelný bez ohledu na stav |
+| `-1` bez jediného řádku od Sierry | odmítnutí při validaci, příkaz nikdy nevznikl |
+| ruční příkaz z Trade Window **projde** | ruční příkazy na tomhle flagu studie nezávisí |
+| v grafové simulaci (`Send = No`) byly vstupy **přijímány** | vnitřní simulace grafu je permisivnější |
+| nikde v logu ani jeden `Multi-Swing: BUY ...` | tak to taky bylo: neprošlo nic |
+
+Ten poslední řádek byl klíč a ležel ve všech logách od začátku. Skript loguje každý **přijatý**
+příkaz a ani jeden takový řádek neexistoval — zatímco `SIGNAL` a `EXIT` řádky ano, takže log level
+na INFO byl. Měl jsem to číst dřív a místo toho jsem dvakrát hledal v nastavení Sierry.
+
+### Oprava
+
+Těch šest se nastavuje v `SetDefaults`, kde je Sierra čte. Přiřazení v normálním průchodu zůstala
+jak byla, aby build, který je případně čte per-call, viděl stejné hodnoty:
+
+```cpp
+sc.AllowMultipleEntriesInSameDirection  = 1;
+sc.SupportReversals                     = 0;
+sc.AllowOnlyOneTradePerBar              = 0;
+sc.SupportAttachedOrdersForTrading      = 1;
+sc.AllowEntryWithWorkingOrders          = 1;
+sc.CancelAllOrdersOnEntriesAndReversals = 0;
+```
+
+`sc.SendOrdersToTradeService` a `sc.MaximumPositionAllowed` zůstávají v runtime — ty se mají
+měnit s Inputy.
+
+### Co ověřené NENÍ
+
+Že to byl **právě** `SupportAttachedOrdersForTrading` a ne jiný z té šestice. Všech šest se
+opravilo jedním zásahem a rozlišit je bez živé Sierry nejde. Nejlepší kandidát je on, protože
+jediný z nich gatuje attached ordery, a každý odmítnutý příkaz nějaký bracket nesl.
+
+---
+
+## P18 — pojistka proti nechtěnému live (`.21`)
+
+`Send Orders To Trade Service = Yes` znamená jen „posílej". Jestli to jde do `Sim1` nebo na ostrý
+účet, rozhoduje `Trade → Trade Simulation Mode`, což studie **nevidí a nenastaví**. Status box
+proto čte `FULL AUTO - ORDERS LIVE` úplně stejně pro replay i pro reálné peníze, a při 48
+presetech posílajících market ordery je to ta nejnebezpečnější vlastnost celého setupu.
+
+Nový Input 89 `LIVE TRADING CONFIRMED (seatbelt)`, default **No**. Dokud není Yes, Full auto
+spočítá a zaloguje celou knihu, ale **nepošle nic**, a status box hlásí
+`FULL AUTO - ARMED, not sending: Live Trading Confirmed = No`. Červená barva boxu se váže na to,
+co opravdu může odejít, ne jen na režim.
+
+Je to pás, ne zámek: studie Sim od live rozlišit neumí, takže to jen vynucuje vědomé rozhodnutí.
+
+Měřeno na 2400 barech, 48 presetech:
+
+| `LIVE_CONFIRM` | přijatých BUY | odmítnutí | hlášení | řádků žurnálu |
+|---|---|---|---|---|
+| 0 | **0** | 0 | 1× | 236 |
+| 1 | **218** | 0 | 0 | 236 |
+
+Žurnál **bit-identický** v obou případech — pojistka se nedotýká rozhodovacího enginu. Do stubu
+přidán override `LIVE_CONFIRM=0|1`, aby se dala měřit i zavřená větev; harness si ji jinak drží
+otevřenou, jinak by každý test objednávkové cesty měřil prázdný běh.

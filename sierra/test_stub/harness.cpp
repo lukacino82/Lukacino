@@ -24,7 +24,7 @@ enum { IN_TRADING_ENABLED = 0, IN_MODE, IN_SEND_LIVE, IN_DIRECTION, IN_PRESET_FI
        IN_ENTRY_EXPIRY = 44, IN_TIME_STOP = 47, IN_LOG_LEVEL = 50,
        IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR = 53, IN_OV_RRR = 54,
        IN_DAILY_LOSS = 38, IN_MAX_DD_STOP = 39, IN_FAMX_SL = 65, IN_FAMX_RRR = 66,
-       IN_INSTRUMENT_IDX = 7 };
+       IN_INSTRUMENT_IDX = 7, IN_LIVE_CONFIRM = 89 };
 
 // the study keeps its daily bars inside a private struct; for the harness we re-read the
 // subgraphs it publishes, which is exactly what a Sierra user can see on the chart
@@ -36,6 +36,10 @@ int main(int argc, char** argv)
     sc.Input[IN_PRESET_FILE].SetString(argv[2]);
     sc.Input[IN_JOURNAL_FILE].SetString(argc > 4 ? argv[4] : "harness_journal.csv");
     sc.Input[IN_TRADING_ENABLED].SetYesNo(1);
+    // The live-trading seatbelt is a guard for a human at a chart, not for a test fixture:
+    // left at its default the order layer sends nothing and every order-path test measures
+    // an empty run. Forced open here, deliberately and in one place.
+    sc.Input[IN_LIVE_CONFIRM].SetYesNo(1);
     sc.Input[IN_LOG_LEVEL].SetCustomInputIndex(0);
     // the research book has no exposure caps, so the parity run must not apply any either
     sc.Input[IN_MAX_CONCURRENT].SetInt(0); sc.Input[IN_MAX_PER_FAMILY].SetInt(0);
@@ -56,6 +60,9 @@ int main(int argc, char** argv)
     // Max Gross counts MES equivalents, so it only means anything together with the instrument:
     // one preset costs riskUnit on MES and ten times that on ES.
     if (const char* v = getenv("MAX_GROSS"))      sc.Input[IN_MAX_GROSS].SetInt(atoi(v));
+    // LIVE_CONFIRM=0 closes the seatbelt, so the guard itself can be measured and not just
+    // assumed: a full-auto run that sends nothing and says why exactly once.
+    if (const char* v = getenv("LIVE_CONFIRM")) sc.Input[IN_LIVE_CONFIRM].SetYesNo(atoi(v));
     if (const char* v = getenv("INSTRUMENT"))     sc.Input[IN_INSTRUMENT_IDX].SetCustomInputIndex(atoi(v));
     // FAM_SL / FAM_RRR take "family:value" pairs, 1-based, e.g. FAM_SL="1:2.0,3:1.5"
     for (int which = 0; which < 2; ++which) {

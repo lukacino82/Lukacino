@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-09-30.20";
+static const char* STUDY_VERSION = "2026-10-01.21";
 
 static const int NUM_FAMILIES = 12;
 
@@ -77,7 +77,8 @@ enum InputIdx {
     // so the book keeps trading exactly what was measured until a number is deliberately typed in.
     // Appended at the end and never renumbered: an existing chart keeps every setting it had.
     IN_FAMX_SL = 65, IN_FAMX_RRR = 66,                                              // 65-88, stride 2
-    IN_COUNT = IN_FAMX_SL + 2 * NUM_FAMILIES
+    IN_LIVE_CONFIRM = 89,                                                           // 89 live seatbelt
+    IN_COUNT
 };
 
 enum ModeKind    { MODE_SIGNALS = 0, MODE_SEMI, MODE_FULL };
@@ -322,6 +323,7 @@ struct StudyState {
     bool     orphanWarned = false;      // said once, not once per call
     bool     chartSimWarned = false;    // ... and for the chart-simulation-has-no-exits note
     bool     capLogged = false;        // ... and for the one-time note naming Sierra's position cap
+    bool     confirmWarned = false;    // ... and for the live-trading seatbelt notice
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -1684,7 +1686,24 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     //
     // Nothing is lost by waiting: the book's state survives the recalculation, and the first
     // incremental call reconciles the account to it through the same path as any other day.
-    const bool send = (mode == MODE_FULL);
+    // The seatbelt. 'Send Orders To Trade Service' = Yes means only "send"; whether that lands in
+    // Sim1 or in a real account is decided by Trade > Trade Simulation Mode, which this study can
+    // neither read nor set. So nothing in here can tell a replay from live money, and the status
+    // box reads identically for both. One deliberate Input stands in for that missing distinction:
+    // until it is set, Full auto computes and logs the whole book but sends nothing.
+    const bool confirmed = sc.Input[IN_LIVE_CONFIRM].GetYesNo() != 0;
+    const bool send = (mode == MODE_FULL) && confirmed;
+    if (mode == MODE_FULL && !confirmed) {
+        if (!S.confirmWarned) {
+            S.confirmWarned = true;
+            sc.AddMessageToLog(
+                "Multi-Swing: FULL AUTO, but 'LIVE TRADING CONFIRMED' is No - nothing is being "
+                "sent. The book runs and logs as usual so you can read it first. Set that Input to "
+                "Yes when you mean orders to leave, and check Trade > Trade Simulation Mode before "
+                "you do: this study cannot tell the simulator from a real account.", 1);
+        }
+        return;
+    }
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
     // Full auto in the chart's own simulation cannot work the brackets, and it costs a run to
@@ -1980,6 +1999,7 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     // Once placement has stopped the box must say so: it was still reading "ORDERS LIVE" while
     // nothing was being sent, which is the one thing a status box must never get wrong.
     const bool stopped = S.orderFailures >= ORDER_FAILURE_LIMIT;
+    const bool confirmed = sc.Input[IN_LIVE_CONFIRM].GetYesNo() != 0;
     // A halt stops new entries, so the box must say so before it says anything about the mode -
     // "FULL AUTO - ORDERS LIVE" while a loss limit is blocking every entry would be a lie.
     const bool halted = S.haltedDd || S.haltedDaily;
@@ -1990,6 +2010,8 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
                          // Full auto without the trade service cannot work a bracket, so the box
                          // says which switch to move rather than reading like a healthy run.
+                         : mode == MODE_FULL && !confirmed
+                                              ? "FULL AUTO - ARMED, not sending: Live Trading Confirmed = No"
                          : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
                                                          : "FULL AUTO - no exits: set Input 3 to Yes")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
@@ -2030,15 +2052,20 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                 "open      %d presets\n"
                 "book      %d contracts   position %d\n"
                 "days      %d   risk unit %.2f %s\n"
+                "cap       %d %s contracts   (Max Gross %.0f MES)\n"
                 "%s%s",
                 modeName, (int)S.presets.size(), S.familyCount, openPresets,
                 target, position, (int)S.daily.size(), cfg.riskUnit,
                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
+                sc.MaximumPositionAllowed,
+                sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
+                cfg.maxGross,
                 pnl.GetChars(), warn.GetChars());
 
     // Red whenever real orders can leave the study, so a live run never looks like a paper one.
     const COLORREF colour = stopped || halted                         ? RGB(255, 200, 0)
-                          : (enabled && mode == MODE_FULL && sending)  ? RGB(255, 80, 80)
+                          : (enabled && mode == MODE_FULL && sending && confirmed)
+                                                                        ? RGB(255, 80, 80)
                           : !enabled                                   ? RGB(150, 150, 150)
                                                                        : RGB(0, 220, 120);
     const int corner = sc.Input[IN_STATUS_CORNER].GetIndex();
@@ -2154,16 +2181,16 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_MAX_PER_ROLE].Name = "Max Presets Per Role";     sc.Input[IN_MAX_PER_ROLE].SetInt(12);
         sc.Input[IN_DAILY_LOSS].Name = "Daily Loss Limit USD (0 = off, stands down next session)";  sc.Input[IN_DAILY_LOSS].SetFloat(0);
         sc.Input[IN_MAX_DD_STOP].Name = "Max Drawdown Stop USD (0 = off, halts until reload)"; sc.Input[IN_MAX_DD_STOP].SetFloat(0);
-        sc.Input[IN_SCALE_IN].Name = "Scale In By Correction Depth (step 3, not active yet)"; sc.Input[IN_SCALE_IN].SetYesNo(0);
-        sc.Input[IN_SCALE_CAP].Name = "Scale In Cap (step 3, not active yet)";               sc.Input[IN_SCALE_CAP].SetFloat(2.0f);
+        sc.Input[IN_SCALE_IN].Name = "(unused) Scale In By Correction Depth"; sc.Input[IN_SCALE_IN].SetYesNo(0);
+        sc.Input[IN_SCALE_CAP].Name = "(unused) Scale In Cap";               sc.Input[IN_SCALE_CAP].SetFloat(2.0f);
 
         sc.Input[IN_ENTRY_TYPE].Name = "Entry Type Override";
         sc.Input[IN_ENTRY_TYPE].SetCustomInputStrings("As defined by preset;Force market on close;Force limit");
         sc.Input[IN_ENTRY_TYPE].SetCustomInputIndex(0);
         sc.Input[IN_LIMIT_OFFSET].Name = "Limit / Stop Offset (ticks)"; sc.Input[IN_LIMIT_OFFSET].SetInt(0);
         sc.Input[IN_ENTRY_EXPIRY].Name = "Entry Order Expiry (sessions)"; sc.Input[IN_ENTRY_EXPIRY].SetInt(1);
-        sc.Input[IN_MAX_SLIPPAGE].Name = "Max Slippage ticks (step 3, not active yet)";      sc.Input[IN_MAX_SLIPPAGE].SetInt(8);
-        sc.Input[IN_FLATTEN_EOD].Name = "Flatten At Session End (step 3, not active yet)";     sc.Input[IN_FLATTEN_EOD].SetYesNo(0);
+        sc.Input[IN_MAX_SLIPPAGE].Name = "(unused) Max Slippage ticks";      sc.Input[IN_MAX_SLIPPAGE].SetInt(8);
+        sc.Input[IN_FLATTEN_EOD].Name = "(unused) Flatten At Session End";     sc.Input[IN_FLATTEN_EOD].SetYesNo(0);
         sc.Input[IN_TIME_STOP].Name = "Time Stop Override (sessions, 0 = use preset)"; sc.Input[IN_TIME_STOP].SetInt(0);
 
         sc.Input[IN_RTH_START].Name = "RTH Start (chart time zone)";  sc.Input[IN_RTH_START].SetTime(HMS_TIME(9, 30, 0));
@@ -2212,6 +2239,24 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         }
         sc.Input[IN_FEATURE_CSV].Name = "Feature Dump CSV (blank = off)";
         sc.Input[IN_FEATURE_CSV].SetString("");
+
+        sc.Input[IN_LIVE_CONFIRM].Name = "LIVE TRADING CONFIRMED (seatbelt)";
+        sc.Input[IN_LIVE_CONFIRM].SetYesNo(0);
+
+        // These six are study CONFIGURATION, not runtime state: Sierra reads them when the study
+        // is configured, and assigning them later in the call - which is what this study did until
+        // now - leaves them at Sierra's own defaults. SupportAttachedOrdersForTrading defaults to
+        // FALSE, so every entry carrying Stop1Price and Target1Price was an order Sierra would not
+        // accept, and it refused each one with a bare -1 that named no reason. That is the whole
+        // story of the rejections: not the account, not auto trading, not the position cap, not
+        // the prices. Set here, where they are read. The assignments further down stay as they
+        // were, so a Sierra build that does re-read them per call still sees the same values.
+        sc.AllowMultipleEntriesInSameDirection = 1;
+        sc.SupportReversals                    = 0;
+        sc.AllowOnlyOneTradePerBar             = 0;
+        sc.SupportAttachedOrdersForTrading     = 1;
+        sc.AllowEntryWithWorkingOrders         = 1;
+        sc.CancelAllOrdersOnEntriesAndReversals = 0;
         return;
     }
 
