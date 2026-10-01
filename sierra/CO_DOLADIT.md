@@ -1616,3 +1616,48 @@ Výstupní fill cena. Bracketové dítko vyplní asynchronně a market prodej z 
 kontrakty prodává. **Pro equity to ale potřeba není:** `swing_journal.csv` má
 `entry, exit, pnl_pts, mae, mfe, bars, reason` na obchod a preset — to je ta křivka. Trade log je
 záznam o příkazech, ne druhý žurnál.
+
+---
+
+## P32 — bracket to NENÍ. Dokázáno. (log z `.35`)
+
+Jeho replay s `.35`. Dva řádky vedle sebe:
+
+```
+ORDER REJECTED, Sierra returned -1: BUY 1 C<dvwapxsd_1 at market, stop 6646.75 target 6960.25
+ORDER REJECTED, Sierra returned -1: BUY 1 C<wvwapxsd_1 at market, stop 0.00 target 0.00
+```
+
+**Ten druhý je holý market příkaz. Žádný bracket. Žádná připojená cena. Nic.** Je to jeden z těch
+15 presetů bez stopu, které `In:93` od `.35` posílá — a Sierra ho odmítne **úplně stejně** jako ten
+s bracketem.
+
+Tím je to uzavřené:
+
+| hypotéza | verdikt |
+|---|---|
+| chybí typ připojeného příkazu | vyvráceno už v P26c (ty konstanty neexistují) |
+| absolutní ceny vs. offsety | vyvráceno v P31 (ani jeden vstup nezachránila offsetová forma) |
+| **bracket jako takový** | **vyvráceno teď — holý příkaz bez bracketu odmítnut stejně** |
+| strop pozice / auto trading / účet | `account 0, projected 0, cap 1000` na každém řádku |
+
+Odmítnutí není v tom, **co** studie posílá. Je v tom, **že** to posílá studie.
+
+## Kde je ta odpověď — a já ji posílal na špatné místo
+
+Sierrina vlastní věta z `.32`:
+
+> `General order error. Refer to 'Trade >> Trade Service Log' for specific message for this trading
+> action error`
+
+**Trade Service Log**, ne Trade Activity Log. To jsou dvě různá okna a já v hintu i v NASTAVENI.md
+posílal na to druhé. Opraveno v textu hintu.
+
+## Rozhodující test, který nestojí nic
+
+S běžícím replayem kliknout v Trade Window na **BUY MARKET** na tomtéž grafu.
+
+- Odmítnuto taky → studie v tom nefiguruje vůbec, je to nastavení grafu nebo trade service
+- Projde → Sierra rozlišuje ruční a studijní příkaz a to je jediná zbývající stopa
+
+Dokud tohle neproběhne, další hypotéza o kódu je pátá v řadě a čtyři předchozí padly.

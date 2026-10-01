@@ -299,8 +299,9 @@ static const char* OrderRejectHint(int rc)
                " selected for this chart - Trade Window, or Chart Settings > Trading; (4) Trade >"
                " Trade Simulation Mode On, unless you really mean to trade the live account. Then"
                " toggle 'Reload Presets' to lift the cut-off. Sierra logs the real reason"
-               " separately: Window > Message Log at lines WITHOUT the 'Study: Lukacino"
-               " Multi-Swing' prefix at this same timestamp, and Trade > Trade Activity Log.";
+               " separately, and its own words above name the place: Trade > TRADE SERVICE"
+               " LOG (not the Trade Activity Log - different window). Also Window > Message Log"
+               " at lines WITHOUT the 'Study: Lukacino Multi-Swing' prefix at this timestamp.";
     return "";
 }
 
