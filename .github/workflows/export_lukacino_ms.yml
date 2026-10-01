@@ -1,0 +1,15 @@
+name: Export LukacinoMS Live CSV
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lukacino-ms-live
+          path: live/LukacinoMS/LukacinoMS_trades.csv
+          retention-days: 1
