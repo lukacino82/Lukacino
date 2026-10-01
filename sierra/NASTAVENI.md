@@ -1031,6 +1031,8 @@ Dvanáct dvojic SL / RRR. **Všechny `0`.** `0` znamená „nech té rodině jej
 | `In:90` LIVE TRADING CONFIRMED | **Yes** | **tohle je ten přepínač, který pouští příkazy.** Dokud je `No`, Full auto počítá a loguje, ale neposílá nic. |
 | `In:91` Emergency Stop: points below the lowest book stop | **0** | na první full auto replay vypnuto. Až bude čisté, dej `20`. |
 | `In:92` Trade Log CSV (file name in Data folder, blank = off) | **`LukacinoMultiswing_trades.csv`** | příkaz po příkazu, včetně odmítnutých a Sierrina důvodu. Pro ladění full auto to zapni. |
+| `In:93` Send Entries That Have No Stop (15 of 48 presets) | **Yes** | 15 presetů exituje na signál a stop nemá vůbec. `No` znamená, že 31 % knihy nikdy neobchoduje. |
+| `In:94` If Sierra Refuses The Bracket, Send Without One | **Yes** | když Sierra odmítne bracket v obou formách, nabídne tentýž vstup holý. Bez toho byl replay 805 odmítnutí a nula obchodů. |
 
 ## C. Co musí status box hlásit, než odejdeš
 
@@ -1105,3 +1107,59 @@ stamp,event,preset,qty,price,stop,target,order_id,rc,position,note
 
 Tři kola ladění se vedla na žurnálu a žurnál byl **každé kolo bit-identický** — protože to, co bylo
 rozbité, nikdy nebyla kniha. Bylo to to, co s příkazy udělala Sierra, a **to si nikdo nezapisoval.**
+
+---
+
+# `In:93` a `In:94` — proč replay nedával obchody
+
+Tyhle dva Inputy přibyly v `.35` po replayi, který dal **1 046 řádků a ani jeden obchod**:
+805 odmítnutých vstupů a 241 vůbec neodeslaných. Dvě různé příčiny.
+
+## `In:93` Send Entries That Have No Stop — default **Yes**
+
+**15 ze 48 presetů nemá žádný stop.** Exitují na signál (`x:C>SMA5`, `x:IBS>0.8`, `x:RSI2>90`) nebo
+na trail, který se ještě neaktivoval. Tak je výzkum změřil.
+
+Od `.26` je studie neposílala, protože vstup bez stopu je na účtu nechráněný. Důsledek ale nikdo
+nespočítal: **31 % knihy neobchodovalo, zatímco status box hlásil FULL AUTO.** Parita proti
+harnessu je za toho stavu nemožná.
+
+| | |
+|---|---|
+| `Yes` (default) | kniha se obchoduje, jak byla změřena. Těch 15 jde ven bez stopu v trhu — kniha je zavře na svém exitu, ale mezi fillem a exitem je nechrání nic. **Odpověď na to je `In:91`, ne tenhle přepínač.** |
+| `No` | chování do `.34`. Těch 15 presetů běží jen jako papír. |
+
+Status box to hlásí: `NO STOP   N entries sent with no stop in the market`.
+
+## `In:94` If Sierra Refuses The Bracket, Send Without One — default **Yes**
+
+Vstup se nabízí ve třech formách, v tomhle pořadí:
+
+1. **bracket v absolutních cenách** — normální cesta, stop přesně tam, kde ho výzkum změřil
+2. **bracket v offsetech** od fillu — záloha z `.31`
+3. **bez připojených příkazů vůbec** — tohle
+
+V jeho replayi **ani jeden** vstup nezachránila forma 2, takže obě bracketové formy byly odmítnuty —
+a to znamená, že co Sierra odmítá, **není kódování bracketu**. Vedle toho na témž účtu běží
+`Lukacino_MultiSystem.cpp`, která posílá holé market příkazy a funguje.
+
+Forma 3 to rozhodne. Projde-li, Sierra odmítá bracket, ne vstup. Neprojde-li, odmítá příkazy ze
+studie jako takové. **Tak či tak replay přestane dávat tisíc odmítnutí a nula obchodů.**
+
+Když forma 3 projde, napíše se to jednou nahlas do logu a v trade logu je událost
+`ENTRY_OK_NOBRACKET`. **Ten řádek mi pošli** — je to odpověď, kterou čtyři hypotézy nedaly.
+
+Taková noha nemá co řídit: výstup jde market prodejem (`EXIT_MARKET`), posun stopu se přeskočí, a
+`In:91` Emergency Stop si hladinu vezme ze zamýšleného stopu knihy. **S holými vstupy navíc mizí to
+dvojité krytí**, kvůli kterému byl Emergency Stop defaultně vypnutý — s `In:94` v akci ho zapni.
+
+## Co to udělalo (změřeno)
+
+| | vstupů | neodeslaných | `STOPPED` | žurnál |
+|---|---|---|---|---|
+| `.34` | 135 | **408** | 0 | 235 obchodů |
+| `.35`, Sierra brackety bere | **218** | 0 | 0 | 235 obchodů |
+| `.35`, Sierra odmítá každý bracket | **227** | 0 | 0 | 235 obchodů |
+
+Žurnál bit-identický ve všech třech. Rozhodovací vrstva se nedotkla — změnilo se jen to, co z ní
+dojde na účet.
