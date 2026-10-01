@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.30";
+static const char* STUDY_VERSION = "2026-10-01.31";
 
 static const int NUM_FAMILIES = 12;
 
@@ -348,6 +348,7 @@ struct StudyState {
     long     latchCount = 0;            // how often it has latched, so the notice can be throttled
     long     unprotectedHeld = 0;       // entries not sent because the book had no usable stop
     long     reconciled = 0;            // how often the book had to be corrected to the account
+    long     offsetFallbacks = 0;       // entries Sierra took as offsets after refusing prices
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
     int      trimWaited = 0;            // calls it has been waited for, so a sell that never
                                         // lands cannot lock the trim out for ever
@@ -2184,19 +2185,73 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // Sierra's return code is the whole diagnosis of a refused order, so it is captured and
         // logged. An earlier version tested the call inline and printed a hardcoded 0, throwing
         // away the one number that says why - and then the failure cut-off silenced the rest.
-        const int rc = (int)sc.BuyEntry(o);
+        int rc = (int)sc.BuyEntry(o);
+
+        // A bracket can be asked for in two ways, and scstructures.h:1353-1356 treats them as
+        // equals: absolute prices, or offsets from the fill. Absolute prices are the form this
+        // study wants, because they put the stop exactly where the research measured it and keep
+        // a replay comparable with the offline harness. On his chart they come back -1 with
+        // nothing wrong in them and no reason logged, so the entry is simply lost.
+        //
+        // Rather than switch the whole study to offsets and drift every bracket off the measured
+        // price, the refused entry is offered ONCE MORE in the other form. Prices stay the normal
+        // path; offsets are the fallback that keeps the trade rather than losing it, and the log
+        // says which form went through. That also answers the question four hypotheses could not:
+        // if the retry is accepted, absolute prices are the problem; if it is refused too, the
+        // bracket encoding was never the problem at all.
+        bool viaOffsets = false;
+        s_SCNewOrder off;
+        if (rc <= 0 && !IsSkipCode(rc) && (o.Stop1Price != 0.0 || o.Target1Price != 0.0)) {
+            off.OrderQuantity = qty;
+            off.OrderType     = SCT_ORDERTYPE_MARKET;
+            off.TimeInForce   = SCT_TIF_DAY;
+            // Measured from the close the book priced against, so the levels land where the
+            // absolute form would have put them, give or take the gap between that close and the
+            // actual fill.
+            if (o.Stop1Price   != 0.0 && last > o.Stop1Price)
+                off.Stop1Offset   = ToTick(last - o.Stop1Price, tick, true);
+            if (o.Target1Price != 0.0 && o.Target1Price > last)
+                off.Target1Offset = ToTick(o.Target1Price - last, tick, true);
+            if (off.Stop1Offset > 0.0 || off.Target1Offset > 0.0) {
+                const int rc2 = (int)sc.BuyEntry(off);
+                if (rc2 > 0) {
+                    rc = rc2;
+                    viaOffsets = true;
+                    ++S.offsetFallbacks;
+                    if (logLevel >= LOG_INFO &&
+                        (S.offsetFallbacks == 1 || S.offsetFallbacks % 100 == 0)) {
+                        SCString m;
+                        m.Format("Multi-Swing: Sierra refused %s's bracket as absolute prices and "
+                                 "accepted the same bracket as offsets (stop -%.2f, target +%.2f "
+                                 "from the fill). The trade is on. Note that an offset is measured "
+                                 "from the fill, not from the %.2f close the book priced against, "
+                                 "so this bracket can sit a tick or two off the offline harness. "
+                                 "(%ld so far.)",
+                                 S.presets[k].id.GetChars(), off.Stop1Offset, off.Target1Offset,
+                                 last, S.offsetFallbacks);
+                        sc.AddMessageToLog(m, 0);
+                    }
+                }
+            }
+        }
+        s_SCNewOrder& placed = viaOffsets ? off : o;
         if (SkippedForRecalc(sc, S, rc, logLevel)) { lg = AccountLeg(); return; }
         if (rc > 0) {
             S.recalcSkips = 0;
             lg.qtyOnAccount = qty;
-            lg.parentOrderId = (unsigned int)o.InternalOrderID;   // filled in by Sierra on success
-            lg.stopOnAccount = o.Stop1Price;
+            lg.parentOrderId = (unsigned int)placed.InternalOrderID;  // Sierra fills this in
+            // With offsets Sierra owns the absolute level, so the study records what it asked for
+            // rather than a price it never sent; the stop move logic only ever raises from here.
+            lg.stopOnAccount = viaOffsets ? (last - off.Stop1Offset) : o.Stop1Price;
             projected += qty;
             ++S.ordersPlaced;
             tally.anyOk = true;
             if (logLevel >= LOG_INFO) {
-                SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f",
-                                     qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price);
+                SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f%s",
+                                     qty, S.presets[k].id.GetChars(),
+                                     viaOffsets ? last - off.Stop1Offset   : o.Stop1Price,
+                                     viaOffsets ? last + off.Target1Offset : o.Target1Price,
+                                     viaOffsets ? "  (bracket sent as offsets)" : "");
                 sc.AddMessageToLog(m, 0);
             }
         } else {

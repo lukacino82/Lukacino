@@ -1319,3 +1319,41 @@ Log* — ten log, ne seznam obchodů. Tam Sierra píše slovy, proč příkaz od
 důvodu neprocházely, offsety jsou cesta — ale počítají se **od skutečného filu, ne od closu**,
 takže stop a target skončí o tick dva jinde než v offline harnessu. To je drift parity, kvůli
 které celý tenhle replay vzniká, takže to není změna, kterou udělám sám od sebe.
+
+---
+
+## P27 — bracket jako offsety, ale jen jako záloha (`.31`)
+
+`scstructures.h:1353-1356` bere obě formy bracketu jako rovnocenné: absolutní ceny **nebo**
+offsety od filu. Absolutní ceny jsou ta forma, kterou tenhle skript chce — položí stop přesně tam,
+kde to výzkum naměřil, a drží replay srovnatelný s offline harnessem. Na jeho grafu se ale vracejí
+jako `-1` bez důvodu a vstup je tím ztracený.
+
+**Přepnout celý skript na offsety by rozjelo paritu u každého jednoho bracketu.** Proto se
+odmítnutý vstup nabídne **ještě jednou** v druhé formě:
+
+1. ceny — normální cesta, nic se nemění
+2. když je Sierra odmítne, tentýž vstup s `Stop1Offset` / `Target1Offset`, počítanými od closu,
+   ze kterého kniha cenu brala
+3. log řekne, která forma prošla, a u offsetů i to, že mohou sedět o tick dva jinak
+
+### A rozhodne to otázku, na kterou čtyři hypotézy nestačily
+
+Projde-li ta záloha, jsou absolutní ceny ten problém. Neprojde-li taky, **nebyl bracket nikdy
+problém** a odmítnutí je někde úplně jinde. Tak či tak to příští log řekne sám.
+
+### Měřeno
+
+| | `.30` vstupů | `.31` vstupů | z toho offsety | odmítnutí | žurnál |
+|---|---|---|---|---|---|
+| **ceny projdou** (normální Sierra) | 135 | **135** | **0** | 0 | identický |
+| **ceny odmítnuty** | **0** | **135** | 135 | 0 | identický |
+
+První řádek je ta důležitá polovina: když ceny fungují, záloha **nesepne vůbec** a žurnál je
+bit-identický s `.30`. Žádný drift parity tam, kde není potřeba.
+
+Druhý řádek je to, co se mělo spravit: `.30` ztratilo všech 135 obchodů a 92× zapsalo odmítnutí,
+`.31` je všech 135 provedlo.
+
+Do stubu přidáno `STUB_REFUSE_PRICE_BRACKET=1` (odmítne cenovou formu, přijme offsetovou) a
+pochopení offsetové formy v `BuyEntry`, takže se ta cesta měří a nejen doufá.

@@ -270,10 +270,27 @@ struct SCStudyInterface {
         if (MaximumPositionAllowed > 0 && stubPosition + o.OrderQuantity > MaximumPositionAllowed) {
             ++entriesRefused; ++refusedByMaxPosition; return -1;
         }
+        // STUB_REFUSE_PRICE_BRACKET=1 refuses an entry whose bracket is given as absolute prices
+        // and accepts the same entry given as offsets. It models the one thing his chart might be
+        // doing - every price-form entry refused with a bare -1 - so the retry path can be
+        // measured rather than hoped for.
+        static const bool refusePriceBracket =
+            getenv("STUB_REFUSE_PRICE_BRACKET") && atoi(getenv("STUB_REFUSE_PRICE_BRACKET")) == 1;
+        if (refusePriceBracket && (o.Stop1Price != 0 || o.Target1Price != 0)) {
+            ++entriesRefused; return -1;
+        }
+
         const int id = nextOrderId++;
         o.InternalOrderID = id;
         stubPosition += o.OrderQuantity;
         if (stubPosition > stubPeakPosition) stubPeakPosition = stubPosition;
+
+        // An offset bracket is the same bracket measured from the fill. The stub fills a market
+        // order at the price the study last saw, which is what stubLast carries.
+        const double fill = (ArraySize > 0) ? (double)BaseData[SC_LAST][ArraySize - 1] : 0.0;
+        if (o.Target1Price == 0 && o.Target1Offset != 0) o.Target1Price = fill + o.Target1Offset;
+        if (o.Stop1Price   == 0 && o.Stop1Offset   != 0) o.Stop1Price   = fill - o.Stop1Offset;
+
         int targetId = 0, stopId = 0;
         if (o.Target1Price != 0) {
             targetId = nextOrderId++;
