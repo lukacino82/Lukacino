@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.28";
+static const char* STUDY_VERSION = "2026-10-01.29";
 
 static const int NUM_FAMILIES = 12;
 
@@ -2154,8 +2154,30 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         o.OrderType     = SCT_ORDERTYPE_MARKET;
         o.TimeInForce   = SCT_TIF_DAY;
         const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
-        if (RealPrice(st.stop, last))   o.Stop1Price   = ToTick(st.stop, tick, true);
-        if (RealPrice(st.target, last)) o.Target1Price = ToTick(st.target, tick, false);
+
+        // The attached orders need their TYPE, not only their price.
+        //
+        // This is why every entry came back -1 with nothing wrong in it: sane stop, sane target,
+        // flat account, cap 1000, and a bare refusal with no Sierra line beside it. An entry
+        // carrying attached-order prices but leaving AttachedOrderStop1Type and
+        // AttachedOrderTarget1Type at zero - UNSET - is an order Sierra has no instruction to
+        // build, so it refuses the parent before anything exists to report on.
+        //
+        // It also explains the timeline. Entries were accepted while
+        // SupportAttachedOrdersForTrading was being assigned outside the SetDefaults block,
+        // because Sierra then built no attached orders at all and a plain market buy is always
+        // valid. Fixing that flag in .21 is what started the refusals: from then on Sierra
+        // genuinely tried to build the bracket and found no types on it.
+        //
+        // A protective stop is a sell stop; a profit target is a sell limit.
+        if (RealPrice(st.stop, last)) {
+            o.Stop1Price       = ToTick(st.stop, tick, true);
+            o.AttachedOrderStop1Type = SCT_ATTACHEDORDER_STOP;
+        }
+        if (RealPrice(st.target, last)) {
+            o.Target1Price     = ToTick(st.target, tick, false);
+            o.AttachedOrderTarget1Type = SCT_ATTACHEDORDER_LIMIT;
+        }
 
         // Sierra's return code is the whole diagnosis of a refused order, so it is captured and
         // logged. An earlier version tested the call inline and printed a hardcoded 0, throwing

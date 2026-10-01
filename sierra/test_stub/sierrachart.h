@@ -87,6 +87,14 @@ struct s_SCNewOrder {
     double Target1Price = 0, Stop1Price = 0;
     int    AttachedOrderTarget1Type = 0, AttachedOrderStop1Type = 0;
 };
+// Sierra's SCAttachedOrderTypeEnum. Zero means UNSET, and an entry submitted with attached-order
+// PRICES but no attached-order TYPES is an order Sierra has no instruction to build - which is
+// what this study did for every entry once SupportAttachedOrdersForTrading was correctly on.
+enum SCAttachedOrderTypeEnum {
+    SCT_ATTACHEDORDER_UNSET = 0,
+    SCT_ATTACHEDORDER_LIMIT = 1,
+    SCT_ATTACHEDORDER_STOP  = 2
+};
 struct s_SCTradeOrder { int InternalOrderID = 0, OrderStatusCode = 0, OrderQuantity = 0; double Price1 = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
 

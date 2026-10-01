@@ -1164,3 +1164,73 @@ Opraveno obojí:
 | pojistka zavřená | 0 | 0 | 0 | 0 | identický |
 
 Jeden md5 žurnálu přes všechny čtyři.
+
+---
+
+## P26 — připojené příkazy neměly TYP, jen cenu (`.29`)
+
+Jeho log z `.29`-předchozí verze dal konečně úplnou diagnostiku u každého odmítnutí:
+
+```
+BUY 1 C<dvwapxsd_1 at market, stop 5304.75 target 5547.00
+   [book stop 5304.76 target 5546.98, close 5414.25, account 0, projected 0, cap 1000]
+```
+
+Stop pod trhem, target nad trhem, obojí na tickové mřížce, **účet plochý**, projekce nula,
+strop 1000, a `-1` bez jediného řádku od Sierry. Na tom příkazu není co vytknout.
+
+### Příčina
+
+`s_SCNewOrder` má kromě ceny i **typ** připojeného příkazu:
+
+```cpp
+int AttachedOrderTarget1Type, AttachedOrderStop1Type;   // SCAttachedOrderTypeEnum, 0 = UNSET
+```
+
+Skript nastavoval **jen ceny**. Oba typy zůstávaly na nule, tedy UNSET. Příkaz, který nese ceny
+připojených příkazů, ale neříká, **jaké** příkazy to mají být, nemá Sierra jak postavit — a odmítne
+rodiče ještě předtím, než vznikne cokoli, o čem by mohla referovat. Proto to mlčící `-1`.
+
+### A tohle vysvětluje celou časovou osu
+
+Vstupy **procházely**, dokud byl `sc.SupportAttachedOrdersForTrading` přiřazovaný mimo
+`SetDefaults` (P17): Sierra tehdy žádné připojené příkazy nestavěla a holý market buy je vždycky
+platný. **Oprava toho flagu v `.21` ta odmítnutí nastartovala** — od té chvíle se Sierra o bracket
+opravdu pokusila a nenašla na něm typy.
+
+Takže P17 nebyla špatná oprava, byla jen **polovina** jedné. Druhá polovina je tady:
+
+```cpp
+o.Stop1Price   = ...;  o.AttachedOrderStop1Type   = SCT_ATTACHEDORDER_STOP;    // sell stop
+o.Target1Price = ...;  o.AttachedOrderTarget1Type = SCT_ATTACHEDORDER_LIMIT;   // sell limit
+```
+
+### Měřeno
+
+| scénář | vstupů | odmítnutí | CANNOT | recon | žurnál |
+|---|---|---|---|---|---|
+| čistý běh | 135 | 0 | 0 | 0 | shodný s `.28` |
+| `sim_nomodify` | 21 | 0 | 21 | 0 | shodný |
+| `sim_noexit` | 129 | 21 | 0 | 0 | shodný |
+| nomodify + pozice 0 | 127 | 0 | 126 | 1 | shodný |
+
+Jeden md5 žurnálu přes všechny čtyři.
+
+### Pozor na jméno konstant
+
+`SCT_ATTACHEDORDER_STOP` a `SCT_ATTACHEDORDER_LIMIT` jsou převzaté z `SCAttachedOrderTypeEnum`.
+Do stubu jsou doplněné, aby harness kompiloval. **Pokud build v Sierře spadne na neznámém
+identifikátoru**, správná jména jsou v `C:\SierraChart\ACS_Source\scconstants.h`:
+
+```
+findstr /n "SCT_ATTACHEDORDER" C:\SierraChart\ACS_Source\scconstants.h
+```
+
+Je to jediné místo v téhle opravě, které z tohohle stroje ověřit nejde.
+
+### Co to NEVYSVĚTLUJE
+
+Dva z pěti vstupů v jeho logu pořád odcházejí s `target 0.00` — presety, které cíl nemají
+(`+1e18`). Teď u nich zůstane i `AttachedOrderTarget1Type` na UNSET, což je správně („žádný
+target"), ale jestli to Sierra bere, ověřené není. Bylo jich 13 ze 48, takže je **nedržím zpátky** —
+vymyslet jim target by změnilo fily a rozbilo paritu s offline harnessem.
