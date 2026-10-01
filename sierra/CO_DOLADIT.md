@@ -703,3 +703,57 @@ Měřeno na 2400 barech, 48 presetech:
 Žurnál **bit-identický** v obou případech — pojistka se nedotýká rozhodovacího enginu. Do stubu
 přidán override `LIVE_CONFIRM=0|1`, aby se dala měřit i zavřená větev; harness si ji jinak drží
 otevřenou, jinak by každý test objednávkové cesty měřil prázdný běh.
+
+---
+
+## P19 — `sc.MaximumPositionAllowed` byl NULA (`.22`)
+
+Status box z `.21` vypsal na jeho grafu:
+
+```
+cap       0 ES contracts   (Max Gross 600 MES)
+```
+
+**Nula.** Při `Max Gross Exposure = 600` a instrumentu ES má být 60. Runtime přiřazení tedy
+neprošlo — `sc.MaximumPositionAllowed` je, stejně jako ta šestice z P17, **konfigurace studie**,
+ne runtime stav. Sierra držela nulu a nulový strop odmítá každý jediný vstup.
+
+To je ta příčina, kterou jsme hledali od P15. Všechno ostatní byly následky:
+
+- P15 (brána) — brána byla v pořádku, hledal jsem špatně
+- P16 (strop 6) — strop byl 6, ale ani 60 by nepomohlo, protože Sierra držela 0
+- P17 (attached orders) — reálná chyba, opravená, díky ní se `-1` změnilo na `-8995`
+
+A ukázal to **ten jediný řádek, který jsem v `.20` přidal proto, aby ten strop byl vidět.**
+Bez něj bychom hádali dál.
+
+### Oprava
+
+Sierřin strop se nastavuje v `SetDefaults` na **1000** a runtime ho už jen zvyšuje, nikdy nesnižuje.
+Skutečný limit je `Max Gross Exposure`, který vynucuje studie sama v `CapsAllow` a v projekci
+v `SyncOrders` — v MES ekvivalentech, tedy v jednotce, ve které je kniha napsaná. Sierřin strop je
+od teď jen záchrana proti utržení, ne pracovní limit, a ty dva se nemůžou rozejít v jednotkách.
+
+Status box ukazuje obojí, aby se nula už nikdy neschovala:
+
+```
+cap       60 ES book / 1000 Sierra   (Max Gross 600 MES)
+```
+
+### `-8995` a skip kódy
+
+Kódy v pásmu −8990…−8999 jsou Sierřiny **skip** kódy, ne odmítnutí: nic neodešlo a účtu se nikdo
+nedotkl. Hláška `STOPPED` přitom radila „zavři pozici ručně" — pozici, která nikdy nevznikla.
+Opraveno: skip má vlastní hlášení i vlastní text ve status boxu, a hint říká, jak si význam kódu
+najít v `scconstants.h` na stroji, kde Sierra běží.
+
+### Co ověřené NENÍ
+
+Co přesně `-8995` znamená. Je to skip kód, ne odmítnutí, ale jeho jméno je v Sierřině hlavičce na
+jeho disku, ne tady. Dost možná je to právě „position limit" a zmizí s touhle opravou.
+
+### Nový nález k dořešení
+
+V harnessu jde **83 vstupů** ven s `stop 0.00 target 0.00` — tedy bez stopu i targetu. Ve full
+auto to je nekrytá pozice. Pro limitní presety (`LMT_*`) to může být správně, pro ostatní ne.
+Patří to k rozhodnutí, jestli ve full auto odmítnout vstup bez stopu rovnou ve studii.

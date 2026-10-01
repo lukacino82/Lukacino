@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.21";
+static const char* STUDY_VERSION = "2026-10-01.22";
 
 static const int NUM_FAMILIES = 12;
 
@@ -209,6 +209,13 @@ enum { ORDER_FAILURE_LIMIT = 5 };
 // account's - see the guard at the top of SyncOrders.
 static const int SCT_SKIPPED_FULL_RECALC_CODE = -8998;
 
+// Sierra's "skipped" return codes live in a band, not alone: -8998 is the full-recalculation one
+// and a replay produced -8995 on the very next run. They are not rejections. Sierra declined to
+// act and NOTHING was sent, so blaming the trade account - which the stopped notice did - sends
+// you to flatten a position that was never opened. Only the exact meaning differs between them,
+// and that is in scconstants.h on the machine running Sierra, not guessable from here.
+static bool IsSkipCode(int rc) { return rc <= -8990 && rc >= -8999; }
+
 // Put a price on the instrument's tick grid, rounding away from the market.
 //
 // The research engine works in continuous prices, so a stop of 1.5 x ATR20 lands wherever the
@@ -236,11 +243,29 @@ static const char* STOPPED_NOTICE =
     "value (Yes to No, or No to Yes) - it reloads on the change, so setting it to what it already "
     "says does nothing.";
 
+// The same latch, for the case where every refusal was one of Sierra's skip codes. Telling someone
+// to flatten a position that was never opened is worse than saying nothing, so this path says what
+// actually happened instead.
+static const char* STOPPED_NOTICE_SKIPPED =
+    "Multi-Swing: ORDER PLACEMENT STOPPED - but every refusal was one of Sierra's SKIPPED codes, "
+    "so NOTHING was sent and the account was never touched. There is no position to flatten and "
+    "the book is intact. Find out which skip it is (the hint on the lines above says how), fix "
+    "that, then change the Input 'Reload Presets' to the OTHER value to lift the latch.";
+
 static const char* OrderRejectHint(int rc)
 {
     if (rc == SCT_SKIPPED_FULL_RECALC_CODE)
         return "  Sierra skipped it because the chart was recalculating - this is a study bug, "
                "not an account problem; report it.";
+    // Any other code in the skip band. Nothing was sent, so there is no position to reconcile -
+    // but which skip it is decides what to do about it, and only Sierra's own header says that.
+    if (IsSkipCode(rc))
+        return "  This is one of Sierra's SKIPPED codes, not a rejection: nothing was sent and "
+               "the account was not touched, so there is no position to flatten. Which skip it is "
+               "names the cause, and the name is on this machine. Run this in a command prompt and "
+               "send the line it prints: findstr /n \"-8995\" "
+               "C:\\SierraChart\\ACS_Source\\scconstants.h    (also try sierrachart.h in the "
+               "same folder, and substitute the code above if it differs).";
     // -1 says only "no". The reason lives in Sierra's own log lines, but the study can at least
     // list the switches that have to be on, because every one of them refuses with this same -1
     // and the dialog for this study cannot see or set any of them. Setting 'Send Orders To Trade
@@ -311,6 +336,8 @@ struct StudyState {
     SCString featureCsv;                // empty unless the per-day dump is switched on
     std::vector<AccountLeg> legs;       // parallel to states, but outliving each trade's reset
     int      orderFailures = 0;         // consecutive rejections; trading stops at the limit
+    int      lastRejectCode = 0;        // ... and what the last one was, so the latch can tell a
+                                        // skip (nothing sent) from a real rejection
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
     int      trimWaited = 0;            // calls it has been waited for, so a sell that never
                                         // lands cannot lock the trim out for ever
@@ -1666,8 +1693,9 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
              rc, surplus, account, account - surplus, S.orderFailures + tally.fails + 1,
              (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
     sc.AddMessageToLog(m, 1);
+    S.lastRejectCode = rc;
     if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
-        sc.AddMessageToLog(STOPPED_NOTICE, 1);
+        sc.AddMessageToLog(IsSkipCode(rc) ? STOPPED_NOTICE_SKIPPED : STOPPED_NOTICE, 1);
     return TRIM_REFUSED;
 }
 
@@ -1972,8 +2000,9 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             // refused therefore logged "6 of 5", "7 of 5" and so on, repeated the stopped notice
             // once per preset, and kept firing orders at an account that had refused every one.
             // Return here so the limit means what it says, and say it once.
+            S.lastRejectCode = rc;
             if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT) {
-                sc.AddMessageToLog(STOPPED_NOTICE, 1);
+                sc.AddMessageToLog(IsSkipCode(rc) ? STOPPED_NOTICE_SKIPPED : STOPPED_NOTICE, 1);
                 return;
             }
         }
@@ -2005,7 +2034,9 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     const bool halted = S.haltedDd || S.haltedDaily;
     const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
                          : S.orphanHalt       ? "NOT TRADING - flatten the account first"
-                         : stopped            ? "STOPPED - rejections, nothing is being sent"
+                         : stopped            ? (IsSkipCode(S.lastRejectCode)
+                                                  ? "STOPPED - Sierra SKIPPED every order; nothing was sent"
+                                                  : "STOPPED - rejections, nothing is being sent")
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
                          // Full auto without the trade service cannot work a bracket, so the box
@@ -2052,13 +2083,14 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                 "open      %d presets\n"
                 "book      %d contracts   position %d\n"
                 "days      %d   risk unit %.2f %s\n"
-                "cap       %d %s contracts   (Max Gross %.0f MES)\n"
+                "cap       %d %s book / %d Sierra   (Max Gross %.0f MES)\n"
                 "%s%s",
                 modeName, (int)S.presets.size(), S.familyCount, openPresets,
                 target, position, (int)S.daily.size(), cfg.riskUnit,
                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
-                sc.MaximumPositionAllowed,
+                cfg.contractMult > 0 ? (int)(cfg.maxGross / cfg.contractMult) : 0,
                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
+                sc.MaximumPositionAllowed,
                 cfg.maxGross,
                 pnl.GetChars(), warn.GetChars());
 
@@ -2257,6 +2289,17 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.SupportAttachedOrdersForTrading     = 1;
         sc.AllowEntryWithWorkingOrders         = 1;
         sc.CancelAllOrdersOnEntriesAndReversals = 0;
+
+        // Same class of mistake, and the one that was actually blocking everything: the status box
+        // printed "cap 0 ES contracts" on his chart with Max Gross at 600, so the runtime
+        // assignment below never took and Sierra was holding ZERO. A cap of zero refuses every
+        // entry, which is exactly what we spent days chasing.
+        //
+        // Set high here, where Sierra reads it, and let the study's own Max Gross Exposure be the
+        // limit that matters - it is enforced in CapsAllow and in the projection in SyncOrders,
+        // in MES equivalents, which is the unit the book is written in. Sierra's cap is a backstop
+        // against a runaway, not the working limit, and the two can no longer disagree on units.
+        sc.MaximumPositionAllowed = 1000;
         return;
     }
 
@@ -2305,9 +2348,13 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // would never ask for more than 60. Converted, so the two agree.
     const int grossInput = sc.Input[IN_MAX_GROSS].GetInt();
     const double mult    = sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? 10.0 : 1.0;
-    sc.MaximumPositionAllowed = grossInput > 0
-                              ? (int)std::max(1.0, std::floor(grossInput / mult))
-                              : 1000;
+    // Re-asserted every call in case this Sierra build does read it here, but never below the
+    // book's own worst case: a cap under what the book can legitimately hold would refuse entries
+    // the study had already decided were inside every limit it knows about.
+    const int wantCap = grossInput > 0
+                      ? (int)std::max(1.0, std::floor(grossInput / mult))
+                      : 1000;
+    if (sc.MaximumPositionAllowed < wantCap) sc.MaximumPositionAllowed = wantCap;
 
     // This number is the hardest limit in the whole study and it was the only one nobody could
     // see. On ES the default Max Gross Exposure of 60 MES equivalents makes it SIX contracts, and
@@ -2317,12 +2364,13 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     if (!S->capLogged) {
         S->capLogged = true;
         SCString m;
-        m.Format("Multi-Swing: Sierra's position cap for this chart is %d %s contract(s) "
-                 "(Max Gross Exposure %d MES equivalents / %.0f). Entries past it are refused "
-                 "with -1 and no reason. Raise Max Gross Exposure if the book needs more.",
-                 sc.MaximumPositionAllowed,
+        m.Format("Multi-Swing: the book may hold %d %s contract(s) (Max Gross Exposure %d MES "
+                 "equivalents / %.0f). Sierra's own backstop is %d. The book's figure is the limit "
+                 "that bites - raise Max Gross Exposure if it needs more. If Sierra's backstop "
+                 "ever reads 0 here, nothing can be sent at all and that is a study bug.",
+                 mult > 0 ? (int)std::floor(grossInput / mult) : 0,
                  sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
-                 grossInput, mult);
+                 grossInput, mult, sc.MaximumPositionAllowed);
         sc.AddMessageToLog(m, 0);
     }
 
