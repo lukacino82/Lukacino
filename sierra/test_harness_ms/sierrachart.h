@@ -24,7 +24,8 @@ struct SCString{std::string s; SCString(){} SCString(const char*c):s(c){} SCStri
  SCString& Format(const char*f,...){char b[4096];va_list a;va_start(a,f);vsnprintf(b,sizeof b,f,a);va_end(a);s=b;return *this;}
  SCString& operator+=(const SCString&o){s+=o.s;return *this;} operator const char*()const{return s.c_str();}};
 struct SCInputRef_{const char* Name=""; double v=0; void SetYesNo(int x){v=x;} int GetYesNo(){return (int)v;} void SetCustomInputStrings(const char*){} void SetCustomInputIndex(int x){v=x;} int GetIndex(){return (int)v;}
- void SetInt(int x){v=x;} int GetInt(){return (int)v;} void SetIntLimits(int,int){} void SetFloat(float x){v=x;} float GetFloat(){return (float)v;} void SetFloatLimits(float,float){} void SetTime(int x){v=x;} int GetTime(){return (int)v;}};
+ void SetInt(int x){v=x;} int GetInt(){return (int)v;} void SetIntLimits(int,int){} void SetFloat(float x){v=x;} float GetFloat(){return (float)v;} void SetFloatLimits(float,float){} void SetTime(int x){v=x;} int GetTime(){return (int)v;}
+ std::string sv; void SetString(const char*x){const char*e=getenv("CSVNAME"); sv=(e&&*e)?e:x;} const char* GetString(){return sv.c_str();}};
 typedef SCInputRef_& SCInputRef;
 struct SCSubgraph_{const char*Name;int DrawStyle;unsigned PrimaryColor;bool DrawZeros;int LineWidth; std::vector<float> d; float& operator[](int i){if((int)d.size()<=i)d.resize(i+1,0);return d[i];}};
 typedef SCSubgraph_& SCSubgraphRef;
@@ -37,6 +38,7 @@ struct s_SCTradeOrder{int InternalOrderID=0;int OrderStatusCode=0;double AvgFill
 struct s_UseTool{int ChartNumber,DrawingType,LineNumber,AddMethod,BeginIndex,UseRelativeVerticalValues,Region,FontSize,TransparentLabelBackground; float BeginValue; unsigned Color,FontBackColor,TextAlignment; SCString FontFace,Text; void Clear(){}};
 struct Fill{int d,t,side,qty; double px; std::string tag;};
 struct SCStudyInterface{
+ SCString DataFilesFolder(){ SCString s; const char* d=getenv("CSVDIR"); s.Format("%s", d?d:"./"); return s; }
  SCInputRef_ Input[128]; SCSubgraph_ Subgraph[60]; int SetDefaults=0,LastCallToFunction=0; const char*GraphName;const char*StudyDescription;int AutoLoop,GraphRegion=0,FreeDLL,ChartNumber=1;
  bool AllowMultipleEntriesInSameDirection,SupportReversals,SendOrdersToTradeService,AllowOppositeEntryWithOpposingPositionOrOrders,SupportAttachedOrdersForTrading,CancelAllOrdersOnEntriesAndReversals,AllowEntryWithWorkingOrders,CancelAllWorkingOrdersOnExit,AllowOnlyOneTradePerBar,MaintainTradeStatisticsAndTradesData;
  int MaximumPositionAllowed=0; float TickSize=0.25f; double CurrencyValuePerTick=12.5; int Index=0, ArraySize=0, IsFullRecalculation=0, IndexOfFirstVisibleBar=0, IndexOfLastVisibleBar=0;

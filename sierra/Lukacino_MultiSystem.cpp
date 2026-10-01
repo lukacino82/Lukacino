@@ -21,6 +21,7 @@
 #include <map>
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include "sierrachart.h"
 
 SCDLLName("Lukacino Multi-System")
@@ -81,6 +82,7 @@ namespace
         int   FirstLiveDone = 0, OrdersBlocked = 0, LastActual = 0;
         int   LoggedCfg = 0, LoggedDelta = 0, LoggedSize = 0, LoggedStopErr = 0;
         int   StopFailBar = -1, StopFailQty = 0; float StopFailPx = 0;
+        int   CsvInit = 0;          // 0 = soubor se při prvním zápisu přepíše (začátek přepočtu)
     };
 
     // --- pomocné výpočty nad denní historií (k = index dne) --------------
@@ -153,6 +155,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
     SCInputRef In_Panel = sc.Input[n++], In_PanelPos = sc.Input[n++], In_Font = sc.Input[n++],
                In_AlertNo = sc.Input[n++], In_LogAll = sc.Input[n++];                                        // 80-84
     SCInputRef In_PauseLen = sc.Input[n++];                                                                  // 85
+    SCInputRef In_CsvName  = sc.Input[n++];                                                                  // 86
 
     const int EXIT_BASE[NSYS] = { R_EXIT, L_EXIT, V_EXIT, C_EXIT, A_EXIT };
 
@@ -246,6 +249,7 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
         In_Font.Name = "Panel Font Size";                            In_Font.SetInt(10); In_Font.SetIntLimits(6, 30);
         In_AlertNo.Name = "Alert Number (Semi-auto)";                In_AlertNo.SetInt(1); In_AlertNo.SetIntLimits(1, 150);
         In_PauseLen.Name = "Pause Length (days, then DD peak resets)"; In_PauseLen.SetInt(20); In_PauseLen.SetIntLimits(1, 1000);
+        In_CsvName.Name = "Trade Log CSV (file name in Data folder, blank = off)"; In_CsvName.SetString("");
         In_LogAll.Name = "Log Detail";                               In_LogAll.SetCustomInputStrings("Signals only;Everything (incl. virtual trades)"); In_LogAll.SetCustomInputIndex(0);
 
         SG_POC.Name = "POC";  SG_POC.DrawStyle = DRAWSTYLE_DASH; SG_POC.PrimaryColor = RGB(255, 200, 0); SG_POC.DrawZeros = false;
@@ -368,6 +372,21 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
         return p;
     };
     auto realized = [&]() { double r = 0; for (int s = 0; s < NSYS; s++) r += st->S[s].Realized; return r; };
+    // Zápis uzavřeného obchodu každého systému do CSV (Trade Activity Log umí jen čistou pozici účtu).
+    // Na začátku přepočtu se soubor přepíše, takže vždy odpovídá panelu na grafu.
+    auto csvTrade = [&](int s, const SysState& y, float px, double pnl, int exDate, int holdDays, const char* why)
+    {
+        const char* name = In_CsvName.GetString();
+        if (!name || !name[0]) return;
+        SCString path; path.Format("%s%s", sc.DataFilesFolder().GetChars(), name);
+        FILE* f = fopen(path.GetChars(), st->CsvInit ? "a" : "w");
+        if (!f) return;
+        if (!st->CsvInit) { fprintf(f, "System,EntryDate,ExitDate,Dir,Qty,EntryPrice,ExitPrice,Points,PnL,HoldDays,Reason\n"); st->CsvInit = 1; }
+        const int enDate = y.EntryK >= 0 ? st->Date[y.EntryK] : 0;
+        fprintf(f, "%s,%d,%d,%s,%d,%.2f,%.2f,%.2f,%.2f,%d,%s\n", SYS_NAME[s], enDate, exDate,
+                y.Dir > 0 ? "Long" : "Short", y.Qty, y.Entry, px, y.Dir * (px - y.Entry), pnl, holdDays, why);
+        fclose(f);
+    };
     auto closeSys = [&](int s, float px, const char* why, int kExit)
     {
         SysState& y = st->S[s];
@@ -383,6 +402,9 @@ SCSFExport scsf_Lukacino_MultiSystem(SCStudyInterfaceRef sc)
             logMsg(a, true);
             if (!FullAuto) sc.SetAlert(In_AlertNo.GetInt(), a);
         }
+        const int kEx    = kExit >= 0 ? kExit : (int)st->C.size() - 1;
+        const int exDate = kExit >= 0 ? st->Date[kExit] : sc.BaseDateTimeIn[i].GetDate();
+        csvTrade(s, y, px, pnl, exDate, y.EntryK >= 0 ? kEx - y.EntryK : 0, why);
         y.Active = 0; y.Live = 0; y.LastExitK = kExit >= 0 ? kExit : (int)st->C.size() - 1;
         SG_Exit[i] = px;
     };
