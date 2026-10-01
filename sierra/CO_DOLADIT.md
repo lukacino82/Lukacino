@@ -940,3 +940,82 @@ obchodovat nic. Stačí jeden řádek.
 Chart Replay dialog je pojmenovaný `ESZ26_FUT_CME [CBV][M] 5000 Volume #3`, zatímco studie běží na
 `[CB][M] 1 Min #7`. Pokud ten dialog opravdu řídí jiný graf, pak replay, který spouští, není ten,
 na kterém je studie. Neověřeno, jen to nesedí.
+
+---
+
+## P23 — vstup bez stopu se neposílá, a odmítnutí teď nese svůj vstupní stav (`.26`)
+
+Konečně řádky s odmítnutím. Pět vstupů, 2020-03-03, ATR 72 (covidový krach):
+
+```
+BUY 1 LMT_RSIx<x_xAT_3  at market, stop 0.00    target 0.00       ← odmítnuto
+BUY 1 C<dvwapxsd_1      at market, stop 3699.75 target 4024.50    ← odmítnuto
+BUY 1 C<wvwapxsd_4      at market, stop 0.00    target 0.00       ← odmítnuto
+BUY 1 C06_1             at market, stop 0.00    target 0.00       ← odmítnuto
+BUY 1 IBS<x_1           at market, stop 3735.75 target 3952.25    ← odmítnuto
+```
+
+**Tři z pěti mají `stop 0.00 target 0.00`.** To je moje chyba, ne Sierry.
+
+### Co se dělo
+
+Kniha drží „žádný stop" jako `-1e18`. `RealPrice()` to správně zamítne, studie pak vynuluje
+`Stop1Price` i `Target1Price` — a **stejně pošle nahý market buy**. Dvě věci na tom nejsou
+v pořádku a jen jedna je o Sierře:
+
+- Se zapnutým `SupportAttachedOrdersForTrading` Sierra čeká, že každý vstup nese své připojené
+  příkazy. Vstup, který nenese žádné, je sám o sobě pravděpodobný důvod odmítnutí.
+- Horší a na Sierře nezávislé: ve **full auto** to otevře reálnou pozici, kterou nic nechrání.
+  Vlastní exit knihy ji sice později zavře, ale mezi filem a tím exitem není v trhu žádný stop
+  a na gapu není ani ten exit.
+
+### Oprava
+
+Takový vstup se **neposílá**. Preset si nechá papírový obchod i řádek v žurnálu — rozhodovací
+engine se nedotkne, což je přesně to, co drží replay srovnatelný s offline harnessem — a na účet
+se tenhle jeden prostě nedá. Hláška jednou a pak každá 100., se čitelným `stop none` místo
+`-1000000000000000000.00`.
+
+| | `.25` | `.26` |
+|---|---|---|
+| odeslaných vstupů | 218 | 135 |
+| z toho **bez stopu** | **83** | **0** |
+| řádků žurnálu | 236 | 236 (bit-identický) |
+
+### Odmítnutí teď nese, z čeho vzniklo
+
+Tři kola se protrápila hádáním o cenách, ze kterých byly nuly, a o stropu, který se nedá přečíst.
+Odmítnutí, které reportuje jen to, co odeslalo, neumí ani jednu z těch otázek rozhodnout. Nově:
+
+```
+[book stop 3699.75 target 4024.50, close 3808.00, account 0, projected 3, cap 1000]
+```
+
+### Regrese `.26`
+
+| scénář | odeslaných | bez stopu | odmítnutí | žurnál |
+|---|---|---|---|---|
+| čistý běh | 135 | **0** | 0 | identický |
+| pojistka zavřená | 0 | 0 | 0 | identický |
+| `CHUNK=1` | 141 | **0** | 0 | identický |
+| `sim_noexit` | 129 | **0** | 21 | identický |
+| `sim_nomodify` | 21 | **0** | 0 | identický |
+
+Žurnál má ve všech pěti scénářích **jeden a tentýž md5**. `sim_noexit` je mimochodem skok
+z 32 odeslaných a trvalého `STOPPED` v `.24` na 129 a běh, který pokračuje — to je součet
+samouvolnění z P22 a téhle opravy.
+
+### Co ZŮSTÁVÁ nevysvětlené
+
+Dva z těch pěti vstupů měly ceny v pořádku:
+
+```
+C<dvwapxsd_1  stop 3699.75 target 4024.50   při closu 3808
+IBS<x_1       stop 3735.75 target 3952.25   při closu 3808
+```
+
+Stop pod trhem, target nad trhem, obojí v rozumné vzdálenosti. **Proč je Sierra odmítla, nevím.**
+Nebudu na to vymýšlet čtvrtou hypotézu — ta nová řádka s odmítnutím to příště řekne sama.
+
+Pro úplnost: samouvolnění západky z P22 v jeho logu **funguje**, jsou tam tři cykly za sebou
+(04:17:52, 04:17:53, 04:17:59) místo jednoho zamknutí a ticha.

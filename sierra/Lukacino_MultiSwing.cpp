@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.25";
+static const char* STUDY_VERSION = "2026-10-01.26";
 
 static const int NUM_FAMILIES = 12;
 
@@ -341,6 +341,7 @@ struct StudyState {
     long     latchReleases = 0;         // how often the latch has healed itself on a flat account
     int      latchWait = 0;             // calls to wait before the next self-heal
     long     latchCount = 0;            // how often it has latched, so the notice can be throttled
+    long     unprotectedHeld = 0;       // entries not sent because the book had no usable stop
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
     int      trimWaited = 0;            // calls it has been waited for, so a sell that never
                                         // lands cannot lock the trim out for ever
@@ -1984,6 +1985,42 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             continue;
         }
 
+        // An entry with no stop is not sent. Three of the five orders Sierra refused in his
+        // 2020-03-03 log read "at market, stop 0.00 target 0.00": the book's stop failed
+        // RealPrice(), the study zeroed Stop1Price and Target1Price, and sent a bare market buy
+        // anyway. Two things wrong with that, and only one of them is about Sierra. With
+        // SupportAttachedOrdersForTrading on, every entry is expected to carry its attached
+        // orders, and one carrying none is a plausible refusal all by itself. The other is worse
+        // and does not depend on any of that: in FULL AUTO it opens a real position with nothing
+        // protecting it. The book's own exit would still close it later, but between the fill and
+        // that exit there is no stop in the market, and on a gap there is no exit either.
+        //
+        // So it is held back. The preset keeps its paper trade and its journal row - the decision
+        // engine is untouched, which is what keeps the replay comparable with the offline harness
+        // - and the account simply does not take this one.
+        if (!RealPrice(st.stop, last)) {
+            ++S.unprotectedHeld;
+            if (logLevel >= LOG_INFO &&
+                (S.unprotectedHeld == 1 || S.unprotectedHeld % 100 == 0)) {
+                SCString m;
+                // The book stores "no stop" as -1e18, and printing that is unreadable noise on
+                // a line whose whole job is to be read.
+                SCString stopText;
+                if (st.stop < -1e17)     stopText = "none";
+                else if (st.stop > 1e17) stopText = "none";
+                else                     stopText.Format("%.2f", st.stop);
+                m.Format("Multi-Swing: NOT sending %s - the book has no usable stop for it "
+                         "(stop %s against a close of %.2f), and an entry with no stop is not "
+                         "something this study will put on an account. Its paper trade and journal "
+                         "row are unaffected. (%ld held back so far.)",
+                         S.presets[k].id.GetChars(), stopText.GetChars(), last,
+                         S.unprotectedHeld);
+                sc.AddMessageToLog(m, 0);
+            }
+            lg = AccountLeg();
+            continue;
+        }
+
         if (accountCap > 0 && projected + qty > accountCap) {
             if (logLevel >= LOG_DEBUG) {
                 SCString m;
@@ -2024,9 +2061,17 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             }
         } else {
             SCString m;
+            // The refusal now carries the state the order was built from. Three rounds of this
+            // were spent guessing at prices that turned out to be zeros, and at a position cap
+            // that could not be read back; a rejection that reports only what it sent cannot
+            // settle either question, and this one has to be readable in one line.
+            s_SCPositionData posNow;
+            sc.GetTradePosition(posNow);
             m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: BUY %d %s at market, "
-                     "stop %.2f target %.2f. (%d of %d before order placement stops.)%s",
+                     "stop %.2f target %.2f. [book stop %.2f target %.2f, close %.2f, account %d, "
+                     "projected %d, cap %d] (%d of %d before order placement stops.)%s",
                      rc, qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price,
+                     st.stop, st.target, last, (int)posNow.PositionQuantity, projected, accountCap,
                      S.orderFailures + tally.fails + 1, (int)ORDER_FAILURE_LIMIT,
                      OrderRejectHint(rc));
             sc.AddMessageToLog(m, 1);
