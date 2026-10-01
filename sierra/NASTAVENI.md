@@ -110,7 +110,7 @@ bezpečný provoz, takže **měnit musíš jen ty, které mají v posledním slo
 |---|---|---|---|
 | 0 | Trading Enabled | No | **zapni na Yes**, jinak se nic nepočítá |
 | 1 | Mode | Signals only | pro obchodování na Simu přepni na **Full auto**, viz kapitola 9 |
-| 2 | Send Orders To Trade Service | No | rozhoduje mezi **grafovou simulací** (No) a **účtem** (Yes), viz kapitola 9 |
+| 2 | Send Orders To Trade Service | No | rozhoduje mezi **grafovou simulací** (No) a **účtem** (Yes) — a **musí se shodovat s *Trade → Trade Simulation Mode***, viz kapitola 9 |
 | 3 | Direction Filter | Long only | nech |
 | 4 | Preset File | swing_presets.csv | jen když sis soubor přejmenoval |
 | 5 | Reload Presets (toggle) | No | přepni tam a zpět po úpravě CSV |
@@ -551,7 +551,35 @@ jdou, a obě polohy jsou plnohodnotný běh:
 | **No** | do **vlastní simulace grafu** — plní se proti barům grafu | **ano** | ne | **ne** |
 | **Yes** | do trade service (Sim nebo ostrý účet podle menu *Trade*) | ano | ano | ano |
 
-**Pro Full auto to volba není: musí být Yes.** V `No` jde vše do vlastní simulace grafu, a ta
+### Ten pár, na kterém celý full auto replay padal
+
+`In:3` **není samostatný přepínač.** Sierra vyžaduje, aby se shodoval s *Trade → Trade Simulation
+Mode*, a když se neshodují, **zahodí každý příkaz, než se podívá, co v něm je** — a vrátí jen
+generické `-1`. Jeho vlastní věta, z *Trade → Trade Service Log*, 805× za jeden replay:
+
+```
+SendOrdersToTradeService is not consistent with 'Trade >> Trade Simulation Mode On' setting.
+Order action ignored.  SendOrdersToTradeService=1,  TradeSimulationModeOn=1
+```
+
+| *Trade → Trade Simulation Mode* | `In:3` | Co to je |
+|---|---|---|
+| **zapnutý** | **No** | simulace — příkazy se plní, účet se nedotkne. **Tohle je režim pro replay.** |
+| **vypnutý** | **Yes** | trade service — skutečný účet, skutečné příkazy |
+| zapnutý | Yes | **Sierra zahodí všechno.** Žádný obchod, jen `-1` na každém řádku |
+| vypnutý | No | nekonzistentní stejným způsobem |
+
+To je ta jediná chyba, kvůli které replay nedával transakce — ne bracket, ne strop pozice, ne účet.
+Šest hypotéz o bracketu padlo, protože Sierra ten bracket nikdy nečetla.
+
+Od `.36` to studie pozná sama: první `-1`, dokud nic neprošlo, vyhodnotí jako tenhle pár, **vypne
+si svou stranu**, příkaz pošle znovu a napíše do logu proč. Replay tím běží dál (v grafové
+simulaci), ale pořád platí: nastav ten pár správně a nenechávej to na zotavení.
+
+Starší text téhle kapitoly tvrdil „pro Full auto to volba není, musí být Yes" — s zapnutým Trade
+Simulation Mode je to přesně ta kombinace, kterou Sierra odmítá. Opraveno.
+
+V `No` jde vše do vlastní simulace grafu, a ta
 **odmítá `ModifyOrder` i `CancelOrder`** — potvrzeno z jeho logu: s `Yes` projde
 `EXIT ... through its own bracket - target order 162534 moved to 7729.50`, s `No` přijde na tentýž
 příkaz `could not steer ... Sierra returned -1`. Vstupy se přijímají v obou režimech, což je
@@ -574,7 +602,7 @@ odmítá stejným generickým `-1`.
 
 | Kde | Co |
 |---|---|
-| *Trade → Trade Simulation Mode On* | **zapnout první** — tohle rozhoduje simulace vs. ostrý účet, ne studie |
+| *Trade → Trade Simulation Mode On* | **vypnout** — s Input 2 = Yes to **musí** být vypnuté, jinak Sierra zahodí každý příkaz (viz tabulka párů výš). Zapnutý Trade Simulation Mode = Input 2 na **No** |
 | *Trade → Auto Trading Enabled - Global* | zaškrtnout |
 | *Trade → Auto Trading Enabled for Chart* | zaškrtnout **pro tenhle graf** (globální ho nenahradí) |
 | Graf → *Trade Window*, nebo *Chart Settings → Trading* | vybrat Sim účet |
@@ -582,8 +610,9 @@ odmítá stejným generickým `-1`.
 | Input 1 *Mode* | **Full auto** |
 | Input 2 *Send Orders To Trade Service* | **Yes** |
 
-Pořadí dodrž: Trade Simulation Mode **nejdřív**. Input 2 sám o sobě neříká „simulace" —
-říká „posílej", a kam to jde, určuje menu Trade.
+Pořadí dodrž: Trade Simulation Mode **nejdřív** — a rozhodni se podle tabulky párů výš, protože
+Input 2 je na něj navázaný. Input 2 sám o sobě neříká „simulace" — říká „posílej do trade service",
+a to je právě to, co zapnutý Trade Simulation Mode zakazuje.
 
 #### Auto Trading for Chart zaškrtni jako POSLEDNÍ, až replay běží
 
@@ -777,7 +806,7 @@ offline engine je vidí stejně. Ověřeno na letech 2015–2026: 99 zkrácenýc
 | Rozdíl jen v rodinách `C<wvwap#sd` a `D01` | studie z verze, kde týdenní VWAP kotvil na středu místo pondělí — přebuildi DLL |
 | Ledger má dvakrát tytéž obchody | starý soubor z verze před touto opravou, smaž ho |
 | Všechny příkazy odmítnuty s `Sierra returned -8998` | `SCT_SKIPPED_FULL_RECALC` — studie posílala příkazy během plného přepočtu grafu, což Sierra zásadně odmítá. Opraveno; přebuilduj DLL |
-| Všechny příkazy odmítnuty s `Sierra returned -1` | Obecné odmítnutí, **důvod píše Sierra jinam** — *Trade → Trade Activity Log* a řádky v Message Logu **bez** prefixu `Study:`. Nejčastěji vypnutý *Trade Simulation Mode* bez připojeného účtu, nezapnuté auto trading, nebo nevybraný Trade Account |
+| Všechny příkazy odmítnuty s `Sierra returned -1` | **První podezřelý, a v jeho replayi to bylo ono: `In:3` = Yes a *Trade → Trade Simulation Mode* zapnutý.** Ty dvě věci se musí shodovat, jinak Sierra příkaz zahodí, než si ho přečte (viz kapitola 9, tabulka párů). Důvod píše **jen** do *Trade → **Trade Service Log*** (ne Trade Activity Log, to je jiné okno) a do řádků Message Logu **bez** prefixu `Study:`. Další příčiny stejného `-1`: nezapnuté *Auto Trading Enabled - Global*, nezaškrtnuté *Auto Trading Enabled for Chart* u tohohle grafu, nevybraný Trade Account. Od `.36` si studii ten pár diagnostikuje sama a přepne se na grafovou simulaci, aby replay neskončil 805 odmítnutími |
 | Ceny stopů a targetů v logu nejsou na ticku | verze před opravou zaokrouhlování; přebuilduj DLL |
 | `check_replay.py` hlásí 0/48 shodných vstupů | ledger je ze staré verze studie, která psala datum v zobrazovacím formátu Sierry — přebuildi DLL |
 
@@ -792,7 +821,7 @@ rozdíl je **jediný řádek**, a je v menu Sierry, ne ve studii.
 
 | # | Kde | Co | Proč pořadí |
 |---|---|---|---|
-| 1 | *Trade → Trade Simulation Mode* | **Sim: zapnuto. Live: vypnuto.** | Tohle je ten jediný řádek, který rozhoduje o reálných penězích. Studie ho nevidí. |
+| 1 | *Trade → Trade Simulation Mode* | **Sim: zapnuto → `In:3` = No. Live: vypnuto → `In:3` = Yes.** | Tohle je ten jediný řádek, který rozhoduje o reálných penězích. Studie ho nevidí — ale **musí se s `In:3` shodovat**, jinak Sierra zahodí každý příkaz. |
 | 2 | *Trade Window* nebo *Chart Settings → Trading* | vybrat účet | Graf bez účtu nemá kam posílat. |
 | 3 | *Trade → Auto Trading Enabled - Global* | zaškrtnout | |
 | 4 | **spustit replay** (u live přeskoč) | | Start replaye shazuje bod 5. |
@@ -807,7 +836,7 @@ rozdíl je **jediný řádek**, a je v menu Sierry, ne ve studii.
 |---|---|---|
 | `In:1` Trading Enabled | Yes | |
 | `In:2` Mode | **Full auto** | |
-| `In:3` Send Orders To Trade Service | **Yes** | Pro Full auto to volba není. `No` je grafová simulace, která neumí řídit brackety. |
+| `In:3` Send Orders To Trade Service | **podle bodu 1: Sim = No, Live = Yes** | Musí se shodovat s *Trade Simulation Mode*. `No` je grafová simulace: plní se, ale brackety nejde přestavovat. |
 | `In:8` Instrument | ES nebo MES | musí odpovídat symbolu grafu |
 | `In:35` Max Gross Exposure | **v MES ekvivalentech** | na ES děl deseti: `600` = strop 60 kontraktů. Status box ti to přepočítá. |
 | `In:39` Daily Loss Limit USD | **pro live nastav číslo** | `0` = vypnuto, což je špatný default pro ostrý účet |
@@ -927,7 +956,7 @@ Jeden list, nic jiného nepotřebuješ. Čísla Inputů jsou ta, co ukazuje dial
 | 4 | *Chart Settings → Symbol → Continuous Futures Contract* | **Date Rule Rollover – Back Adjusted** |
 | 5 | *Chart Settings → Data → Days to Load* | **1000** pro testovací replay, **3300** pro parity 2018–2026 |
 | 6 | *Chart Settings → Session Times → Use specific session times* | **vypnuto** |
-| 7 | *Trade → Trade Simulation Mode* | **zaškrtnuto** |
+| 7 | *Trade → Trade Simulation Mode* | **zaškrtnuto** — a proto `In:3` v sekci B **No** (ty dva se musí shodovat) |
 | 8 | *Trade Window* nebo *Chart Settings → Trading* | vybrat účet **Sim1** |
 | 9 | *Trade → Flatten and Cancel All* | ručně, než začneš — účet musí být na nule |
 | 10 | *Trade → Auto Trading Enabled - Global* | **zaškrtnout** |
@@ -955,7 +984,7 @@ hlásí `WARMING UP n of 200 sessions` a to je správně, ne chyba.
 |---|---|---|
 | `In:1` Trading Enabled | **Yes** | bez toho se nic nepočítá |
 | `In:2` Mode | **Full auto** | |
-| `In:3` Send Orders To Trade Service (LIVE!) | **Yes** | `No` je grafová simulace, ta neumí řídit brackety |
+| `In:3` Send Orders To Trade Service (LIVE! …) | **No** | protože bod 7 sekce A je zaškrtnutý. `Yes` k zapnutému Trade Simulation Mode = Sierra zahodí každý příkaz a replay nedá ani jeden obchod. Cena za `No`: brackety se nepřestavují (trailing a breakeven presety vyjdou na market) |
 | `In:4` Direction Filter | Long only | |
 | `In:5` Preset File | `swing_presets.csv` | |
 | `In:6` Reload Presets (toggle) | přepni **naposledy** | |
@@ -1049,7 +1078,8 @@ P&L       ...
 | Co vidíš | Co to znamená |
 |---|---|
 | `FULL AUTO - ARMED, not sending` | `In:90` je `No` |
-| `FULL AUTO - no exits: set Input 3 to Yes` | `In:3` je `No` |
+| `FULL AUTO - CHART SIM: In:3=No, brackets are not steered` | `In:3` je `No` — pro Sim replay správně, jen se nepřestavují stopky |
+| `FULL AUTO - CHART SIM: In:3 collided with Trade Simulation Mode` | měl jsi `In:3` = Yes k zapnutému *Trade Simulation Mode*; studie si svou stranu vypnula sama a jede dál. Sjednoť ten pár (kapitola 9) |
 | `NOT TRADING - flatten the account first` | účet drží kontrakty, které tenhle run neposlal — bod 9 sekce A |
 | `STOPPED - rejections` | 5 odmítnutí za sebou; log říká proč, teď i Sierrinými slovy |
 | `WARMING UP n of 200 sessions` | **v pořádku**, replay startuje moc brzo v datech |
@@ -1057,9 +1087,10 @@ P&L       ...
 
 ## D. Rozdíl proti ostrému účtu
 
-**Jeden řádek:** bod 7 sekce A — *Trade → Trade Simulation Mode*. Zaškrtnuto = Sim, odškrtnuto =
-reálné peníze. **Studie ten rozdíl nevidí a status box vypadá v obou případech stejně.** To je celý
-důvod, proč `In:90` existuje.
+**Dva řádky, a jdou spolu:** bod 7 sekce A — *Trade → Trade Simulation Mode* — a `In:3`.
+Zaškrtnuto + `In:3` = No je Sim; odškrtnuto + `In:3` = Yes jsou reálné peníze. **Studie ten rozdíl
+nevidí a status box vypadá v obou případech stejně.** To je celý důvod, proč `In:90` existuje.
+Zkřížené (zaškrtnuto + Yes) Sierra odmítá a neobchoduje se vůbec.
 
 Pro ostrý účet navíc: `In:39` a `In:40` nastav na čísla, `In:91` na `20`, a `In:5` Days to Load
 stačí `1000`.

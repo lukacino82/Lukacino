@@ -61,6 +61,10 @@ int main(int argc, char** argv)
     // Max Gross counts MES equivalents, so it only means anything together with the instrument:
     // one preset costs riskUnit on MES and ten times that on ES.
     if (const char* v = getenv("MAX_GROSS"))      sc.Input[IN_MAX_GROSS].SetInt(atoi(v));
+    // SEND_LIVE=1 asks Sierra to route the orders to the trade service, which is what his chart
+    // was set to. Paired with STUB_SIM_MODE_ON=1 it reproduces the collision that discarded every
+    // order of an eighteen-year replay, so the study's recovery from it is measurable here.
+    if (const char* v = getenv("SEND_LIVE"))    sc.Input[IN_SEND_LIVE].SetYesNo(atoi(v));
     // LIVE_CONFIRM=0 closes the seatbelt, so the guard itself can be measured and not just
     // assumed: a full-auto run that sends nothing and says why exactly once.
     if (const char* v = getenv("LIVE_CONFIRM")) sc.Input[IN_LIVE_CONFIRM].SetYesNo(atoi(v));
@@ -179,6 +183,7 @@ int main(int argc, char** argv)
                   << " emerg_refused " << sc.emergRefused
                   << " emerg_fills " << sc.emergFills
                   << " max_position_allowed " << sc.MaximumPositionAllowed
+                  << " trade_service_ignored " << sc.tradeServiceIgnored
                   << "\n";
     }
     return 0;

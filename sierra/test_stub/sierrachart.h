@@ -189,6 +189,28 @@ struct SCStudyInterface {
     // does not depend on orders being cancelled behind its back. Those were all unanswerable from
     // the code before, and every one of them is a way to end up holding an unprotected book.
     int  SendOrdersToTradeService = 0;
+
+    // Sierra's trade-service gate, which this stub did not have and which is why a replay that
+    // produced 805 refusals produced none here. Sierra requires SendOrdersToTradeService to AGREE
+    // with Trade > Trade Simulation Mode: with simulation mode on and the flag set, it throws the
+    // order away before reading it and answers the generic -1, writing the reason to the Trade
+    // Service Log alone:
+    //
+    //     SendOrdersToTradeService is not consistent with 'Trade >> Trade Simulation Mode On'
+    //     setting.  Order action ignored.  SendOrdersToTradeService=1,  TradeSimulationModeOn=1
+    //
+    // STUB_SIM_MODE_ON=1 turns the global simulation mode on in this stub, so the study's recovery
+    // from that collision can be measured here instead of in a replay. It is checked before every
+    // other reason an order can be refused, because Sierra checks it before anything else - that
+    // ordering is the whole point: with the flag set, no property of the order matters.
+    bool stubSimModeOn = getenv("STUB_SIM_MODE_ON") && atoi(getenv("STUB_SIM_MODE_ON")) == 1;
+    int  tradeServiceIgnored = 0;        // orders discarded at that gate
+    bool TradeServiceInconsistent()
+    {
+        if (!stubSimModeOn || SendOrdersToTradeService == 0) return false;
+        ++tradeServiceIgnored;
+        return true;
+    }
     int  AllowMultipleEntriesInSameDirection = 0;
     int  SupportReversals = 0;
     int  AllowOnlyOneTradePerBar = 0;
@@ -267,6 +289,7 @@ struct SCStudyInterface {
     int  BuyEntry(s_SCNewOrder& o)
     {
         ++ordersAttempted;
+        if (TradeServiceInconsistent()) return -1;
         if (!stubSim) return -1;
         if (stubEntryBudget >= 0 && stubEntriesTaken >= stubEntryBudget) {
             ++entriesRefused; return -1;
@@ -388,6 +411,7 @@ struct SCStudyInterface {
     int  SellExit(s_SCNewOrder& o)
     {
         ++ordersAttempted;
+        if (TradeServiceInconsistent()) return -1;
         if (!stubSim) return -1;
         if (stubRefuseExits) return -1;
         if (enforceCoverage) {
@@ -542,6 +566,7 @@ struct SCStudyInterface {
     int  SellOrder(s_SCNewOrder& o)
     {
         ++ordersAttempted;
+        if (TradeServiceInconsistent()) return -1;
         if (!stubSim) return -1;
         if (o.OrderType == SCT_ORDERTYPE_STOP) {
             if (stubRefuseEmerg) { ++emergRefused; return -1; }

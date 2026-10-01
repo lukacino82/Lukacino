@@ -1661,3 +1661,82 @@ S běžícím replayem kliknout v Trade Window na **BUY MARKET** na tomtéž gra
 - Projde → Sierra rozlišuje ruční a studijní příkaz a to je jediná zbývající stopa
 
 Dokud tohle neproběhne, další hypotéza o kódu je pátá v řadě a čtyři předchozí padly.
+
+---
+
+## P33 — VYŘEŠENO. Byl to `SendOrdersToTradeService` vs. `Trade Simulation Mode`. (`.36`)
+
+Trade Service Log, který jsem si vyžádal v P32. Celý ten soubor je jedna věta, znovu a znovu, jedna
+na každý odmítnutý příkaz:
+
+```
+Replay 15X: ESZ26_FUT_CME [CB][M] 1 Min #6 | SendOrdersToTradeService is not consistent with
+'Trade >> Trade Simulation Mode On' setting.  Order action ignored.
+SendOrdersToTradeService=1,  TradeSimulationModeOn=1
+```
+
+**Order action ignored.** Sierra ten příkaz zahodila na vstupní bráně, **než se podívala, co v něm
+je** — a vrátila generické `-1`. Proto bylo v každém odmítnutí `account 0, projected 0, cap 1000`:
+nic z toho se netestovalo. Proto padl bracket v cenách, bracket v offsetech i holý příkaz bez
+bracketu úplně stejně: Sierra ani jeden z nich nečetla.
+
+| hypotéza | verdikt |
+|---|---|
+| chybí typ připojeného příkazu (P26c) | mrtvá — ty konstanty neexistují |
+| absolutní ceny vs. offsety (P31) | mrtvá — offsetová forma nezachránila nic |
+| bracket jako takový (P32) | mrtvá — holý příkaz odmítnut stejně |
+| strop pozice / účet / auto trading | mrtvá — `cap 1000`, pozice 0 |
+| **`In:3` = Yes + Trade Simulation Mode zapnutý** | **ONO. Sierrina vlastní věta výš.** |
+
+A ten ruční BUY MARKET z P32 už není potřeba: odpověď je tady a je jednoznačná.
+
+### Čí to byla chyba
+
+**Moje, a je v dokumentaci.** NASTAVENI.md psalo na čtyřech místech „pro Full auto to volba není,
+`In:3` musí být Yes" a zároveň „Trade Simulation Mode zaškrtnout". To je přesně ta jediná
+kombinace, kterou Sierra odmítá. Status box k tomu dokonce sám vypisoval `set Input 3 to Yes`.
+Všechna čtyři místa i ten status box jsou opravené v `.36`.
+
+### Co dělá `.36`
+
+1. **`TradeServiceCollision()`** — první `-1`, dokud v tomhle běhu nic neprošlo a studie si o trade
+   service řekla, vyhodnotí jako tenhle pár: napíše celou diagnózu do logu, **vypne si svou stranu**
+   (`sc.SendOrdersToTradeService = 0`, nalepeno do reloadu grafu) a **tentýž příkaz pošle znovu**.
+   Že je to bezpečné, není naděje ale důkaz: ta kolize může nastat jen při `TradeSimulationModeOn=1`,
+   a dokud je ten přepínač zapnutý, žádný příkaz se k reálnému účtu nedostane, ať je ten flag
+   jakýkoli.
+2. Je to zkoušené **před** offsetovým a holým fallbackem, takže se už nepoužije bracketová ústupová
+   cesta na odmítnutí, které s bracketem nemá nic společného.
+3. Tři pojistky, aby to nestřílelo naprázdno: jen na `-1`, jen dokud `ordersPlaced == 0` (když
+   routing funguje, `-1` je něco jiného a přesměrovat ho by to zakrylo), a jen jednou.
+4. Status box a řádek `live orders` už neříkají `ENABLED`, když se na trade service rezignovalo.
+5. Hint u `-1` má tenhle pár jako **první** bod a posílá do *Trade Service Logu*.
+6. Jméno `In:3` v dialogu to teď nese s sebou:
+   `Send Orders To Trade Service (LIVE! No if Trade Simulation Mode is On)`.
+
+### Změřeno offline, ne doufáno
+
+Stub dostal Sierrinu bránu (`STUB_SIM_MODE_ON=1`) a harness vstup `SEND_LIVE=1`:
+
+| běh | výsledek |
+|---|---|
+| `SEND_LIVE` nenastaveno (jako dosud) | `entries_ok 218`, `trade_service_ignored 0`, md5 nezměněné |
+| `SEND_LIVE=1 STUB_SIM_MODE_ON=1` | `entries_ok 218`, **`trade_service_ignored 1`**, `REJECTED` 0× |
+
+Jeden zahozený příkaz, pak se studie zotaví a doběhne celý běh. Rozhodovací vrstva je nedotčená:
+journal `89fdf531…`, výstup `c3fa1263…` v obou případech, bit za bit jako v `.35`.
+
+### Co nastavit na jeho grafu
+
+Jeden z těch dvou párů, ne zkříženě:
+
+| | *Trade → Trade Simulation Mode* | `In:3` |
+|---|---|---|
+| **replay / Sim** | zapnuto | **No** |
+| ostrý účet | vypnuto | Yes |
+
+Cena za `No`: grafová simulace podle jeho dřívějšího logu odmítá `ModifyOrder` i `CancelOrder`,
+takže se brackety nepřestavují — osm trailing/breakeven presetů vyjde na market místo na posunutou
+stopku. Transakce ale **jsou**, a to je to, co replay potřebuje. Jestli tohle paritní replay 2008–2026
+rozhodí nad únosnou míru, zjistíme z toho prvního běhu a řeší se to druhým párem (Trade Simulation
+Mode vypnutý + Sim účet v trade service), ne dalším kódem.

@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.35";
+static const char* STUDY_VERSION = "2026-10-01.36";
 // Rides on every order so Trade Activity says which study sent it. Without it an account shared
 // with anything else - another study, a manual click - cannot be read back afterwards.
 static const char* ORDER_TAG = "MultiSwing";
@@ -294,11 +294,13 @@ static const char* OrderRejectHint(int rc)
     // nowhere to send them.
     if (rc == -1)
         return "  -1 is Sierra's generic refusal and carries no reason of its own. Check, in this"
-               " order: (1) Trade > Auto Trading Enabled - Global is ticked; (2) Trade > Auto"
-               " Trading Enabled for Chart is ticked for THIS chart; (3) a trade account is"
-               " selected for this chart - Trade Window, or Chart Settings > Trading; (4) Trade >"
-               " Trade Simulation Mode On, unless you really mean to trade the live account. Then"
-               " toggle 'Reload Presets' to lift the cut-off. Sierra logs the real reason"
+               " order: (1) In:3 'Send Orders To Trade Service' must be No while Trade > Trade"
+               " Simulation Mode is ON - that pair being inconsistent makes Sierra throw the order"
+               " away unread and answer exactly this -1, and it is what 805 refused entries in one"
+               " replay turned out to be; (2) Trade > Auto Trading Enabled - Global is ticked;"
+               " (3) Trade > Auto Trading Enabled for Chart is ticked for THIS chart; (4) a trade"
+               " account is selected for this chart - Trade Window, or Chart Settings > Trading."
+               " Then toggle 'Reload Presets' to lift the cut-off. Sierra logs the real reason"
                " separately, and its own words above name the place: Trade > TRADE SERVICE"
                " LOG (not the Trade Activity Log - different window). Also Window > Message Log"
                " at lines WITHOUT the 'Study: Lukacino Multi-Swing' prefix at this timestamp.";
@@ -406,6 +408,9 @@ struct StudyState {
     bool     chartSimWarned = false;    // ... and for the chart-simulation-has-no-exits note
     bool     capLogged = false;        // ... and for the one-time note naming Sierra's position cap
     bool     confirmWarned = false;    // ... and for the live-trading seatbelt notice
+    bool     tradeServiceOff = false;  // Sierra refused because 'Send Orders To Trade Service'
+                                       // collided with Trade Simulation Mode, so this run stopped
+                                       // asking for the trade service - see TradeServiceCollision
 
     // ---- the one safety net that is not a bracket
     //
@@ -1521,6 +1526,50 @@ static bool SkippedForRecalc(SCStudyInterfaceRef sc, StudyState& S, int rc, int 
     return true;
 }
 
+// The refusal that killed the first full-auto replay, and the one thing a study can do about it.
+//
+// 805 entries refused with a bare -1 - bracketed, offset-bracketed and bare alike, flat account,
+// cap 1000, nothing wrong in any of them - and Trade > Trade Service Log held the whole answer in
+// one line, repeated once per order:
+//
+//     SendOrdersToTradeService is not consistent with 'Trade >> Trade Simulation Mode On'
+//     setting.  Order action ignored.  SendOrdersToTradeService=1,  TradeSimulationModeOn=1
+//
+// Sierra discards the order AT THAT GATE, before anything inside it is read, and hands back the
+// generic -1. That is why six hypotheses about the bracket all died: the bracket was never looked
+// at. Neither was the account, the cap, or the price.
+//
+// The two settings have to agree and ACSIL can see only one of them - this study can neither read
+// Trade Simulation Mode nor set it. So the collision is diagnosed from the refusal instead, and
+// resolved the only way a study is allowed to: by turning its own side off and re-offering the
+// order. That this is safe is exact rather than hopeful - the collision can only arise while
+// TradeSimulationModeOn=1, and while that is on no order can reach a real account whatever this
+// flag says. With the flag off the orders are placed and filled in the chart's own simulation,
+// which is what a Replay wants anyway.
+//
+// Guarded three ways so it cannot misfire: only on -1, only while this run has never had an order
+// accepted (if the routing works, a -1 is something else and rerouting would hide it), and only
+// once - the flag is sticky until the chart reloads.
+static bool TradeServiceCollision(SCStudyInterfaceRef sc, StudyState& S, int rc)
+{
+    if (rc != -1 || S.tradeServiceOff || S.ordersPlaced > 0) return false;
+    if (!sc.SendOrdersToTradeService) return false;
+    S.tradeServiceOff = true;
+    sc.SendOrdersToTradeService = 0;
+    sc.AddMessageToLog(
+        "Multi-Swing: Sierra refused that order because In:3 'Send Orders To Trade Service' = Yes "
+        "while Trade > Trade Simulation Mode is ON. Its own words, in Trade > Trade Service Log: "
+        "\"SendOrdersToTradeService is not consistent with 'Trade >> Trade Simulation Mode On' "
+        "setting. Order action ignored.\" The order was thrown away before Sierra read anything in "
+        "it, which is why the code was a bare -1. The study has switched ITS OWN side off and is "
+        "re-offering the order now: from here orders are placed and filled in the CHART'S OWN "
+        "simulation - they draw on the chart and count in the status box, but no trade account is "
+        "touched and Trade Orders and Positions stays empty. That is the right mode for a Replay. "
+        "Set In:3 to No to make it the configuration rather than a recovery; to route to the trade "
+        "service for real, turn Trade > Trade Simulation Mode OFF - that is the live account.", 1);
+    return true;
+}
+
 // Move a preset's protective stop to where the trail or breakeven now puts it.
 //
 // Sierra owns the attached bracket and never moves it on its own, so eight of the forty-eight
@@ -1871,7 +1920,8 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
     o.OrderType     = SCT_ORDERTYPE_MARKET;
     o.TimeInForce   = SCT_TIF_DAY;
     o.TextTag       = ORDER_TAG;
-    const int rc = (int)sc.SellExit(o);
+    int rc = (int)sc.SellExit(o);
+    if (TradeServiceCollision(sc, S, rc)) rc = (int)sc.SellExit(o);
     if (SkippedForRecalc(sc, S, rc, logLevel)) return TRIM_WAITING;
     if (rc > 0) {
         S.trimSentQty     = surplus;          // what is on its way, for the diagnostics
@@ -2394,6 +2444,12 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // away the one number that says why - and then the failure cut-off silenced the rest.
         int rc = (int)sc.BuyEntry(o);
 
+        // Before any of the three bracket forms below are blamed for the refusal, rule out the one
+        // refusal that is not about the order at all. If this is the trade-service / Trade
+        // Simulation Mode collision, the same order goes through unchanged a line later, and the
+        // offsets and bare-order fallbacks - both of which cost something - are never reached.
+        if (TradeServiceCollision(sc, S, rc)) rc = (int)sc.BuyEntry(o);
+
         // A bracket can be asked for in two ways, and scstructures.h:1353-1356 treats them as
         // equals: absolute prices, or offsets from the fill. Absolute prices are the form this
         // study wants, because they put the stop exactly where the research measured it and keep
@@ -2702,7 +2758,8 @@ static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mod
     o.OrderQuantity = held;
     o.TimeInForce   = SCT_TIF_GOOD_TILL_CANCELED;   // it has to outlive the session, and the study
     o.TextTag       = "MultiSwing Emergency";
-    const int rc = (int)sc.SellOrder(o);
+    int rc = (int)sc.SellOrder(o);
+    if (TradeServiceCollision(sc, S, rc)) rc = (int)sc.SellOrder(o);
     if (rc > 0) {
         S.emergStopId = o.InternalOrderID;
         S.emergQty = held; S.emergPrice = level;
@@ -2751,7 +2808,9 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     }
 
     const int  mode   = sc.Input[IN_MODE].GetIndex();
-    const bool sending = sc.Input[IN_SEND_LIVE].GetYesNo() != 0;
+    // ... and not while the trade service turned out to be unreachable: the box said "ORDERS LIVE"
+    // through 805 refusals, because it read the Input and the Input was still Yes.
+    const bool sending = sc.Input[IN_SEND_LIVE].GetYesNo() != 0 && !S.tradeServiceOff;
     // Once placement has stopped the box must say so: it was still reading "ORDERS LIVE" while
     // nothing was being sent, which is the one thing a status box must never get wrong.
     const bool stopped = S.orderFailures >= ORDER_FAILURE_LIMIT;
@@ -2771,10 +2830,15 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                                                   : "STOPPED - rejections, nothing is being sent")
                          : S.haltedDd         ? "HALTED - max drawdown stop, no new entries"
                          : S.haltedDaily      ? "HALTED - daily loss limit, no new entries"
-                         // Full auto without the trade service cannot work a bracket, so the box
-                         // says which switch to move rather than reading like a healthy run.
+                         // Full auto without the trade service cannot steer a bracket, so the box
+                         // says so rather than reading like a healthy run. What it must NOT say any
+                         // more is "set Input 3 to Yes": with Trade Simulation Mode on that is the
+                         // one setting Sierra refuses, and this box telling him to move it there is
+                         // how a whole replay came to be thrown away unread.
                          : mode == MODE_FULL  ? (sending ? "FULL AUTO - ORDERS LIVE"
-                                                         : "FULL AUTO - no exits: set Input 3 to Yes")
+                                                : S.tradeServiceOff
+                                                  ? "FULL AUTO - CHART SIM: In:3 collided with Trade Simulation Mode, read the log"
+                                                  : "FULL AUTO - CHART SIM: In:3=No, brackets are not steered")
                          : mode == MODE_SEMI  ? "SEMI - logging intended orders"
                                               : "SIGNALS ONLY - paper";
 
@@ -2922,7 +2986,10 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_MODE].Name = "Mode";
         sc.Input[IN_MODE].SetCustomInputStrings("Signals only;Semi-auto (alerts + prepared order);Full auto");
         sc.Input[IN_MODE].SetCustomInputIndex(MODE_SIGNALS);
-        sc.Input[IN_SEND_LIVE].Name = "Send Orders To Trade Service (LIVE!)";
+        // The parenthesis is not decoration. Yes here with Trade > Trade Simulation Mode ON is the
+        // one combination Sierra refuses outright, order by order, with a reason it writes only to
+        // the Trade Service Log - and that is a whole replay of nothing.
+        sc.Input[IN_SEND_LIVE].Name = "Send Orders To Trade Service (LIVE! No if Trade Simulation Mode is On)";
         sc.Input[IN_SEND_LIVE].SetYesNo(0);
         sc.Input[IN_DIRECTION].Name = "Direction Filter";
         sc.Input[IN_DIRECTION].SetCustomInputStrings("Long only;Both;Short only");
@@ -3100,7 +3167,11 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // be allowed and reversals must not be: a SellExit here means "hold less", never "go short".
     // Whether these orders reach a broker or Sierra's simulator is the Trade menu's business, not
     // this study's - with Trade Simulation on, a Replay fills them against the replayed bars.
-    sc.SendOrdersToTradeService       = sc.Input[IN_SEND_LIVE].GetYesNo() != 0;
+    // ... and once Sierra has told us the trade service is unreachable because the global Trade
+    // Simulation Mode is on, the Input stops being asked for it. Without this the flag would be
+    // put back to Yes on the very next call and every order after the first would be discarded
+    // again - the recovery in TradeServiceCollision would last exactly one order.
+    sc.SendOrdersToTradeService       = sc.Input[IN_SEND_LIVE].GetYesNo() != 0 && !S->tradeServiceOff;
     sc.AllowMultipleEntriesInSameDirection = 1;
     sc.SupportReversals               = 0;
     sc.AllowOnlyOneTradePerBar        = 0;
@@ -3485,7 +3556,10 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       (int)S->daily.size(), (int)S->presets.size(), openPresets,
                       sc.Input[IN_MODE].GetIndex() == MODE_FULL ? "FULL AUTO" :
                       sc.Input[IN_MODE].GetIndex() == MODE_SEMI ? "SEMI" : "SIGNALS",
-                      sc.Input[IN_SEND_LIVE].GetYesNo() ? "ENABLED" : "off");
+                      sc.Input[IN_SEND_LIVE].GetYesNo() && !S->tradeServiceOff
+                        ? "ENABLED" : S->tradeServiceOff ? "off (chart simulation - the trade "
+                                                           "service collided with Trade Simulation "
+                                                           "Mode, see the log)" : "off");
             sc.AddMessageToLog(st, 0);
         }
     }
@@ -3497,9 +3571,17 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->chartSimWarned = true;
         const int mode = sc.Input[IN_MODE].GetIndex();
         if (mode == MODE_FULL && sc.Input[IN_SEND_LIVE].GetYesNo())
-            sc.AddMessageToLog("Multi-Swing: FULL AUTO, orders ARE being sent to the trade service. "
-                               "Trade > Trade Simulation Mode decides whether that is the simulator "
-                               "or a live account.", 1);
+            // Said before the first order rather than after the 805th. These two settings are not
+            // independent: Sierra requires them to agree and refuses every order while they do
+            // not, with a reason it writes only to the Trade Service Log.
+            sc.AddMessageToLog("Multi-Swing: FULL AUTO with 'Send Orders To Trade Service' = Yes. "
+                               "CHECK Trade > Trade Simulation Mode NOW: it must be OFF. Yes here "
+                               "with simulation mode ON is the one combination Sierra refuses - it "
+                               "throws every order away unread and answers a bare -1, which is "
+                               "exactly how one replay produced 805 refusals and no trades. If that "
+                               "happens the study switches its own side off and carries on in the "
+                               "chart's own simulation, and says so. With simulation mode OFF this "
+                               "is the trade service: a real account, real orders.", 1);
         else if (mode == MODE_FULL)
             // This used to hedge, because the study cannot see where Sierra routed the order. A
             // chart settled it: with the flag off the orders are still placed and still fill, in
