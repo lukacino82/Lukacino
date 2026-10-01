@@ -1,0 +1,7 @@
+metric,value
+rows,1046
+ENTRY_REFUSED,805
+ENTRY_HELD,241
+filled_trade_rows,0
+nonzero_position_rows,0
+equity_reconstructable,false
