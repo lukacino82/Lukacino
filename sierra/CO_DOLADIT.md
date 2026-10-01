@@ -1272,3 +1272,50 @@ findstr /n "ATTACHEDORDER Stop1Offset Target1Offset Stop1Price Target1Price" ^
 
 Z toho vyjdou jak členové `s_SCNewOrder` (jestli existují `Stop1Offset`/`Target1Offset`, což by
 typy obešlo úplně), tak skutečná jména toho enumu.
+
+---
+
+## P26c — hypotéza o typech připojených příkazů je VYVRÁCENÁ
+
+`findstr` v jeho `ACS_Source`:
+
+```
+scstructures.h:1190:  double Target1Offset = 0.0;
+scstructures.h:1192:  double Stop1Offset   = 0.0;
+scstructures.h:1197:  double Target1Price  = 0.0;
+scstructures.h:1198:  double Stop1Price    = 0.0;
+scstructures.h:1280-1283:  ..._2 varianty (druhá úroveň bracketu)
+scstructures.h:1353:      return Target1Offset != 0.0
+scstructures.h:1354:          || Stop1Offset   != 0.0
+scstructures.h:1355:          || Target1Price  != 0.0
+scstructures.h:1356:          || Stop1Price    != 0.0
+```
+
+Dvě věci, obě definitivní:
+
+1. **`ATTACHEDORDER` nematchlo nic.** Žádný takový enum, žádná položka typu. Celá P26 byla
+   postavená na členu, který v Sierře neexistuje.
+2. **Řádky 1353–1356 jsou Sierřin vlastní test, jestli příkaz nese připojené příkazy** — a stačí
+   mu nenulová cena **nebo** offset. Takže `Stop1Price` samotná je správný a úplný způsob, jak si
+   o ochranný stop říct. `.30` to staví správně.
+
+P26 tedy škrtám celou. Nebyla to „polovina opravy", byla to špatná diagnóza postavená na
+vymyšleném API.
+
+Ze stubu jsou odstraněné i ty neexistující položky `AttachedOrder*Type` a doplněné skutečné
+`Target1Offset` / `Stop1Offset`. Stub, který si vymýšlí členy, zakrývá přesně tu chybu, která je
+vymyslela.
+
+### Co z toho plyne pro ta odmítnutí
+
+Příkaz je dobře postavený. Účet plochý, strop 1000, ceny na správných stranách a na tickové
+mřížce, auto trading zapnutý, Sim1 vybraný, Trade Simulation Mode zapnutý. **Pátou hypotézu
+nepíšu.** Zbývá jediný autoritativní zdroj, který jsem ještě nedostal: *Trade → Trade Activity
+Log* — ten log, ne seznam obchodů. Tam Sierra píše slovy, proč příkaz odmítla.
+
+### Alternativa, která existuje, ale má cenu
+
+`Stop1Offset` / `Target1Offset` jsou druhá, rovnocenná forma. Kdyby absolutní ceny z nějakého
+důvodu neprocházely, offsety jsou cesta — ale počítají se **od skutečného filu, ne od closu**,
+takže stop a target skončí o tick dva jinde než v offline harnessu. To je drift parity, kvůli
+které celý tenhle replay vzniká, takže to není změna, kterou udělám sám od sebe.

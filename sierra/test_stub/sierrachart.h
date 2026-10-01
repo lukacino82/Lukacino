@@ -84,12 +84,22 @@ struct s_SCNewOrder {
     int OrderQuantity = 0, OrderType = 0, TimeInForce = 0, InternalOrderID = 0;
     double Price1 = 0, Price2 = 0;
     // Sierra's own bracket: the stop and target ride with the entry and Sierra manages them.
+    // Sierra's own bracket, in the two forms scstructures.h actually offers: an absolute price or
+    // an offset from the fill. Confirmed by findstr against the real header, lines 1190-1198.
     double Target1Price = 0, Stop1Price = 0;
-    int    AttachedOrderTarget1Type = 0, AttachedOrderStop1Type = 0;
+    double Target1Offset = 0, Stop1Offset = 0;
 };
-// No SCAttachedOrderTypeEnum here on purpose. Inventing one let a study compile against this stub
-// with member names Sierra's own build then rejected, which is the one failure a stub must never
-// hide. If the real names arrive, they go in here copied from ACS_Source, not guessed.
+// There is NO attached-order "type" field and no SCAttachedOrderTypeEnum. findstr for
+// ATTACHEDORDER across scstructures.h and scconstants.h matched nothing at all, and
+// scstructures.h:1353-1356 shows how Sierra decides an order has attached orders:
+//
+//     return Target1Offset != 0.0 || Stop1Offset != 0.0
+//         || Target1Price  != 0.0 || Stop1Price  != 0.0;
+//
+// Setting Stop1Price alone is therefore the correct and complete way to ask for a protective
+// stop. The earlier theory that a missing type was behind the refusals is dead, and the fields
+// this stub briefly carried for it never existed in Sierra - they are gone, because a stub that
+// invents members hides exactly the mistake that made them up.
 struct s_SCTradeOrder { int InternalOrderID = 0, OrderStatusCode = 0, OrderQuantity = 0; double Price1 = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
 
