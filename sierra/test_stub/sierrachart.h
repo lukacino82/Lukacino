@@ -561,7 +561,10 @@ struct SCStudyInterface {
         if (code <= -8990 && code >= -8999) return "stub: skipped, nothing was sent";
         return "";
     }
-    SCString DataFilesFolder() { return SCString("."); }
+    // Ends with a separator, like Sierra's own. Without it DataPath picks a Windows backslash on
+    // this platform and writes a file literally named ".\\name.csv" - which is right on Windows and
+    // invisible here, so the one test that reads the file back could not find it.
+    SCString DataFilesFolder() { return SCString("./"); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }
 };
 typedef SCStudyInterface& SCStudyInterfaceRef;

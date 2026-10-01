@@ -1480,3 +1480,54 @@ je celý smysl toho dotazu. Teď vede stav každého dokončeného příkazu. P�
 už kryje a Sierra umí druhý příkaz nad stejnou pozicí odmítnout — u `SellExit` to prokazatelně dělá.
 Jestli to platí i pro `SellOrder`, řekne až první replay. Proto je to měřitelné z obou stran a ne
 předpokládané.
+
+---
+
+## P30 — Trade Log CSV: to, co nikdo nezapisoval (`.34`)
+
+**`In:92` — „Trade Log CSV (file name in Data folder, blank = off)".** Default prázdné.
+
+Tři kola ladění se vedla na žurnálu a žurnál byl **každé kolo bit-identický** — protože to, co bylo
+rozbité, nikdy nebyla kniha. Bylo to to, co s příkazy udělala Sierra. A to si nikdo nezapisoval.
+
+`swing_journal.csv` zůstává nedotčený a dál ukládá uzavřené obchody. Tohle je druhý soubor vedle
+něj, řádek na příkaz.
+
+```
+stamp,event,preset,qty,price,stop,target,order_id,rc,position,note
+2019-11-12 19:30:00,ENTRY_OK,C06_2,1,3600.74,3578.25,3623.25,1,1,1,market
+2019-11-12 19:30:00,EMERG_PLACED,,4,0.00,3563.25,0.00,13,13,4,GTC sell stop ...
+2019-11-14 19:30:00,STOP_MOVED,C06_3,1,0.00,3600.50,0.00,6,1,0,trail or breakeven
+```
+
+Dvanáct typů událostí: `ENTRY_OK`, `ENTRY_OK_OFFSETS`, `ENTRY_REFUSED`, `ENTRY_HELD`,
+`EXIT_STEERED`, `EXIT_STEER_FAIL`, `BRACKET_DONE`, `STOP_MOVED`, `STOP_MOVE_REFUSED`, `TRIM_OK`,
+`TRIM_REFUSED`, `EMERG_PLACED` / `EMERG_REFUSED` / `EMERG_FILLED`. U každého odmítnutí je v `note`
+Sierrina vlastní věta z `.32`.
+
+### Jedno rozhodnutí, které je jinak než u žurnálu: nikdy se nemaže
+
+Žurnál se při plném přepočtu přepisuje, protože přepočet znovu-simuluje každý bar. Příkazy se
+znovu **neposílají** — takže truncate při přepočtu by zahodil záznam o skutečných příkazech na
+skutečném účtu. Reload ani změna Inputu není povolení zapomenout, co odešlo.
+
+### Měřeno (smoke, 2 400 barů)
+
+| | žurnál | žurnál řádků | trade log řádků |
+|---|---|---|---|
+| **vypnuto (default)** | `89fdf531` | 235 | — |
+| **zapnuto** | `89fdf531` | 235 | **862** |
+
+Vypnuto je výstup bit-identický s `.33`, oba soubory. Zapnuto se žurnál nezměnil ani o bajt: 235
+obchodů knihy a 862 příkazových událostí pod nimi.
+
+Rozdělení: 408 `ENTRY_HELD`, 224 `EXIT_STEERED`, 135 `ENTRY_OK`, 73 `EMERG_PLACED`, 20
+`STOP_MOVED`, 2 `TRIM_OK`. Těch 408 zadržených vstupů je ten stav z P23 — presety bez
+použitelného stopu, které se od `.26` neposílají. Dosud to bylo jen číslo ve status boxu; teď je
+vidět **který preset a kdy**.
+
+### Stub
+
+`DataFilesFolder()` vracel `"."` bez oddělovače, takže `DataPath` na Linuxu zvolil zpětné lomítko a
+soubor se jmenoval doslova `.\name.csv` — na Windows správně, tady neviditelný, a jediný test, který
+ten soubor čte zpátky, ho nenašel. Vrací `"./"`.

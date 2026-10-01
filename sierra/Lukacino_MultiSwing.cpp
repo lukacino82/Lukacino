@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.33";
+static const char* STUDY_VERSION = "2026-10-01.34";
 // Rides on every order so Trade Activity says which study sent it. Without it an account shared
 // with anything else - another study, a manual click - cannot be read back afterwards.
 static const char* ORDER_TAG = "MultiSwing";
@@ -82,6 +82,7 @@ enum InputIdx {
     IN_FAMX_SL = 65, IN_FAMX_RRR = 66,                                              // 65-88, stride 2
     IN_LIVE_CONFIRM = 89,                                                           // 89 live seatbelt
     IN_EMERG_BUFFER = 90,                                                           // 90 emergency stop
+    IN_TRADE_LOG = 91,                                                              // 91 trade log CSV
     IN_COUNT
 };
 
@@ -412,6 +413,17 @@ struct StudyState {
     bool     emergHalt = false;        // ... and after one, no new entry until acknowledged
     bool     emergHaltWarned = false;
     bool     emergNoStopWarned = false;
+
+    // ---- the trade log
+    //
+    // The journal records what the BOOK decided. This records what actually left for the account:
+    // every order, accepted or refused, with Sierra's code and Sierra's own words beside it. They
+    // are different questions and conflating them is how three rounds of debugging went past the
+    // answer - the journal was identical every time, because the journal was never the thing that
+    // was broken.
+    SCString tradeLog;                  // resolved path, empty = off
+    long     tradeLogRows = 0;
+    SCDateTime stamp;                   // the bar time rows are stamped with, set once per call
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -941,6 +953,57 @@ static void AppendJournal(const SCString& path, const SCString& row, StudyState&
     }
     f << row.GetChars() << "\n";
     ++S.journalRows;
+}
+
+// ------------------------------------------------------------------ the trade log
+//
+// One row per order this study sent, accepted or refused. The journal next to it records the
+// book's decisions - which days the rules fired and what they would have made. Those two are not
+// the same thing, and the difference is the whole lesson of the last three rounds: the journal was
+// bit-identical through every one of them, because what was broken was never the book. It was
+// what Sierra did with the orders, and nothing wrote that down.
+//
+// Appended, never truncated - deliberately, and unlike the journal. A full recalculation
+// re-simulates every bar and rewrites the journal from scratch; it does NOT re-send the orders,
+// so truncating this file on a recalculation would erase the record of real orders that really
+// went to a real account. A reload or an Input change is not permission to forget what was sent.
+static const char* TRADELOG_HEADER =
+    "stamp,event,preset,qty,price,stop,target,order_id,rc,position,note";
+
+static SCString StampString(const SCDateTime& t)
+{
+    const int sec = t.GetTimeInSeconds();
+    SCString r;
+    r.Format("%s %02d:%02d:%02d", DayString(t).GetChars(),
+             sec / 3600, (sec / 60) % 60, sec % 60);
+    return r;
+}
+
+// `note` is free text and lands in the last column, so a comma in it would shift every reader's
+// columns. Replaced rather than quoted: the file is read by eye and by pandas, and the simplest
+// thing that cannot break either is to not put a comma in it.
+static void TradeLog(StudyState& S, const char* event, const char* preset, int qty,
+                     double price, double stop, double target, int orderId, int rc,
+                     int position, const SCString& note)
+{
+    if (S.tradeLog.GetLength() == 0) return;
+    std::ofstream f(S.tradeLog.GetChars(), std::ios::app);
+    if (!f.is_open()) return;
+    if (S.tradeLogRows == 0) {
+        std::ifstream probe(S.tradeLog.GetChars(), std::ios::ate);
+        if (!probe.is_open() || probe.tellg() == 0) f << TRADELOG_HEADER << "\n";
+    }
+    SCString clean;
+    for (int i = 0; i < note.GetLength(); ++i) {
+        const char c = note[i];
+        clean += (c == ',' ? ';' : (c == '\n' || c == '\r' ? ' ' : c));
+    }
+    SCString row;
+    row.Format("%s,%s,%s,%d,%.2f,%.2f,%.2f,%d,%d,%d,%s",
+               StampString(S.stamp).GetChars(), event, preset ? preset : "", qty,
+               price, stop, target, orderId, rc, position, clean.GetChars());
+    f << row.GetChars() << "\n";
+    ++S.tradeLogRows;
 }
 
 static const char* ReasonName(int r)
@@ -1560,6 +1623,9 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, Account
     if (SkippedForRecalc(sc, S, rc, logLevel)) return RETIRE_STUCK;   // retried next call
     if (rc > 0) {
         ++S.modifyOk;
+        TradeLog(S, "EXIT_STEERED", S.presets[k].id.GetChars(), lg.qtyOnAccount, price,
+                 0, 0, childId, rc, 0,
+                 SCString(useStop ? "stop child moved to the market" : "target child moved to the market"));
         const bool again = lg.exitPrice > 0.0;
         if (logLevel >= (again ? LOG_DEBUG : LOG_INFO)) {
             SCString m;
@@ -1608,6 +1674,9 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, Account
                      S.presets[k].id.GetChars(), useStop ? "stop" : "target", lg.qtyOnAccount);
             sc.AddMessageToLog(m, 0);
         }
+        TradeLog(S, "BRACKET_DONE", S.presets[k].id.GetChars(), lg.qtyOnAccount, 0, 0, 0,
+                 (int)lg.parentOrderId, 0, 0,
+                 SCString(useStop ? "stop filled while being steered" : "target filled while being steered"));
         return RETIRE_ALREADY;
     }
 
@@ -1626,6 +1695,8 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, Account
                  lg.qtyOnAccount, SierraSays(sc, rc).GetChars());
         sc.AddMessageToLog(m, 0);
     }
+    TradeLog(S, "EXIT_STEER_FAIL", S.presets[k].id.GetChars(), lg.qtyOnAccount, price,
+             0, 0, childId, rc, 0, SierraSays(sc, rc));
     return RETIRE_UNCOVERED;
 }
 
@@ -1672,6 +1743,8 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
                                  S.presets[k].id.GetChars(), lg.stopOnAccount, mod.Price1, stopId);
             sc.AddMessageToLog(m, 0);
         }
+        TradeLog(S, "STOP_MOVED", S.presets[k].id.GetChars(), lg.qtyOnAccount, 0,
+                 mod.Price1, 0, stopId, rc, 0, SCString("trail or breakeven"));
         // Record what is actually working in the market, not the unrounded wish, or every later
         // call would see the tick of difference as a move still owed and keep re-sending it.
         lg.stopOnAccount = mod.Price1;
@@ -1693,6 +1766,8 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
                      SierraSays(sc, rc).GetChars());
             sc.AddMessageToLog(m, 1);
         }
+        TradeLog(S, "STOP_MOVE_REFUSED", S.presets[k].id.GetChars(), lg.qtyOnAccount, 0,
+                 want, 0, stopId, rc, 0, SierraSays(sc, rc));
     }
 }
 
@@ -1788,6 +1863,8 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
         S.trimWaited      = TRIM_COOLDOWN;    // nothing further offered until the fill can land
         ++S.ordersPlaced;
         tally.anyOk       = true;
+        TradeLog(S, "TRIM_OK", "", surplus, 0, 0, 0, (int)o.InternalOrderID, rc,
+                 account - surplus, SCString("unclaimed contracts sold at market"));
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing: SELL %d - %d contract(s) on the account that no "
                                  "preset claims, position %d -> %d (book wants %d).",
@@ -1803,6 +1880,7 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
              rc, surplus, account, account - surplus, S.orderFailures + tally.fails + 1,
              (int)ORDER_FAILURE_LIMIT, RejectWhy(sc, rc).GetChars());
     sc.AddMessageToLog(m, 1);
+    TradeLog(S, "TRIM_REFUSED", "", surplus, 0, 0, 0, 0, rc, account, SierraSays(sc, rc));
     S.lastRejectCode = rc;
     if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
         if (++S.latchCount == 1 || S.latchCount % 50 == 0)
@@ -2183,6 +2261,8 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // - and the account simply does not take this one.
         if (!RealPrice(st.stop, last)) {
             ++S.unprotectedHeld;
+        TradeLog(S, "ENTRY_HELD", S.presets[k].id.GetChars(), qty, last, st.stop, st.target,
+                 0, 0, projected, SCString("no usable stop in the book - nothing sent"));
             if (logLevel >= LOG_INFO &&
                 (S.unprotectedHeld == 1 || S.unprotectedHeld % 100 == 0)) {
                 SCString m;
@@ -2314,6 +2394,11 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             projected += qty;
             ++S.ordersPlaced;
             tally.anyOk = true;
+            TradeLog(S, viaOffsets ? "ENTRY_OK_OFFSETS" : "ENTRY_OK",
+                     S.presets[k].id.GetChars(), qty, last,
+                     viaOffsets ? last - off.Stop1Offset   : o.Stop1Price,
+                     viaOffsets ? last + off.Target1Offset : o.Target1Price,
+                     (int)placed.InternalOrderID, rc, projected, SCString("market"));
             if (logLevel >= LOG_INFO) {
                 SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f%s",
                                      qty, S.presets[k].id.GetChars(),
@@ -2338,6 +2423,9 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                      S.orderFailures + tally.fails + 1, (int)ORDER_FAILURE_LIMIT,
                      RejectWhy(sc, rc).GetChars());
             sc.AddMessageToLog(m, 1);
+            TradeLog(S, "ENTRY_REFUSED", S.presets[k].id.GetChars(), qty, last,
+                     o.Stop1Price, o.Target1Price, 0, rc, (int)posNow.PositionQuantity,
+                     SierraSays(sc, rc));
             // The cut-off was only tested once per study call, at the top of this function, while
             // the loop below it runs all forty-eight presets. A day on which every order is
             // refused therefore logged "6 of 5", "7 of 5" and so on, repeated the stopped notice
@@ -2411,6 +2499,10 @@ static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mod
                     if (stopId   != 0) sc.CancelOrder(stopId);
                     lg = AccountLeg();
                 }
+                TradeLog(S, "EMERG_FILLED", "", S.emergQty,
+                         ord.AvgFillPrice > 0 ? ord.AvgFillPrice : S.emergPrice,
+                         S.emergPrice, 0, S.emergStopId, 0, 0,
+                         SCString("the net caught the position; brackets cancelled, book released"));
                 ++S.emergFills;
                 S.emergHalt = true;
                 S.emergHaltWarned = true;
@@ -2494,6 +2586,8 @@ static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mod
                      level, held, buffer, lowest, S.emergStopId);
             sc.AddMessageToLog(m, 0);
         }
+        TradeLog(S, "EMERG_PLACED", "", held, 0, level, 0, S.emergStopId, rc, held,
+                 SCString("GTC sell stop under the lowest book stop"));
         return;
     }
 
@@ -2512,6 +2606,7 @@ static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mod
                  rc, held, level, SierraSays(sc, rc).GetChars());
         sc.AddMessageToLog(m, 1);
     }
+    TradeLog(S, "EMERG_REFUSED", "", held, 0, level, 0, 0, rc, held, SierraSays(sc, rc));
 }
 
 // ------------------------------------------------------------------ on-chart status box
@@ -2797,6 +2892,9 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         sc.Input[IN_EMERG_BUFFER].SetFloat(0.0f);
         sc.Input[IN_EMERG_BUFFER].SetFloatLimits(0.0f, 500.0f);
 
+        sc.Input[IN_TRADE_LOG].Name = "Trade Log CSV (file name in Data folder, blank = off)";
+        sc.Input[IN_TRADE_LOG].SetString("");
+
         // These six are study CONFIGURATION, not runtime state: Sierra reads them when the study
         // is configured, and assigning them later in the call - which is what this study did until
         // now - leaves them at Sierra's own defaults. SupportAttachedOrdersForTrading defaults to
@@ -2834,6 +2932,15 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 
     S->featureCsv = sc.Input[IN_FEATURE_CSV].GetString()[0] == 0
                   ? SCString() : DataPath(sc, sc.Input[IN_FEATURE_CSV].GetString());
+
+    // The trade log, resolved once per call. The order layer below reaches it through the state
+    // rather than the Input, so every write site is one argument shorter and cannot resolve the
+    // path differently from the others. The stamp is the newest bar's time, which is the time the
+    // orders in this call belong to - in a replay that is replay time, which is the only time that
+    // means anything when reading the file back afterwards.
+    S->tradeLog = sc.Input[IN_TRADE_LOG].GetString()[0] == 0
+                ? SCString() : DataPath(sc, sc.Input[IN_TRADE_LOG].GetString());
+    if (sc.ArraySize > 0) S->stamp = sc.BaseDateTimeIn[sc.ArraySize - 1];
 
     // ---------------- trading flags ----------------
     // The book adds to and trims one net position, so successive entries in the same direction must

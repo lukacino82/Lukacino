@@ -962,7 +962,7 @@ hlásí `WARMING UP n of 200 sessions` a to je správně, ne chyba.
 | `In:7` Risk Unit (contracts per preset) | `1.0` | |
 | `In:8` Instrument | **ES** | musí odpovídat symbolu grafu |
 | `In:9` Entry Timing | Fill at RTH close | odpovídá výzkumu, neměň |
-| `In:10` Journal CSV | `swing_journal.csv` | |
+| `In:10` Journal CSV | `swing_journal.csv` | uzavřené obchody knihy — tohle zůstává a dál ukládá obchody |
 
 ### Rodiny — `In:11` … `In:34`
 
@@ -1030,6 +1030,7 @@ Dvanáct dvojic SL / RRR. **Všechny `0`.** `0` znamená „nech té rodině jej
 |---|---|---|
 | `In:90` LIVE TRADING CONFIRMED | **Yes** | **tohle je ten přepínač, který pouští příkazy.** Dokud je `No`, Full auto počítá a loguje, ale neposílá nic. |
 | `In:91` Emergency Stop: points below the lowest book stop | **0** | na první full auto replay vypnuto. Až bude čisté, dej `20`. |
+| `In:92` Trade Log CSV (file name in Data folder, blank = off) | **`LukacinoMultiswing_trades.csv`** | příkaz po příkazu, včetně odmítnutých a Sierrina důvodu. Pro ladění full auto to zapni. |
 
 ## C. Co musí status box hlásit, než odejdeš
 
@@ -1060,3 +1061,47 @@ důvod, proč `In:90` existuje.
 
 Pro ostrý účet navíc: `In:39` a `In:40` nastav na čísla, `In:91` na `20`, a `In:5` Days to Load
 stačí `1000`.
+
+---
+
+# Trade Log CSV (`In:92`)
+
+Druhý soubor, **vedle** `swing_journal.csv`, ne místo něj. Ty dva odpovídají na různé otázky:
+
+| | `In:10` Journal CSV | `In:92` Trade Log CSV |
+|---|---|---|
+| co je řádek | **uzavřený obchod** | **jeden příkaz** |
+| co to říká | co kniha rozhodla a co to vydělalo | co odešlo na účet a co s tím Sierra udělala |
+| odmítnutý příkaz | není tam | **je tam, i s Sierriným důvodem** |
+| při přepočtu grafu | přepíše se znovu | **nikdy se nemaže** |
+
+Ten poslední řádek je důležitý. Journal se při plném přepočtu přepisuje, protože přepočet
+znovu-simuluje všechny bary. Příkazy se znovu neposílají — takže mazat tenhle soubor při přepočtu by
+znamenalo zahodit záznam o skutečných příkazech na skutečném účtu. **Jen se přidává.**
+
+Dej do toho Inputu `LukacinoMultiswing_trades.csv`. Soubor vznikne v Data Files Folderu.
+
+## Hlavička a události
+
+```
+stamp,event,preset,qty,price,stop,target,order_id,rc,position,note
+2019-11-12 19:30:00,ENTRY_OK,C06_2,1,3600.74,3578.25,3623.25,1,1,1,market
+```
+
+| `event` | co to je |
+|---|---|
+| `ENTRY_OK` | vstup přijatý, s bracketem v cenách |
+| `ENTRY_OK_OFFSETS` | vstup přijatý až na druhý pokus, bracket v offsetech |
+| `ENTRY_REFUSED` | Sierra ho odmítla; `rc` je kód, `note` jsou **její vlastní slova** |
+| `ENTRY_HELD` | kniha ho neposlala vůbec — nemá použitelný stop |
+| `EXIT_STEERED` | bracketové dítko posunuté na trh, aby preset vystoupil |
+| `EXIT_STEER_FAIL` | nešlo to; bracket zrušen |
+| `BRACKET_DONE` | dítko mezitím vyplnilo samo, kontrakty jsou z účtu venku |
+| `STOP_MOVED` / `STOP_MOVE_REFUSED` | trailing nebo breakeven |
+| `TRIM_OK` / `TRIM_REFUSED` | prodej kontraktů, které si žádný preset nehlásí |
+| `EMERG_PLACED` / `EMERG_REFUSED` / `EMERG_FILLED` | ten jeden GTC stop pod brackety |
+
+## Proč to vzniklo
+
+Tři kola ladění se vedla na žurnálu a žurnál byl **každé kolo bit-identický** — protože to, co bylo
+rozbité, nikdy nebyla kniha. Bylo to to, co s příkazy udělala Sierra, a **to si nikdo nezapisoval.**
