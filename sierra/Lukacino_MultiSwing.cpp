@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.29";
+static const char* STUDY_VERSION = "2026-10-01.30";
 
 static const int NUM_FAMILIES = 12;
 
@@ -2169,15 +2169,17 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // valid. Fixing that flag in .21 is what started the refusals: from then on Sierra
         // genuinely tried to build the bracket and found no types on it.
         //
-        // A protective stop is a sell stop; a profit target is a sell limit.
-        if (RealPrice(st.stop, last)) {
-            o.Stop1Price       = ToTick(st.stop, tick, true);
-            o.AttachedOrderStop1Type = SCT_ATTACHEDORDER_STOP;
-        }
-        if (RealPrice(st.target, last)) {
-            o.Target1Price     = ToTick(st.target, tick, false);
-            o.AttachedOrderTarget1Type = SCT_ATTACHEDORDER_LIMIT;
-        }
+        // REVERTED, and the reason is worth keeping: SCT_ATTACHEDORDER_STOP and
+        // SCT_ATTACHEDORDER_LIMIT do not exist. Sierra's remote build answered
+        // "'SCT_ATTACHEDORDER_STOP' was not declared in this scope" on both. I invented those
+        // names; the enum is real, its members are not called that, and the real ones are in the
+        // ACS_Source headers on the machine running Sierra, not here.
+        //
+        // So the order is built exactly as it was in .28 - prices only - and the diagnosis stands
+        // unproven rather than half-applied. Whether Sierra needs the TYPE fields set at all is
+        // also unproven: this build never ran, so nothing was learned from it either way.
+        if (RealPrice(st.stop, last))   o.Stop1Price   = ToTick(st.stop, tick, true);
+        if (RealPrice(st.target, last)) o.Target1Price = ToTick(st.target, tick, false);
 
         // Sierra's return code is the whole diagnosis of a refused order, so it is captured and
         // logged. An earlier version tested the call inline and printed a hardcoded 0, throwing

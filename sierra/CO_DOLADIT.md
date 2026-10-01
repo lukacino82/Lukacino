@@ -1234,3 +1234,41 @@ Dva z pěti vstupů v jeho logu pořád odcházejí s `target 0.00` — presety,
 (`+1e18`). Teď u nich zůstane i `AttachedOrderTarget1Type` na UNSET, což je správně („žádný
 target"), ale jestli to Sierra bere, ověřené není. Bylo jich 13 ze 48, takže je **nedržím zpátky** —
 vymyslet jim target by změnilo fily a rozbilo paritu s offline harnessem.
+
+---
+
+## P26b — jména konstant jsem si vymyslel, build to odmítl (`.30`)
+
+Sierra remote build na `.29`:
+
+```
+error: 'SCT_ATTACHEDORDER_STOP' was not declared in this scope
+error: 'SCT_ATTACHEDORDER_LIMIT' was not declared in this scope
+```
+
+Obě jména jsem **vymyslel**. Enum existuje, jeho členové se takhle nejmenují, a správná jména jsou
+v `ACS_Source` na stroji, kde Sierra běží — ne tady. Označil jsem to v P26 jako jediné neověřené
+místo a bylo to právě ono.
+
+Horší je druhá část: **doplnil jsem ta jména do stubu**, aby harness kompiloval. Tím jsem si
+zakryl jedinou kontrolu, kterou na tohle mám. Stub má modelovat Sierru, ne mi odkývat jména, která
+v ní nejsou. Z stubu jsou ta jména odstraněná a je tam napsané proč.
+
+`.30` staví příkaz **presně jako `.28`** — jen ceny. Žurnál shodný s `.28`, takže chování je
+totožné; je to oprava buildu, ne obchodování.
+
+### Co tím zůstalo neověřené
+
+Jestli Sierra ty TYP položky vůbec vyžaduje. Ten build nikdy neproběhl, takže se z něj nedalo nic
+naučit ani jedním směrem. Diagnóza z P26 je dál jen **hypotéza** — a je to čtvrtá v řadě, takže
+dokud nebudu mít jména z jeho hlavičky, nepíšu další.
+
+### Co to rozhodne
+
+```
+findstr /n "ATTACHEDORDER Stop1Offset Target1Offset Stop1Price Target1Price" ^
+  C:\SierraChart\ACS_Source\scstructures.h C:\SierraChart\ACS_Source\scconstants.h
+```
+
+Z toho vyjdou jak členové `s_SCNewOrder` (jestli existují `Stop1Offset`/`Target1Offset`, což by
+typy obešlo úplně), tak skutečná jména toho enumu.
