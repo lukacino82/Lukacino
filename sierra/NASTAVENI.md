@@ -810,6 +810,7 @@ rozdíl je **jediný řádek**, a je v menu Sierry, ne ve studii.
 | 39 `Daily Loss Limit USD` | **pro live nastav číslo** | `0` = vypnuto, což je špatný default pro ostrý účet |
 | 40 `Max Drawdown Stop USD` | **pro live nastav číslo** | dtto |
 | 89 `LIVE TRADING CONFIRMED` | **No, dokud si nejsi jistý** | dokud je No, nic neodejde |
+| 90 `Emergency Stop: points below the lowest book stop` | `0` při prvním replayi, pak **20** | jeden GTC stop na celou pozici, drží ho broker; `0` = vypnuto |
 
 Nakonec přepni Input 6 `Reload Presets` na **opačnou** hodnotu. Zvedne to případnou západku
 `STOPPED`. Nastavit ho na to, co už tam je, nedělá nic.
@@ -824,6 +825,7 @@ book      N contracts   position N         ← tato dvě čísla si musí odpov�
 days      N   risk unit 1.00 ES
 cap       60 ES contracts   (Max Gross 600 MES)
 P&L       ...
+EMERG STOP 3561.25 for 4 contract(s), GTC at the broker   ← jen když je Input 90 > 0
 ```
 
 Čeho si všímat:
@@ -854,3 +856,54 @@ boxu je papírová. Přesně tahle kombinace nás stála den hledání, viz `CO_
 
 `STOPPED` znamená pět odmítnutí v jednom volání. Postup: zavři pozici ručně, srovnej, co hlásí
 odmítnutí, pak přepni Input 6 `Reload Presets`. Západka se jinak nezvedne.
+
+---
+
+# Emergency Stop (Input 90)
+
+Jeden příkaz **u brokera** pod všemi 48 brackety: prodejní stop na celou pozici, GTC. Drží ho broker,
+takže funguje i když Sierra spadne, graf se přepočítává, nebo `ModifyOrder` na bracket neprojde.
+
+Level = **nejnižší stop, který kniha u držených nohou eviduje, minus to číslo v bodech.**
+
+| Hodnota | Co to znamená |
+|---|---|
+| `0` | vypnuto. Takhle to přijde a takhle to nech na **první** full auto replay. |
+| `20` | rozumné pro ES. Net sedí 20 bodů pod nejnižším bracketovým stopem, takže v normálním poklesu vystřelí nejdřív bracket a na net se nedojde. |
+| `1` až `5` | **nedělej to.** Net vystřelí při prvním kolísání, vezme celou pozici a zastaví obchodování. Změřeno: s `1` to v testu vystřelilo a zbytek runu stál. |
+
+## Jedna věc, kterou musíš vědět, než to zapneš
+
+S fungujícími brackety je pozice krytá dvakrát — 48 bracketových stopů v součtu dá pozici a tenhle
+jeden příkaz ji dá znovu. Když vystřelí net, pozice je plochá, ale **bracketová dítka pořád pracují**
+a při dalším poklesu mohou vystřelit taky a vzít účet nakrátko.
+
+Studie to okno zavírá sama: fill pozná na dalším volání, zruší všechna bracketová dítka, uvolní
+knihu a **zastaví nové vstupy**. Ale „na dalším volání" není „okamžitě", a při gapu přes všechny
+úrovně naráz by to nestihla. Proto ten buffer široko.
+
+## Když net vystřelí
+
+V logu bude:
+
+```
+Multi-Swing: EMERGENCY STOP FILLED at 3477.25 - 4 contract(s) are off the account. ...
+```
+
+a status box bude hlásit `NOT TRADING - the Emergency Stop fired, read the log`. Obchodovat to začne
+znovu až po přepnutí Inputu 6 `Reload Presets` na opačnou hodnotu. To je úmyslně ruční krok: když
+vystřelí net, brackety neudělaly svou práci, a to je potřeba přečíst, než kniha obchoduje dál.
+
+## Může ho Sierra odmítnout?
+
+Může, a nevím to dopředu. Těch 48 bracketů tu pozici už kryje a Sierra umí druhý příkaz nad stejnou
+pozicí odmítnout — u `SellExit` to prokazatelně dělá. Jestli to platí i pro tenhle, ukáže první
+replay. Pokud ano, bude to v logu jednou, takhle:
+
+```
+Multi-Swing: EMERGENCY STOP REFUSED, Sierra returned -1: sell stop 4 at 3561.25. ...
+  Sierra's own words: "..."
+```
+
+Pozice přitom není nechráněná — brackety pracují dál. Jen ta podlaha pod nimi není. Pak vrať
+Input 90 na `0` a pošli mi tu Sierrinu větu.
