@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.26";
+static const char* STUDY_VERSION = "2026-10-01.27";
 
 static const int NUM_FAMILIES = 12;
 
@@ -198,6 +198,11 @@ struct AccountLeg {
     double exitPrice = 0.0;
     bool   exitIsStop = false;  // a steered stop needs the market at or below it, a limit at or above
     int    exitCalls = 0;       // calls it has been working; a child that never fills is cancelled
+    // A stop move Sierra refuses is refused for a reason that does not change between calls, and
+    // the trail asks for the same move on every one of them: his log carried twenty-two identical
+    // "STOP MOVE REFUSED ... from 3990.50 to 4032.00 (stop order 162992)" lines for one preset.
+    // Counted so it is tried a few times and then left alone, with the wider stop still working.
+    int    stopMoveFails = 0;
 };
 
 // Enough consecutive rejections to conclude the account is not doing what the study asks.
@@ -342,6 +347,7 @@ struct StudyState {
     int      latchWait = 0;             // calls to wait before the next self-heal
     long     latchCount = 0;            // how often it has latched, so the notice can be throttled
     long     unprotectedHeld = 0;       // entries not sent because the book had no usable stop
+    long     reconciled = 0;            // how often the book had to be corrected to the account
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
     int      trimWaited = 0;            // calls it has been waited for, so a sell that never
                                         // lands cannot lock the trim out for ever
@@ -1525,9 +1531,38 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, Account
     }
 
     ++S.modifyFail;
-    // The route would not take the price. Cancel the bracket so the contracts stop counting as
-    // covered; a market sell for them is then something Sierra will accept - a call later, once
-    // the cancel has actually taken.
+
+    // Before treating this as a price Sierra would not take, ask the obvious question: is there
+    // still an order there at all?
+    //
+    // A bracket child that has FILLED cannot be modified, and Sierra says so with the same bare
+    // -1 as any other refusal. That is not a steering problem - it means the stop or the target
+    // did its job and those contracts are already off the account. The previous code read it the
+    // other way round, cancelled the bracket, waited for a market sell that Sierra had no reason
+    // to accept, gave up after three tries and then counted the contracts as held FOREVER. His
+    // log is that mechanism running twenty-one times: "could not steer", "CANNOT CLOSE", and a
+    // status box reading "book 9 contracts position 0" for the rest of the run.
+    //
+    // So the bracket is re-read first. No live children means the trade is closed; the leg is
+    // released and the book matches the account again.
+    int targetNow = 0, stopNow = 0;
+    sc.GetAttachedOrderIDsForParentOrder((int)lg.parentOrderId, targetNow, stopNow);
+    if (targetNow == 0 && stopNow == 0) {
+        ++S.bracketsEmpty;
+        lg.exitPrice = 0.0; lg.exitCalls = 0;
+        if (logLevel >= LOG_DEBUG) {
+            SCString m;
+            m.Format("Multi-Swing: %s's bracket finished while it was being steered - its %s "
+                     "filled, so its %d contract(s) are already off the account.",
+                     S.presets[k].id.GetChars(), useStop ? "stop" : "target", lg.qtyOnAccount);
+            sc.AddMessageToLog(m, 0);
+        }
+        return RETIRE_ALREADY;
+    }
+
+    // There is still a live child and it would not move. Cancel the bracket so the contracts stop
+    // counting as covered; a market sell for them is then something Sierra will accept - a call
+    // later, once the cancel has actually taken.
     if (targetId != 0) sc.CancelOrder(targetId);
     if (stopId   != 0) sc.CancelOrder(stopId);
     lg.exitPrice = 0.0; lg.exitCalls = 0;
@@ -1556,6 +1591,10 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
     // real moves became 6,573 re-sends of prices already in the market.
     const double onTick = ToTick(want, tick, true);
     if (onTick <= lg.stopOnAccount + tick / 2.0) return;       // already there, or a step down
+    // Refused a few times already: the reason will not change on this call either, and the wider
+    // stop it failed to replace is still in the market, so the position stays protected.
+    enum { STOP_MOVE_TRIES = 3 };
+    if (lg.stopMoveFails >= STOP_MOVE_TRIES) return;
     if (!send) {
         if (logLevel >= LOG_INFO) {
             SCString m; m.Format("Multi-Swing SEMI: would MOVE STOP for %s from %.2f to %.2f",
@@ -1585,15 +1624,23 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
         // Record what is actually working in the market, not the unrounded wish, or every later
         // call would see the tick of difference as a move still owed and keep re-sending it.
         lg.stopOnAccount = mod.Price1;
+        lg.stopMoveFails = 0;
     } else {
         // Not counted against orderFailures: a refused stop move leaves the previous, wider stop
         // working, so the position stays protected and the book stays consistent with the account.
         // Cutting off entries over it would be a bigger problem than the one being reported.
-        SCString m;
-        m.Format("Multi-Swing: STOP MOVE REFUSED, Sierra returned %d: %s from %.2f to %.2f "
-                 "(stop order %d, parent %u). The earlier, wider stop is still working.",
-                 rc, S.presets[k].id.GetChars(), lg.stopOnAccount, want, stopId, lg.parentOrderId);
-        sc.AddMessageToLog(m, 1);
+        ++lg.stopMoveFails;
+        if (lg.stopMoveFails <= 1 || lg.stopMoveFails >= STOP_MOVE_TRIES) {
+            SCString m;
+            m.Format("Multi-Swing: STOP MOVE REFUSED, Sierra returned %d: %s from %.2f to %.2f "
+                     "(stop order %d, parent %u). The earlier, wider stop is still working.%s",
+                     rc, S.presets[k].id.GetChars(), lg.stopOnAccount, want, stopId,
+                     lg.parentOrderId,
+                     lg.stopMoveFails >= STOP_MOVE_TRIES
+                       ? " Asked three times and refused three times, so it will not be asked"
+                         " again for this trade." : "");
+            sc.AddMessageToLog(m, 1);
+        }
     }
 }
 
@@ -1804,6 +1851,70 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     // wiping one whose exit failed is what left contracts belonging to nobody, uncloseable by any
     // route, on every run so far.
     const int RETIRE_TRIES = 3;
+
+    // The account is the truth, and the book may never claim to hold more than it does.
+    //
+    // Without this, one unsteerable bracket is permanent. A leg that has been given up on keeps
+    // counting its contracts as held - deliberately, so the book stays honest while they are
+    // genuinely still out there - but nothing ever checks whether they still exist. His log shows
+    // twenty-one of them accumulating and then "book 9 contracts position 0" for the rest of the
+    // run: nine contracts the account had already closed through their own brackets, which the
+    // study went on reserving capacity for forever.
+    //
+    // Reconciled against the real position on every call. Legs already given up on are released
+    // first, because they are the ones most likely to be describing a trade that has ended.
+    if (send) {
+        s_SCPositionData posTruth;
+        sc.GetTradePosition(posTruth);
+        int real = (int)posTruth.PositionQuantity;
+        if (real < 0) real = 0;
+        int claimed = 0;
+        for (size_t k = 0; k < S.legs.size(); ++k) claimed += S.legs[k].qtyOnAccount;
+        // Only legs that have been GIVEN UP ON are released here, and that restriction is the
+        // whole safety of this.
+        //
+        // The first version released any leg until the claim matched, and it cost 135 orders out
+        // of 141 in the harness: a leg records its contracts the moment the entry is accepted,
+        // while the account position only moves when the fill comes back, so on the next call the
+        // claim legitimately exceeds the position and the reconciliation was deleting entries
+        // still in flight. Every other wait in this file exists for that same latency.
+        //
+        // A leg with retireTries >= RETIRE_TRIES is a different thing entirely: the study has
+        // already tried three times to take those contracts off and reported CANNOT CLOSE. It is
+        // old, it is stuck, and if the account no longer holds what it claims then its bracket
+        // closed on its own. Those are safe to release, and they are the only ones his log was
+        // accumulating.
+        if (claimed > real) {
+            const int surplusClaim = claimed - real;
+            int toDrop = surplusClaim;
+            for (size_t k = 0; k < S.legs.size() && toDrop > 0; ++k) {
+                AccountLeg& l = S.legs[k];
+                if (l.qtyOnAccount <= 0) continue;
+                if (l.retireTries < RETIRE_TRIES) continue;
+                const int take = l.qtyOnAccount <= toDrop ? l.qtyOnAccount : toDrop;
+                l.qtyOnAccount -= take;
+                toDrop -= take;
+                if (l.qtyOnAccount == 0) l = AccountLeg();
+            }
+            if (toDrop == surplusClaim) {
+                // Nothing was given up on, so the gap is fill latency and not a stuck bracket.
+                // Left alone; the next call sees the fill.
+                --S.reconciled;
+            }
+            ++S.reconciled;
+            if (S.reconciled > 0 && logLevel >= LOG_INFO &&
+                (S.reconciled == 1 || S.reconciled % 100 == 0)) {
+                SCString m;
+                m.Format("Multi-Swing: book corrected to the account - it believed it held %d "
+                         "contract(s), the account holds %d, so %d were released. Those brackets "
+                         "closed on their own. Paper trades and the journal are unaffected. "
+                         "(%ld corrections so far.)",
+                         claimed, real, surplusClaim - toDrop, S.reconciled);
+                sc.AddMessageToLog(m, 0);
+            }
+        }
+    }
+
     int stillCovered = 0;          // held, closed by the book, but not yet sellable
     for (size_t k = 0; k < S.states.size(); ++k) {
         PresetState& st = S.states[k];

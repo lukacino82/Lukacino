@@ -207,8 +207,29 @@ struct SCStudyInterface {
     int    stopMovesOk = 0, stopMovesOnDeadOrder = 0, cancelledByTrim = 0;
     double stubPeakPosition = 0;
 
+    // STUB_BRACKETS_FILL_AFTER=<n> models the one failure his chart hit and nothing else could
+    // reproduce: after n study calls every bracket has filled on its own, so the account is FLAT
+    // and every bracket child is gone - while the study still holds legs it was refused
+    // permission to steer. That is the state behind "book 9 contracts position 0".
+    long stubFillAfter = getenv("STUB_BRACKETS_FILL_AFTER")
+                       ? atol(getenv("STUB_BRACKETS_FILL_AFTER")) : -1;
+    long stubCalls = 0;
+    bool BracketsAllGone() const { return stubFillAfter >= 0 && stubCalls > stubFillAfter; }
+
+    // STUB_POS_ZERO_AFTER=<n> is the nastier half, and the one that matches his log exactly: the
+    // position goes to zero while Sierra still reports the bracket children as live. The study
+    // then cannot resolve the leg through RETIRE_ALREADY, its steer is refused, and it ends up
+    // claiming contracts the account does not have - "book 9 contracts position 0" - forever.
+    long stubZeroAfter = getenv("STUB_POS_ZERO_AFTER")
+                       ? atol(getenv("STUB_POS_ZERO_AFTER")) : -1;
+    bool PositionZeroed() const { return stubZeroAfter >= 0 && stubCalls > stubZeroAfter; }
+
     void GetTradePosition(s_SCPositionData& p)
-    { p = s_SCPositionData(); p.PositionQuantity = stubSim ? stubPosition : 0; }
+    {
+        p = s_SCPositionData();
+        p.PositionQuantity = (stubSim && !BracketsAllGone() && !PositionZeroed())
+                           ? stubPosition : 0;
+    }
     int  ChartNumber = 1;
     double TickSize = 0.25;
     void UseTool(const s_UseTool&) {}
@@ -270,6 +291,7 @@ struct SCStudyInterface {
     double minPositionSeen = 1e9;
     void StubTick(int want)
     {
+        ++stubCalls;
         if (!stubSim) return;
         for (size_t i = 0; i < pendingSells.size(); ) {
             if (--pendingSells[i].second <= 0) {
@@ -409,7 +431,7 @@ struct SCStudyInterface {
     void GetAttachedOrderIDsForParentOrder(int parent, int& r_TargetInternalOrderID, int& r_StopInternalOrderID)
     {
         r_TargetInternalOrderID = 0; r_StopInternalOrderID = 0;
-        if (!stubSim) return;
+        if (!stubSim || BracketsAllGone()) return;
         std::map<int, std::pair<int,int> >::iterator it = bracket.find(parent);
         if (it == bracket.end()) return;
         if (working.count(it->second.first))  r_TargetInternalOrderID = it->second.first;

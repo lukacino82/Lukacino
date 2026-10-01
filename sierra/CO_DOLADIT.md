@@ -1019,3 +1019,92 @@ Nebudu na to vymýšlet čtvrtou hypotézu — ta nová řádka s odmítnutím t
 
 Pro úplnost: samouvolnění západky z P22 v jeho logu **funguje**, jsou tam tři cykly za sebou
 (04:17:52, 04:17:53, 04:17:59) místo jednoho zamknutí a ticha.
+
+---
+
+## P24 — řetězec, který zabil 18letý běh: odmítnutá modifikace → trvale nadhodnocená kniha (`.27`)
+
+Z jeho logu (6 975 řádků) jde chronologie přečíst přesně. Nejdřív čísla:
+
+| | |
+|---|---|
+| přijatých vstupů | **13** |
+| odmítnutí | **295**, všechna `-1` (280 BUY, 15 SELL) |
+| `STOP MOVE REFUSED` | **22** |
+| `could not steer` + `CANNOT CLOSE` | **21 + 21** |
+| řádků od Sierry samotné u odmítnutí | **0** |
+
+A časová osa:
+
+```
+04:43:29 – 04:44:17   13 vstupů prošlo, prostřídaných s "steer -1", "stop-move -1", "CANNOT CLOSE"
+04:44:18 – konec      už jen odmítnutí
+```
+
+Každé odmítnuté BUY má v nové diagnostické závorce z `.26` tohle:
+
+```
+[book stop 4974.06 target 5296.38, close 5217.50, account 0, projected 0, cap 1000]
+```
+
+Ceny v pořádku, stop pod trhem, target nad trhem, **účet na nule**, projekce nula, strop 1000.
+Takže ani ceny, ani strop, ani krytí, ani projekce. A Trade Activity přitom ukazuje **tři reálné
+obchody** na Sim1 (4, 25 a 32 kontraktů, celkem +1 812 950) — cesta funguje.
+
+### Řetězec
+
+1. `ModifyOrder` na dítě bracketu vrátí `-1`.
+2. Starý kód to čte jako „trasa nevzala cenu", **zruší celý bracket** a čeká, že kontrakty odejdou
+   market sellem.
+3. Market sell Sierra nepřijme (nebo pozice už neexistuje), po třech pokusech přijde `CANNOT CLOSE`.
+4. Ta noha pak **počítá své kontrakty jako držené NAVŽDY** (`stillCovered += lg.qtyOnAccount`).
+5. Jednadvacet takových nohou → kniha trvale nadhodnocená → `book 9 contracts position 0`
+   do konce běhu.
+
+### Jádro chyby
+
+**Dítě bracketu, které se VYPLNILO, nelze modifikovat — a Sierra to řekne tím samým prázdným `-1`.**
+To není problém s řízením. Znamená to, že stop nebo target udělal svou práci a ty kontrakty jsou
+už dávno z účtu venku. Starý kód to čte přesně obráceně.
+
+### Tři opravy
+
+**1. Odmítnutá modifikace se nejdřív zeptá, jestli tam vůbec něco je.** Bracket se znovu přečte;
+žádné živé dítě = obchod je zavřený, noha se uvolní, kniha se srovná s účtem.
+
+**2. Účet je pravda.** Nohy nesmí tvrdit, že drží víc, než drží účet. Srovnává se každé volání —
+ale **jen u nohou, které už byly vzdané** (`retireTries >= 3`). To omezení je celá bezpečnost
+téhle opravy: první verze uvolňovala jakoukoli nohu a stálo to **135 příkazů ze 141**, protože
+noha si zapíše kontrakty v okamžiku přijetí vstupu, zatímco pozice na účtu se pohne až s filem.
+Vzdaná noha je něco jiného — je stará, zaseknutá, a když účet nedrží to, co tvrdí, její bracket se
+zavřel sám.
+
+**3. Odmítnutý posun stopu se nezkouší donekonečna.** Dvaadvacet identických
+`STOP MOVE REFUSED ... from 3990.50 to 4032.00 (stop order 162992)` pro jeden preset. Tři pokusy
+a dost; ten širší stop, který se nepodařilo nahradit, zůstává v trhu, takže pozice je chráněná.
+
+### Fixtura, bez které to nešlo změřit
+
+`STUB_POS_ZERO_AFTER=<n>` — pozice spadne na nulu, **zatímco Sierra dál hlásí děti bracketu jako
+živé**. To je přesně jeho stav a jediná cesta, jak ho reprodukovat. (`STUB_BRACKETS_FILL_AFTER`
+modeluje mírnější případ, kdy brackety zmizí i ze seznamu; ten se vyřešil už dřív přes
+`RETIRE_ALREADY`.)
+
+### Měřeno
+
+| scénář | `.26` vstupů | `.27` vstupů | `.26` CANNOT | `.27` CANNOT | recon |
+|---|---|---|---|---|---|
+| čistý běh | 135 | **135** | 0 | 0 | 0 |
+| `CHUNK=1` | 141 | **141** | 0 | 0 | 0 |
+| `sim_noexit` | 129 | **129** | 0 | 0 | 0 |
+| `sim_nomodify` | 21 | **21** | 21 | 21 | 0 |
+| **nomodify + pozice 0** | **21 a konec** | **127, běh pokračuje** | 21 | 126 | 1 |
+| brackety zmizely | 144 | **144** | 0 | 0 | 0 |
+
+Sedm scénářů, **jeden a tentýž md5 žurnálu** ve všech. Rozhodovací engine se nedotkl.
+
+### Co zůstává
+
+Proč `ModifyOrder` v jeho replayi selhává tak často, vysvětlené není. Nová cesta to přežije
+(uvolní nohu a jede dál), ale příčina sama je dál neznámá — a dokud nevím, že to není nějaké
+pravidlo Sierry k attached orderům na `[CB]` grafu, nebudu na to psát hypotézu.
