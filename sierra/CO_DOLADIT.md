@@ -874,3 +874,69 @@ pryč a pojistka zafunguje.
 Poslední řádek je ten důležitý: pojistka se nevypnula, jen přestala hlásit planý poplach.
 Když účet opravdu drží kontrakty, pro které studie nemá handly, pořád odmítne poslat cokoli.
 Žurnál bit-identický s `.23`.
+
+---
+
+## P22 — západka se sama uvolní na plochém účtu, skip kódy do ní nepočítají (`.25`)
+
+Zadání bylo jasné: *„potřebuji aby to jelo kontinuálně a nedělalo stopped"*. Jeho status box po
+pár desítkách obchodů:
+
+```
+mode      STOPPED - rejections, nothing is being sent
+book      10 contracts   position 0
+days      316
+```
+
+A v Trade Activity přitom **reálný obchod na Sim1**: Long 4 kontrakty, 2019-07-02 @ 3788.25 →
+2019-07-25 @ 3815.81, **+5512.50**. Objednávková cesta tedy funguje; umírá na tom, že se západka
+nedá uvolnit jinak než rukou.
+
+### Dvě chyby v návrhu, ne v Sierře
+
+**1. Skip kódy se počítaly jako odmítnutí.** `SkippedForRecalc` testoval jen `-8998`. Když replay
+začal odpovídat `-8995`, každý skip šel do počítadla a pět jich zamklo objednávkovou vrstvu na
+celý zbytek osmnáctiletého běhu. Úvaha, která vyjímala `-8998`, přitom platí pro celé pásmo:
+skip znamená, že Sierra příkaz nikdy nepostavila, takže se účet nemohl pohnout a nemá jak být
+rozejitý s knihou. **Cut-off, který existuje kvůli desyncu, nesmí hlídat tu jedinou třídu
+odmítnutí, která desync způsobit nemůže.**
+
+**2. Západka se nedala uvolnit automaticky.** Pět odmítnutí zastaví posílání natrvalo, a to je
+správně, **dokud účet drží něco, co kniha neumí vysvětlit**. Jakmile je účet **plochý**, je to
+špatně: není co nechat trčet, není kolem čeho obchodovat, žádný bracket nekryje žádné kontrakty.
+Rozejitý je jen vlastní záznam studie o tom, co drží — a ten si studie umí opravit sama.
+
+Nově se tedy na plochém účtu západka uvolní: `legs` se vynulují, počítadlo odmítnutí taky, a běh
+pokračuje. Papírové obchody rozhodovacího enginu a žurnál se nedotknou.
+
+Omezeno schválně: cooldown 8 volání a strop 500 uvolnění. Konfigurace, která odmítá všechno, by
+jinak cyklila do nekonečna; takhle to terminuje a strop je dost vysoký, aby na něj dlouhý replay
+s kvartálními roly nedosáhl. Hláška `STOPPED` je navíc omezená na první a každou 50., protože je
+dlouhá a rozbitý setup ji jinak napíše stokrát.
+
+### Měřeno
+
+| scénář | `.24` BUY | `.25` BUY | `.24` odmítnutí | `.25` odmítnutí | heal | žurnál |
+|---|---|---|---|---|---|---|
+| čistý běh | 218 | **218** | 0 | 0 | 0 | identický |
+| `sim_noexit` (účet nejde na nulu) | 32 | **32** | — | — | **0** | identický |
+| všechny vstupy odmítnuty, účet plochý | 0 | 0 | **5 a konec** | **100, běh pokračuje** | 1 | identický |
+
+Druhý řádek je ten, který hlídá bezpečnost: když se účet **nemůže** dostat na nulu, západka drží
+a nic se neuvolňuje. Třetí je to, co si přál: místo pěti odmítnutí a ticha na zbytek běhu to zkouší
+dál. Žurnál je ve všech případech bit-identický — nic z toho se nedotýká rozhodování.
+
+Do stubu přidán `STUB_REFUSE_ENTRY_AFTER=<n>`: přijme n vstupů a pak odmítne každý další, takže
+účet zůstane plochý, zatímco kniha si myslí, že drží. Bez toho se ta cesta změřit nedala.
+
+### Co pořád nevím
+
+**Proč** jeho vstupy padají. V logu z tohohle běhu nemám ani jeden řádek `ORDER REJECTED`, takže
+kód neznám. `.25` to přežije a bude zkoušet dál, ale pokud je to strukturální odmítnutí, nebude
+obchodovat nic. Stačí jeden řádek.
+
+### Vedlejší pozorování ze screenshotu
+
+Chart Replay dialog je pojmenovaný `ESZ26_FUT_CME [CBV][M] 5000 Volume #3`, zatímco studie běží na
+`[CB][M] 1 Min #7`. Pokud ten dialog opravdu řídí jiný graf, pak replay, který spouští, není ten,
+na kterém je studie. Neověřeno, jen to nesedí.

@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.24";
+static const char* STUDY_VERSION = "2026-10-01.25";
 
 static const int NUM_FAMILIES = 12;
 
@@ -338,6 +338,9 @@ struct StudyState {
     int      orderFailures = 0;         // consecutive rejections; trading stops at the limit
     int      lastRejectCode = 0;        // ... and what the last one was, so the latch can tell a
                                         // skip (nothing sent) from a real rejection
+    long     latchReleases = 0;         // how often the latch has healed itself on a flat account
+    int      latchWait = 0;             // calls to wait before the next self-heal
+    long     latchCount = 0;            // how often it has latched, so the notice can be throttled
     int      trimSentQty = 0;           // an exit already on its way, so it is not sent twice
     int      trimWaited = 0;            // calls it has been waited for, so a sell that never
                                         // lands cannot lock the trim out for ever
@@ -1362,16 +1365,22 @@ static bool RealPrice(double p, double ref)
 // per replay bar it would otherwise be the only thing in the Message Log.
 static bool SkippedForRecalc(SCStudyInterfaceRef sc, StudyState& S, int rc, int logLevel)
 {
-    if (rc != SCT_SKIPPED_FULL_RECALC_CODE) return false;
+    // Every code in the skip band, not only the recalculation one. This used to test -8998 alone,
+    // so when a replay started answering -8995 instead, each skip counted as a rejection and five
+    // of them latched the order layer for the rest of an eighteen-year run. The reasoning that
+    // exempted -8998 covers the whole band: a skip means Sierra never built the order, so no
+    // account can have moved and nothing can be out of step with the book. A cut-off that exists
+    // to catch a desync must not fire on the one class of refusal that cannot cause one.
+    if (!IsSkipCode(rc)) return false;
     ++S.recalcSkips;
     if (logLevel >= LOG_INFO && (S.recalcSkips == 1 || S.recalcSkips % 500 == 0)) {
         SCString m;
-        m.Format("Multi-Swing: Sierra is recalculating the chart and skipped the order "
-                 "(SCT_SKIPPED_FULL_RECALC, %ld so far, bar %d, replay %s). Nothing reached the "
-                 "account, so nothing is out of step; the book is offered again on the next call. "
-                 "If this never stops during a replay, the Chart Replay dialog's Replay Mode is "
-                 "the setting that decides whether a replay recalculates every bar.",
-                 S.recalcSkips, (int)sc.ArraySize, sc.IsReplayRunning() ? "RUNNING" : "off");
+        m.Format("Multi-Swing: Sierra SKIPPED the order (code %d, %ld so far, bar %d, replay %s). "
+                 "Nothing reached the account, so nothing is out of step; the book is offered "
+                 "again on the next call and this does not count toward the rejection cut-off. "
+                 "-8998 is the full-recalculation skip; for any other code the name is in "
+                 "scconstants.h in the SierraChart ACS_Source folder.",
+                 rc, S.recalcSkips, (int)sc.ArraySize, sc.IsReplayRunning() ? "RUNNING" : "off");
         sc.AddMessageToLog(m, 0);
     }
     return true;
@@ -1695,7 +1704,8 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
     sc.AddMessageToLog(m, 1);
     S.lastRejectCode = rc;
     if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
-        sc.AddMessageToLog(IsSkipCode(rc) ? STOPPED_NOTICE_SKIPPED : STOPPED_NOTICE, 1);
+        if (++S.latchCount == 1 || S.latchCount % 50 == 0)
+            sc.AddMessageToLog(IsSkipCode(rc) ? STOPPED_NOTICE_SKIPPED : STOPPED_NOTICE, 1);
     return TRIM_REFUSED;
 }
 
@@ -1733,6 +1743,45 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         return;
     }
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
+
+    // The latch heals itself on a flat account.
+    //
+    // Five refusals stop the order layer for good, and that is right while the account is holding
+    // something the book cannot account for: every later order would be computed against a wrong
+    // position. It is wrong once the account is FLAT. There is nothing left to strand, nothing to
+    // trade around, no stray bracket covering contracts - the only thing out of step is the
+    // study's own record of what it holds, and that it can simply correct. Requiring a human to
+    // toggle an Input to get past that killed an eighteen-year replay a few hundred sessions in,
+    // every time, which is the opposite of a system that runs unattended.
+    //
+    // Bounded on purpose. A configuration that refuses everything would otherwise latch, heal,
+    // latch again forever; the cooldown and the ceiling make that terminate, and the ceiling is
+    // high enough that a long replay with quarterly contract rolls does not reach it.
+    if (S.orderFailures >= ORDER_FAILURE_LIMIT && send) {
+        enum { LATCH_HEAL_WAIT = 8, LATCH_HEAL_MAX = 500 };
+        if (S.latchWait > 0) --S.latchWait;
+        else if (S.latchReleases < LATCH_HEAL_MAX) {
+            s_SCPositionData pos;
+            sc.GetTradePosition(pos);
+            if ((int)pos.PositionQuantity == 0) {
+                ++S.latchReleases;
+                S.latchWait = LATCH_HEAL_WAIT;
+                S.orderFailures = 0;
+                S.lastRejectCode = 0;
+                for (size_t k = 0; k < S.legs.size(); ++k) S.legs[k] = AccountLeg();
+                if (logLevel >= LOG_INFO &&
+                    (S.latchReleases == 1 || S.latchReleases % 50 == 0)) {
+                    SCString m;
+                    m.Format("Multi-Swing: order placement resumed - the account is flat, so there "
+                             "is nothing for the book to be out of step with. The book's record of "
+                             "what it holds on the account was reset to empty; its paper trades and "
+                             "the journal are untouched. (self-heal %ld of %d)",
+                             S.latchReleases, (int)LATCH_HEAL_MAX);
+                    sc.AddMessageToLog(m, 0);
+                }
+            }
+        }
+    }
 
     // Retracted. This used to warn that the chart's own simulation refuses ModifyOrder and
     // CancelOrder, so a bracket could be neither moved nor removed. That was wrong, and wrong for
@@ -1988,7 +2037,8 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             // Return here so the limit means what it says, and say it once.
             S.lastRejectCode = rc;
             if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT) {
-                sc.AddMessageToLog(IsSkipCode(rc) ? STOPPED_NOTICE_SKIPPED : STOPPED_NOTICE, 1);
+                if (++S.latchCount == 1 || S.latchCount % 50 == 0)
+                    sc.AddMessageToLog(IsSkipCode(rc) ? STOPPED_NOTICE_SKIPPED : STOPPED_NOTICE, 1);
                 return;
             }
         }

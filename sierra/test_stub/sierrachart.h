@@ -214,10 +214,22 @@ struct SCStudyInterface {
     void UseTool(const s_UseTool&) {}
     void DeleteACSChartDrawing(int, int, int) {}
 
+    // STUB_REFUSE_ENTRY_AFTER=<n> accepts n entries and then refuses every later one with -1,
+    // leaving the account FLAT while the study's book believes it holds contracts. That is the
+    // exact state his chart reached - "book 10 contracts position 0" under STOPPED - and the only
+    // way to measure whether the latch heals itself out of it.
+    long stubEntryBudget = getenv("STUB_REFUSE_ENTRY_AFTER")
+                         ? atol(getenv("STUB_REFUSE_ENTRY_AFTER")) : -1;
+    long stubEntriesTaken = 0;
+
     int  BuyEntry(s_SCNewOrder& o)
     {
         ++ordersAttempted;
         if (!stubSim) return -1;
+        if (stubEntryBudget >= 0 && stubEntriesTaken >= stubEntryBudget) {
+            ++entriesRefused; return -1;
+        }
+        ++stubEntriesTaken;
         if (!AllowEntryWithWorkingOrders && !working.empty()) {
             ++entriesRefused; ++refusedByWorkingOrders; return -1;
         }
