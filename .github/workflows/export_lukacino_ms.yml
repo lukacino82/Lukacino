@@ -1,10 +1,12 @@
 name: Export LukacinoMS Live CSV
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 permissions:
   contents: read
 jobs:
   export:
+    if: contains(github.event.head_commit.message, 'Trigger LukacinoMS export')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
