@@ -88,6 +88,9 @@ struct s_SCNewOrder {
     // an offset from the fill. Confirmed by findstr against the real header, lines 1190-1198.
     double Target1Price = 0, Stop1Price = 0;
     double Target1Offset = 0, Stop1Offset = 0;
+    // The label Sierra shows next to the order in Trade Activity. Costs nothing and is the only
+    // way to tell this study's orders from anything else on the same account.
+    SCString TextTag;
 };
 // There is NO attached-order "type" field and no SCAttachedOrderTypeEnum. findstr for
 // ATTACHEDORDER across scstructures.h and scconstants.h matched nothing at all, and
@@ -468,6 +471,17 @@ struct SCStudyInterface {
         if (working.count(it->second.second)) r_StopInternalOrderID  = it->second.second;
     }
     void AddMessageToLog(const SCString& m, int) { fprintf(stderr, "LOG: %s\n", m.GetChars()); }
+
+    // Sierra's own words behind a trading error code. The real ACSIL call is what finally makes a
+    // bare "-1" readable; the stub only has to return something, because what matters here is
+    // that the study compiles and prints it. The study assigns the result into an SCString before
+    // using it, so it does not matter whether the real build returns const char* or SCString.
+    const char* GetTradingErrorTextMessage(int code)
+    {
+        if (code == -1) return "stub: generic refusal, no reason recorded";
+        if (code <= -8990 && code >= -8999) return "stub: skipped, nothing was sent";
+        return "";
+    }
     SCString DataFilesFolder() { return SCString("."); }
     int GetBarHasClosedStatus(int) { return BHCS_BAR_HAS_CLOSED; }
 };

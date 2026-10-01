@@ -1357,3 +1357,56 @@ Druhý řádek je to, co se mělo spravit: `.30` ztratilo všech 135 obchodů a 
 
 Do stubu přidáno `STUB_REFUSE_PRICE_BRACKET=1` (odmítne cenovou formu, přijme offsetovou) a
 pochopení offsetové formy v `BuyEntry`, takže se ta cesta měří a nejen doufá.
+
+---
+
+## P28 — `sc.GetTradingErrorTextMessage()`: Sierra tu odpověď měla celou dobu (`.32`)
+
+Čtyři hypotézy o tom `-1` a všechny čtyři vyvrácené. Důvod byl ten, že `-1` sám žádný důvod
+nenese — a já ho hledal v Trade Activity Logu, místo abych se zeptal ACSILu.
+
+V `Lukacino_MultiSystem.cpp` (tvoje druhá studie) je to na dvou místech:
+
+```cpp
+SCString m; m.Format("Lukacino MS: prikaz NEODESLAN (%s), cil %d, ucet %d. ...",
+                     sc.GetTradingErrorTextMessage(res), target, actual);
+```
+
+**`sc.GetTradingErrorTextMessage(kód)` převede číslo na Sierrina vlastní slova.** MultiSwing to
+nikdy nezavolal. Teď volá, na všech čtyřech místech, kde se odmítnutí loguje:
+
+- vstup odmítnut (`BuyEntry`)
+- trim odmítnut (`SellExit`)
+- nepodařilo se nasměrovat bracket (`ModifyOrder`)
+- posun stopu odmítnut (`ModifyOrder`)
+
+Řádek z odmítnutí teď vypadá takto (stub vrací svůj vlastní text, Sierra vrátí ten svůj):
+
+```
+Multi-Swing ORDER REJECTED, Sierra returned -1: BUY 1 C06_4 at market, stop 3583.75 ...
+  Sierra's own words: "stub: generic refusal, no reason recorded".  -1 is Sierra's generic ...
+```
+
+### Dvě věci, na které jsem si dal pozor
+
+1. **Návratový typ.** Výsledek se nejdřív přiřadí do `SCString` a do `%s` jde `GetChars()`. To se
+   zkompiluje, ať ACSIL vrací `const char*` nebo `SCString`; poslat `SCString` přímo do `%s` by se
+   nezkompilovalo vůbec. Po tom, co nám build spadl na vymyšlených enumech, nechci riskovat podpis,
+   který jsem neviděl.
+2. **Žádná konkatenace.** `RejectWhy()` skládá text přes `Format("%s%s", …)`, ne přes `operator+`
+   s `const char*` — Format má každý ACSIL build.
+
+### `TextTag`
+
+Na každém odesílaném příkazu je teď `o.TextTag = "MultiSwing"`, taky z MultiSystemu
+(`o.TextTag = "LukacinoMS"`). V Trade Activity je pak vidět, který příkaz je čí — na účtu, kde
+běží víc než jedna věc, to zpětně nepřečteš jinak.
+
+### Měřeno
+
+| | vstupů | odmítnutí | žurnál |
+|---|---|---|---|
+| `.31` | 135 | 0 | `89fdf531…` |
+| `.32` | 135 | 0 | `89fdf531…` |
+
+Žurnál i výstupní soubor bit-identické. Rozhodovací vrstva se nedotkla, přidal se jen text do logu.

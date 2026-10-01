@@ -51,7 +51,10 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.31";
+static const char* STUDY_VERSION = "2026-10-01.32";
+// Rides on every order so Trade Activity says which study sent it. Without it an account shared
+// with anything else - another study, a manual click - cannot be read back afterwards.
+static const char* ORDER_TAG = "MultiSwing";
 
 static const int NUM_FAMILIES = 12;
 
@@ -287,6 +290,34 @@ static const char* OrderRejectHint(int rc)
                " separately: Window > Message Log at lines WITHOUT the 'Study: Lukacino"
                " Multi-Swing' prefix at this same timestamp, and Trade > Trade Activity Log.";
     return "";
+}
+
+// Sierra's own words for a trading error code.
+//
+// Every refusal this study has logged so far was a bare number, and the number carries no reason:
+// four separate theories were built on top of "-1" and all four turned out to be wrong. ACSIL has
+// had the answer all along - sc.GetTradingErrorTextMessage turns the code into the text Sierra
+// would have written itself - and this study simply never called it.
+//
+// The result is assigned into an SCString first, deliberately: that compiles whether the ACSIL
+// build returns a const char* or an SCString, and passing an SCString straight into a %s would not
+// compile at all. It is also why nothing here is printed without going through GetChars().
+static SCString SierraSays(SCStudyInterfaceRef sc, int rc)
+{
+    SCString words = sc.GetTradingErrorTextMessage(rc);
+    SCString out;
+    if (words.GetLength() > 0)
+        out.Format("  Sierra's own words: \"%s\".", words.GetChars());
+    return out;
+}
+
+// Sierra's words followed by this study's own hint, as one string. Built with Format rather than
+// by concatenation so it leans on nothing but SCString::Format, which every ACSIL build has.
+static SCString RejectWhy(SCStudyInterfaceRef sc, int rc)
+{
+    SCString out;
+    out.Format("%s%s", SierraSays(sc, rc).GetChars(), OrderRejectHint(rc));
+    return out;
 }
 
 // one completed daily RTH bar plus the ETH extremes that belong to the same trading day
@@ -1571,9 +1602,9 @@ static RetireVerdict RetireLegNow(SCStudyInterfaceRef sc, StudyState& S, Account
         SCString m;
         m.Format("Multi-Swing: could not steer %s's %s (order %d to %.2f, Sierra returned %d); "
                  "cancelled the bracket, so those %d contract(s) go out at market once the cancel "
-                 "has taken.",
+                 "has taken.%s",
                  S.presets[k].id.GetChars(), useStop ? "stop" : "target", childId, price, rc,
-                 lg.qtyOnAccount);
+                 lg.qtyOnAccount, SierraSays(sc, rc).GetChars());
         sc.AddMessageToLog(m, 0);
     }
     return RETIRE_UNCOVERED;
@@ -1634,12 +1665,13 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
         if (lg.stopMoveFails <= 1 || lg.stopMoveFails >= STOP_MOVE_TRIES) {
             SCString m;
             m.Format("Multi-Swing: STOP MOVE REFUSED, Sierra returned %d: %s from %.2f to %.2f "
-                     "(stop order %d, parent %u). The earlier, wider stop is still working.%s",
+                     "(stop order %d, parent %u). The earlier, wider stop is still working.%s%s",
                      rc, S.presets[k].id.GetChars(), lg.stopOnAccount, want, stopId,
                      lg.parentOrderId,
                      lg.stopMoveFails >= STOP_MOVE_TRIES
                        ? " Asked three times and refused three times, so it will not be asked"
-                         " again for this trade." : "");
+                         " again for this trade." : "",
+                     SierraSays(sc, rc).GetChars());
             sc.AddMessageToLog(m, 1);
         }
     }
@@ -1729,6 +1761,7 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
     o.OrderQuantity = surplus;
     o.OrderType     = SCT_ORDERTYPE_MARKET;
     o.TimeInForce   = SCT_TIF_DAY;
+    o.TextTag       = ORDER_TAG;
     const int rc = (int)sc.SellExit(o);
     if (SkippedForRecalc(sc, S, rc, logLevel)) return TRIM_WAITING;
     if (rc > 0) {
@@ -1749,7 +1782,7 @@ static TrimResult TrimSurplus(SCStudyInterfaceRef sc, StudyState& S, const RunCf
     m.Format("Multi-Swing ORDER REJECTED, Sierra returned %d: SELL %d unclaimed contract(s) to "
              "bring the position from %d to %d. (%d of %d before order placement stops.)%s",
              rc, surplus, account, account - surplus, S.orderFailures + tally.fails + 1,
-             (int)ORDER_FAILURE_LIMIT, OrderRejectHint(rc));
+             (int)ORDER_FAILURE_LIMIT, RejectWhy(sc, rc).GetChars());
     sc.AddMessageToLog(m, 1);
     S.lastRejectCode = rc;
     if (S.orderFailures + ++tally.fails >= ORDER_FAILURE_LIMIT)
@@ -2154,6 +2187,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         o.OrderQuantity = qty;
         o.OrderType     = SCT_ORDERTYPE_MARKET;
         o.TimeInForce   = SCT_TIF_DAY;
+        o.TextTag       = ORDER_TAG;
         const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
 
         // The attached orders need their TYPE, not only their price.
@@ -2205,6 +2239,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             off.OrderQuantity = qty;
             off.OrderType     = SCT_ORDERTYPE_MARKET;
             off.TimeInForce   = SCT_TIF_DAY;
+            off.TextTag       = ORDER_TAG;
             // Measured from the close the book priced against, so the levels land where the
             // absolute form would have put them, give or take the gap between that close and the
             // actual fill.
@@ -2268,7 +2303,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                      rc, qty, S.presets[k].id.GetChars(), o.Stop1Price, o.Target1Price,
                      st.stop, st.target, last, (int)posNow.PositionQuantity, projected, accountCap,
                      S.orderFailures + tally.fails + 1, (int)ORDER_FAILURE_LIMIT,
-                     OrderRejectHint(rc));
+                     RejectWhy(sc, rc).GetChars());
             sc.AddMessageToLog(m, 1);
             // The cut-off was only tested once per study call, at the top of this function, while
             // the loop below it runs all forty-eight presets. A day on which every order is
