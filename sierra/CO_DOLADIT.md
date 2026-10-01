@@ -1410,3 +1410,73 @@ běží víc než jedna věc, to zpětně nepřečteš jinak.
 | `.32` | 135 | 0 | `89fdf531…` |
 
 Žurnál i výstupní soubor bit-identické. Rozhodovací vrstva se nedotkla, přidal se jen text do logu.
+
+---
+
+## P29 — Emergency Stop: jeden příkaz u brokera pod 48 bracketů (`.33`)
+
+Z `Lukacino_MultiSystem.cpp`, kde je to jediný skutečný příkaz u brokera. Tam chrání celou pozici,
+protože brackety nejsou vůbec. Tady je to podlaha **pod** 48 brackety.
+
+**Input In:91 — „Emergency Stop: points below the lowest book stop (0 = off)".** Default 0, vypnuto.
+
+### Jak je level určen
+
+`nejnižší stop, který kniha u držených nohou eviduje − buffer`, zarovnáno na tick.
+
+Záměrně z **knihy**, ne ze Sierry. Selhání, pro které tenhle příkaz existuje, je přesně to, že
+Sierrovy brackety zmizely — level odvozený z nich by zmizel s nimi. Když žádná noha stop nehlásí,
+**nepošle se nic** a napíše se to; číslo si nevymýšlím.
+
+### Riziko, které to má, řečeno nahlas
+
+S fungujícími brackety je pozice krytá **dvakrát**: 48 bracketových stopů v součtu = pozice, a tento
+jeden příkaz = pozice znovu. Když vystřelí tenhle, pozice je plochá — ale bracketová dítka pořád
+pracují a v dalším poklesu mohou vystřelit taky a vzít účet **nakrátko**.
+
+Studie to okno zavírá, jak rychle to vidí: fill se pozná na dalším volání, všechna bracketová dítka
+se zruší, všechny nohy se uvolní a **nové vstupy se zastaví**, dokud to nepotvrdíš (`Reload Presets`
+na druhou hodnotu). „Jak rychle to vidí" není „okamžitě" a při gapu přes všechny úrovně naráz by to
+nestihlo. Buffer je to, co drží tu otázku akademickou: nastavený dost široko vystřelí v normálním
+poklesu nejdřív brackety a na tenhle příkaz se nedojde.
+
+**Proto je to defaultně vypnuté.** Pro ES je rozumný start 20 bodů.
+
+### Ochrany proti bouři v logu
+
+| | |
+|---|---|
+| zrušení | přeposlané každé 50. volání, ne každé |
+| nový příkaz po zrušení | až po potvrzeném zrušení — dva ochranné stopy na jednu pozici ani na okamžik |
+| odmítnutí | neopakuje se, dokud se nezmění bar, množství nebo cena |
+| log odmítnutí | **jednou**, ne 185× |
+
+### Měřeno (smoke, 2 400 barů, 400 sessions)
+
+| scénář | vstupů | emerg. posláno | odmítnuto | vystřelilo | žurnál |
+|---|---|---|---|---|---|
+| **vypnuto (default)** | 135 | 0 | 0 | 0 | `89fdf531` |
+| **buffer 15 bodů** | 135 | 73 | 0 | 0 | `89fdf531` |
+| **Sierra ho odmítá** | 135 | 0 | 185 → **1 řádek v logu** | 0 | `89fdf531` |
+| **buffer 1 bod** (schválně špatně) | 85 | 39 | 0 | **1** | `89fdf531` |
+| **brackety nelze řídit** | 16 | 1 | 0 | **1** | `89fdf531` |
+
+Vypnuto je výstup **bit-identický** s `.32` — oba soubory. Žurnál je identický ve všech pěti
+scénářích: rozhodovací vrstva se nedotkla ani tam, kde net vystřelil (vstupů je méně, protože halt
+po výstřelu zastavil účet, ne knihu).
+
+Ten čtvrtý řádek je ten, co stojí za přečtení: s bufferem 1 bod net vystřelí a zastaví obchodování
+na zbytek runu. Není to chyba — je to ten input nastavený špatně. **Dávej 20, ne 1.**
+
+### Co kvůli tomu dostal stub
+
+Chyběly mu věci, které reálný ACSIL má: `SCT_TIF_GOOD_TILL_CANCELED`, `SetFloatLimits`,
+`SCT_OSC_ERROR`, `TextTag`, `AvgFillPrice` a hlavně `GetOrderByOrderID`, který dosud vždy vrátil
+„takový příkaz neexistuje" — studie nemohla poznat vyplněný ochranný stop od neexistujícího, a to
+je celý smysl toho dotazu. Teď vede stav každého dokončeného příkazu. Přidán `sc.SellOrder`
+(odpočívající STOP, který se vyplní, až na něj trh dojde) a `STUB_REFUSE_EMERG=1`.
+
+**`STUB_REFUSE_EMERG` existuje, protože nevím, jestli to Sierra vezme.** Těch 48 bracketů tu pozici
+už kryje a Sierra umí druhý příkaz nad stejnou pozicí odmítnout — u `SellExit` to prokazatelně dělá.
+Jestli to platí i pro `SellOrder`, řekne až první replay. Proto je to měřitelné z obou stran a ne
+předpokládané.

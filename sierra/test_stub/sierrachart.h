@@ -61,8 +61,8 @@ inline void CivilFromDays(int z, int& y, unsigned& m, unsigned& d)
     y = yy + (m <= 2);
 }
 enum { SCT_ORDERTYPE_MARKET = 1, SCT_ORDERTYPE_LIMIT = 2, SCT_ORDERTYPE_STOP = 3,
-       SCT_TIF_DAY = 1, SCT_TIF_GTC = 2,
-       SCT_OSC_FILLED = 1, SCT_OSC_CANCELED = 2, SCT_OSC_OPEN = 3 };
+       SCT_TIF_DAY = 1, SCT_TIF_GTC = 2, SCT_TIF_GOOD_TILL_CANCELED = 2,
+       SCT_OSC_FILLED = 1, SCT_OSC_CANCELED = 2, SCT_OSC_OPEN = 3, SCT_OSC_ERROR = 4 };
 enum { DRAWING_TEXT = 1, DRAWING_STATIONARY_TEXT = 2, UTAM_ADD_OR_ADJUST = 1,
        TOOL_DELETE_CHARTDRAWING = 1 };
 typedef unsigned long COLORREF;
@@ -103,7 +103,7 @@ struct s_SCNewOrder {
 // stop. The earlier theory that a missing type was behind the refusals is dead, and the fields
 // this stub briefly carried for it never existed in Sierra - they are gone, because a stub that
 // invents members hides exactly the mistake that made them up.
-struct s_SCTradeOrder { int InternalOrderID = 0, OrderStatusCode = 0, OrderQuantity = 0; double Price1 = 0; };
+struct s_SCTradeOrder { int InternalOrderID = 0, OrderStatusCode = 0, OrderQuantity = 0; double Price1 = 0, AvgFillPrice = 0; };
 struct s_SCPositionData { double PositionQuantity = 0; double AveragePrice = 0; };
 
 // Sierra counts days from 1899-12-30, a Saturday. The stub used to count from the Unix epoch, a
@@ -144,6 +144,10 @@ struct SCInput {
     void SetYesNo(int v) { yesno = v; }   int GetYesNo() const { return yesno; }
     void SetInt(int v) { i = v; }         int GetInt() const { return i; }
     void SetFloat(float v) { f = v; }     float GetFloat() const { return f; }
+    // Real ACSIL clamps the dialog to these; nothing here needs the clamp, but a study that sets
+    // limits must compile against the stub too.
+    void SetFloatLimits(float, float) {}
+    void SetIntLimits(int, int) {}
     void SetString(const char* v) { str = v; } SCString GetString() const { return str; }
     void SetCustomInputStrings(const char*) {}
     void SetCustomInputIndex(int v) { idx = v; } int GetIndex() const { return idx; }
@@ -335,6 +339,23 @@ struct SCStudyInterface {
             } else ++i;
         }
         if (pendingSellQty < 0) pendingSellQty = 0;
+        // A resting protective stop (parent 0) fills when the market trades down to it. Every
+        // contract it holds leaves the account at once - which is the point of it - and the
+        // bracket children it was sitting underneath are left alone here deliberately: whether
+        // they then fire too, and take the account short, is the real risk of running one of
+        // these under forty-eight brackets, and a stub that quietly tidied them away would hide
+        // exactly that.
+        for (std::map<int, StubOrder>::iterator it = working.begin(); it != working.end(); ) {
+            if (it->second.parent != 0 || !it->second.isStop) { ++it; continue; }
+            if (stubLast <= 0 || stubLast > it->second.price) { ++it; continue; }
+            stubPosition -= it->second.qty;
+            if (stubPosition < 0) stubPosition = 0;
+            finished[it->first] = SCT_OSC_FILLED;
+            lastFillPrice = it->second.price;
+            ++emergFills;
+            std::map<int, StubOrder>::iterator dead = it++;
+            working.erase(dead);
+        }
         if (stubPosition < minPositionSeen) minPositionSeen = stubPosition;
         if (stubPosition < want) ++oversoldEvents;   // the book wanted more than is held
     }
@@ -443,6 +464,8 @@ struct SCStudyInterface {
             }
             stubPosition -= qty;
             if (stubPosition < 0) stubPosition = 0;
+            finished[o.InternalOrderID] = SCT_OSC_FILLED;
+            lastFillPrice = o.Price1;
             ++bracketExits;
         }
         return 1;
@@ -456,10 +479,66 @@ struct SCStudyInterface {
         std::map<int, StubOrder>::iterator it = working.find(id);
         if (it == working.end()) { ++cancelsOnDeadOrder; return -1; }
         working.erase(it);
+        finished[id] = SCT_OSC_CANCELED;
         ++cancelsOk;
         return 1;
     }
-    int  GetOrderByOrderID(int, s_SCTradeOrder&) { return 0; }   // 0 = no such order
+    // The final state of every order this stub has finished with: an order that filled or was
+    // cancelled is no longer in `working`, and a study that only ever got "no such order" back
+    // could not tell a filled protective stop from one that never existed. That distinction is the
+    // whole point of asking, so it is recorded.
+    std::map<int, int> finished;          // id -> SCT_OSC_*
+    double lastFillPrice = 0;
+    int  GetOrderByOrderID(int id, s_SCTradeOrder& r)
+    {
+        r = s_SCTradeOrder();
+        r.InternalOrderID = id;
+        std::map<int, StubOrder>::iterator it = working.find(id);
+        if (it != working.end()) {
+            r.OrderStatusCode = SCT_OSC_OPEN;
+            r.OrderQuantity   = it->second.qty;
+            r.Price1          = it->second.price;
+            return 1;
+        }
+        std::map<int, int>::iterator f = finished.find(id);
+        if (f == finished.end()) return 0;          // 0 = no such order
+        r.OrderStatusCode = f->second;
+        r.AvgFillPrice    = lastFillPrice;
+        return 1;
+    }
+
+    // STUB_REFUSE_EMERG=1 refuses the standalone protective stop and accepts everything else. It
+    // models the one thing Sierra might legitimately do to it: the contracts are already covered by
+    // forty-eight bracket stops, so a further sell order over the same position can be read as
+    // over-coverage. Whether Sierra actually refuses it is NOT known, which is exactly why the
+    // refusal has to be measurable rather than assumed either way.
+    bool  stubRefuseEmerg = getenv("STUB_REFUSE_EMERG")
+                         && atoi(getenv("STUB_REFUSE_EMERG")) == 1;
+    int   emergPlaced = 0, emergRefused = 0, emergFills = 0;
+
+    // A plain sell order, not an exit: Sierra's SellOrder. A STOP rests in the book until the
+    // market reaches it; a MARKET one reduces the position at once. Coverage is deliberately NOT
+    // enforced here - that rule is Sierra's answer to SellExit, and whether it also applies to
+    // this call is what STUB_REFUSE_EMERG exists to test.
+    int  SellOrder(s_SCNewOrder& o)
+    {
+        ++ordersAttempted;
+        if (!stubSim) return -1;
+        if (o.OrderType == SCT_ORDERTYPE_STOP) {
+            if (stubRefuseEmerg) { ++emergRefused; return -1; }
+            const int id = nextOrderId++;
+            o.InternalOrderID = id;
+            StubOrder t; t.id = id; t.parent = 0; t.qty = o.OrderQuantity;
+            t.price = o.Price1; t.isStop = true;
+            working[id] = t;                  // parent 0: belongs to no bracket
+            ++emergPlaced;
+            return id;
+        }
+        stubPosition -= o.OrderQuantity;
+        if (stubPosition < 0) stubPosition = 0;
+        o.InternalOrderID = nextOrderId++;
+        return o.InternalOrderID;
+    }
     // Signature copied from the real sierrachart.h (void, int parent, two int out-params).
     void GetAttachedOrderIDsForParentOrder(int parent, int& r_TargetInternalOrderID, int& r_StopInternalOrderID)
     {

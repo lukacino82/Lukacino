@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.32";
+static const char* STUDY_VERSION = "2026-10-01.33";
 // Rides on every order so Trade Activity says which study sent it. Without it an account shared
 // with anything else - another study, a manual click - cannot be read back afterwards.
 static const char* ORDER_TAG = "MultiSwing";
@@ -81,6 +81,7 @@ enum InputIdx {
     // Appended at the end and never renumbered: an existing chart keeps every setting it had.
     IN_FAMX_SL = 65, IN_FAMX_RRR = 66,                                              // 65-88, stride 2
     IN_LIVE_CONFIRM = 89,                                                           // 89 live seatbelt
+    IN_EMERG_BUFFER = 90,                                                           // 90 emergency stop
     IN_COUNT
 };
 
@@ -393,6 +394,24 @@ struct StudyState {
     bool     chartSimWarned = false;    // ... and for the chart-simulation-has-no-exits note
     bool     capLogged = false;        // ... and for the one-time note naming Sierra's position cap
     bool     confirmWarned = false;    // ... and for the live-trading seatbelt notice
+
+    // ---- the one safety net that is not a bracket
+    //
+    // A single resting sell stop for the whole account position, placed below every bracket stop in
+    // the book. Everything else in this study depends on Sierra's forty-eight brackets being there
+    // and on this study still running; this one order is held by the broker and survives both.
+    int      emergStopId = 0;          // Sierra's handle on it, 0 = none working
+    int      emergQty = 0;             // what it covers, so a changed position replaces it
+    double   emergPrice = 0;           // where it is working, same reason
+    int      emergCancelCalls = 0;     // a cancel is re-sent every 50th call, not every call
+    int      emergFailBar = -1;        // a refusal is not retried until the bar or the order
+    int      emergFailQty = 0;         //    itself changes - a retry storm at replay speed is
+    double   emergFailPx = 0;          //    thousands of identical log lines a second
+    bool     emergErrLogged = false;   // the refusal is said once per attempt, not per call
+    long     emergFills = 0;           // how often it has actually caught something
+    bool     emergHalt = false;        // ... and after one, no new entry until acknowledged
+    bool     emergHaltWarned = false;
+    bool     emergNoStopWarned = false;
 };
 
 // ------------------------------------------------------------------ small parsing helpers
@@ -2034,6 +2053,20 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     //
     // No amount of code fixes it after the fact - the IDs are gone. So the study refuses to trade
     // at all until the account is flat, and says so instead of quietly making it worse.
+    // An emergency fill means the brackets failed and the whole position was taken off by the one
+    // order underneath them. Whatever caused that is still true until somebody has read the log, so
+    // the book does not start a new trade on its own. Lifted the same way every other latch is.
+    if (S.emergHalt) {
+        if (!S.emergHaltWarned) {
+            S.emergHaltWarned = true;
+            sc.AddMessageToLog(
+                "Multi-Swing: NOT TRADING - the Emergency Stop fired and the book was released. "
+                "Read the lines above it, then change the Input 'Reload Presets' to its OTHER "
+                "value to start again.", 1);
+        }
+        return;
+    }
+
     if (send && S.ordersPlaced == 0 && account > 0) {
         S.orphanHalt = true;
         if (!S.orphanWarned) {
@@ -2321,6 +2354,166 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
 }
 
 
+// ------------------------------------------------------------------ the emergency stop
+//
+// One resting sell stop, held by the broker, for the whole account position, placed below every
+// bracket stop the book knows about.
+//
+// Everything else in this study's protection is a Sierra bracket, and a bracket protects a position
+// only while Sierra has it and while this study is alive to steer it. His own logs are what that
+// assumption looks like when it breaks: brackets that had filled while legs still claimed their
+// contracts, "book 9 contracts position 0", twenty-one refused steers in a row. A broker-held stop
+// does not care whether this study is running, whether the chart recalculated, or whether a
+// ModifyOrder was refused - it is the floor under all of it.
+//
+// THE RISK, stated plainly, because it is real and it is the reason this is OFF by default.
+// With brackets working, the position is covered twice: forty-eight bracket stops add up to the
+// position, and this one order covers the position again. If this one fires, the position is flat -
+// but the bracket children are still working, and in a market that keeps falling they can fire too
+// and take the account SHORT. The study closes that window as fast as it can see it: the fill is
+// detected on the next call, every bracket child is cancelled, every leg is released and new
+// entries stop until the run is acknowledged. "As fast as it can see it" is not "instantly", and on
+// a gap through every level at once it would not be. That is the trade: an unprotected long in a
+// crash, or a brief unintended short. The buffer is what keeps the question academic - with it set
+// wide, the brackets fire first in any ordinary decline and this order is never reached.
+static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mode, bool enabled,
+                                  int logLevel)
+{
+    const double buffer = sc.Input[IN_EMERG_BUFFER].GetFloat();
+    const bool   armed  = enabled && mode == MODE_FULL
+                       && sc.Input[IN_LIVE_CONFIRM].GetYesNo() != 0
+                       && buffer > 0;
+
+    // ---- did it catch something since the last call?
+    //
+    // Asked before anything else and regardless of `armed`: an order already working has to be
+    // followed to its end even if the Input was switched off in the meantime.
+    if (S.emergStopId != 0) {
+        s_SCTradeOrder ord;
+        if (sc.GetOrderByOrderID(S.emergStopId, ord)) {
+            if (ord.OrderStatusCode == SCT_OSC_FILLED) {
+                SCString m;
+                m.Format("Multi-Swing: EMERGENCY STOP FILLED at %.2f - %d contract(s) are off the "
+                         "account. The brackets did not do their job, so cancelling every one of "
+                         "them now and releasing the book. NO NEW ENTRIES until you change the "
+                         "Input 'Reload Presets' to its OTHER value: an emergency fill means "
+                         "something was wrong, and it should be read before the book trades again.",
+                         ord.AvgFillPrice > 0 ? ord.AvgFillPrice : S.emergPrice, S.emergQty);
+                sc.AddMessageToLog(m, 1);
+                // Every bracket child goes, or the ones still working can fire into a flat account
+                // and sell it short. This is the window the comment above is about.
+                for (size_t k = 0; k < S.legs.size(); ++k) {
+                    AccountLeg& lg = S.legs[k];
+                    if (lg.parentOrderId == 0) continue;
+                    int targetId = 0, stopId = 0;
+                    sc.GetAttachedOrderIDsForParentOrder((int)lg.parentOrderId, targetId, stopId);
+                    if (targetId != 0) sc.CancelOrder(targetId);
+                    if (stopId   != 0) sc.CancelOrder(stopId);
+                    lg = AccountLeg();
+                }
+                ++S.emergFills;
+                S.emergHalt = true;
+                S.emergHaltWarned = true;
+                S.emergStopId = 0; S.emergQty = 0; S.emergPrice = 0;
+                return;
+            }
+            if (ord.OrderStatusCode == SCT_OSC_CANCELED || ord.OrderStatusCode == SCT_OSC_ERROR) {
+                S.emergStopId = 0; S.emergQty = 0; S.emergPrice = 0; S.emergCancelCalls = 0;
+            }
+        } else {
+            // Sierra does not know this id at all. Nothing can be done with a handle that leads
+            // nowhere, and holding on to it would stop a replacement from ever being placed.
+            S.emergStopId = 0; S.emergQty = 0; S.emergPrice = 0; S.emergCancelCalls = 0;
+        }
+    }
+
+    // ---- what it should be, if anything
+    s_SCPositionData pos;
+    sc.GetTradePosition(pos);
+    int held = (int)pos.PositionQuantity;
+    if (held < 0) held = 0;          // this study is long-only; a short is not its position to hold
+
+    // The level comes from the book's own stops, not from Sierra's, deliberately: the failure this
+    // order exists for is Sierra's brackets being gone, and a level derived from them would be gone
+    // with them. The lowest stop any held leg is working to, less the buffer, sits under all of
+    // them by construction.
+    double lowest = 0;
+    for (size_t k = 0; k < S.legs.size(); ++k) {
+        const AccountLeg& lg = S.legs[k];
+        if (lg.qtyOnAccount <= 0 || lg.stopOnAccount <= 0) continue;
+        if (lowest == 0 || lg.stopOnAccount < lowest) lowest = lg.stopOnAccount;
+    }
+
+    const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
+    const double level = lowest > 0 ? ToTick(lowest - buffer, tick, true) : 0.0;
+    const bool   want  = armed && held > 0 && level > 0;
+
+    if (armed && held > 0 && level <= 0 && !S.emergNoStopWarned) {
+        S.emergNoStopWarned = true;
+        sc.AddMessageToLog(
+            "Multi-Swing: the Emergency Stop is armed and the account holds contracts, but no leg "
+            "in the book reports a stop to place it under, so none was sent. A number was not "
+            "invented for it. That state means the book has lost track of what it holds - the "
+            "status box will say so too.", 1);
+    }
+
+    // ---- an order that is working but should not be, or should be somewhere else
+    if (S.emergStopId != 0) {
+        const bool wrong = !want || S.emergQty != held || fabs(S.emergPrice - level) > tick / 2;
+        if (!wrong) return;                       // already exactly right: nothing to do
+        // Cancelled first, and the replacement waits for the cancel to be confirmed on a later
+        // call. Two protective stops for one position, even for a moment, is the one mistake worth
+        // being slow about. Re-sent every fiftieth call rather than every call, because a cancel
+        // Sierra will not take must not fill the log.
+        if (S.emergCancelCalls++ % 50 == 0) sc.CancelOrder(S.emergStopId);
+        return;
+    }
+
+    if (!want) return;
+
+    // ---- place it
+    const int bar = sc.ArraySize > 0 ? sc.ArraySize - 1 : 0;
+    if (S.emergFailBar == bar && S.emergFailQty == held
+        && fabs(S.emergFailPx - level) <= tick / 2) return;      // refused already, unchanged
+
+    s_SCNewOrder o;
+    o.OrderType     = SCT_ORDERTYPE_STOP;
+    o.Price1        = level;
+    o.OrderQuantity = held;
+    o.TimeInForce   = SCT_TIF_GOOD_TILL_CANCELED;   // it has to outlive the session, and the study
+    o.TextTag       = "MultiSwing Emergency";
+    const int rc = (int)sc.SellOrder(o);
+    if (rc > 0) {
+        S.emergStopId = o.InternalOrderID;
+        S.emergQty = held; S.emergPrice = level;
+        S.emergCancelCalls = 0; S.emergFailBar = -1; S.emergErrLogged = false;
+        if (logLevel >= LOG_INFO) {
+            SCString m;
+            m.Format("Multi-Swing: EMERGENCY STOP working at %.2f for %d contract(s) "
+                     "(%.2f points under the lowest book stop %.2f), order %d, GTC.",
+                     level, held, buffer, lowest, S.emergStopId);
+            sc.AddMessageToLog(m, 0);
+        }
+        return;
+    }
+
+    // Refused. Not counted against the rejection cut-off: the position is still covered by its
+    // brackets, so a missing safety net is a smaller problem than stopping the order layer over it.
+    S.emergFailBar = bar; S.emergFailQty = held; S.emergFailPx = level;
+    if (!S.emergErrLogged) {
+        S.emergErrLogged = true;
+        SCString m;
+        m.Format("Multi-Swing: EMERGENCY STOP REFUSED, Sierra returned %d: sell stop %d at %.2f. "
+                 "The brackets are still working, so the position is not unprotected - but the "
+                 "floor under them is not there. The likeliest reason is that these contracts are "
+                 "already covered by those brackets and Sierra will not take a second order over "
+                 "the same position; if that is what it says, this safety net cannot be had "
+                 "alongside brackets and the Input should go back to 0.%s",
+                 rc, held, level, SierraSays(sc, rc).GetChars());
+        sc.AddMessageToLog(m, 1);
+    }
+}
+
 // ------------------------------------------------------------------ on-chart status box
 //
 // ACSIL has no status-text call (sc.SetStudyStatusText does not exist), so the box is a stationary
@@ -2345,6 +2538,7 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
     const bool halted = S.haltedDd || S.haltedDaily;
     const char* modeName = !enabled           ? "OFF (Trading Enabled = No)"
                          : S.orphanHalt       ? "NOT TRADING - flatten the account first"
+                         : S.emergHalt        ? "NOT TRADING - the Emergency Stop fired, read the log"
                          // Before the latch: if the seatbelt is off then nothing is being sent for
                          // that reason, and that is the one the reader can act on in one click.
                          : mode == MODE_FULL && !confirmed
@@ -2381,6 +2575,17 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
         orp.Format("\nFLATTEN    the account holds contracts this run did not place - "
                    "Trade > Flatten and Cancel All");
         warn += orp;
+    }
+    // The safety net is only worth having if its absence is visible, so the box reports both
+    // states: where it is working, or that it is switched off.
+    if (S.emergStopId != 0) {
+        SCString em;
+        em.Format("\nEMERG STOP %.2f for %d contract(s), GTC at the broker", S.emergPrice, S.emergQty);
+        warn += em;
+    } else if (sc.Input[IN_EMERG_BUFFER].GetFloat() > 0 && mode == MODE_FULL) {
+        SCString em;
+        em.Format("\nEMERG STOP armed, nothing working yet");
+        warn += em;
     }
     if (S.incompleteDays > 0) {
         SCString inc;
@@ -2586,6 +2791,11 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 
         sc.Input[IN_LIVE_CONFIRM].Name = "LIVE TRADING CONFIRMED (seatbelt)";
         sc.Input[IN_LIVE_CONFIRM].SetYesNo(0);
+
+        sc.Input[IN_EMERG_BUFFER].Name =
+            "Emergency Stop: points below the lowest book stop (0 = off)";
+        sc.Input[IN_EMERG_BUFFER].SetFloat(0.0f);
+        sc.Input[IN_EMERG_BUFFER].SetFloatLimits(0.0f, 500.0f);
 
         // These six are study CONFIGURATION, not runtime state: Sierra reads them when the study
         // is configured, and assigning them later in the call - which is what this study did until
@@ -2825,6 +3035,8 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       // unchanged by a recalculation, so leg k still describes preset k.
                       S->trimSentQty = 0; S->trimWaited = 0;
                       S->orphanHalt = false; S->orphanWarned = false;
+                      S->emergHalt = false; S->emergHaltWarned = false;
+                      S->emergNoStopWarned = false;
                       S->chartSimWarned = false;
                       S->bracketsSeen = S->bracketsEmpty = 0; S->modifyOk = S->modifyFail = 0;
                       S->incompleteDays = 0;
@@ -2954,6 +3166,11 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // entering and another exiting on the same day nets out instead of sending two orders.
     SyncOrders(sc, *S, cfg, sc.Input[IN_MODE].GetIndex(), enabled, logLevel,
                S->daily.empty() ? 0.0 : S->daily.back().c);
+    // Outside SyncOrders deliberately. That function returns early in half a dozen places - a
+    // refused trim, the rejection latch, a recalculation - and every one of them is a moment when
+    // the safety net matters MORE, not less. It is the last thing the order layer does on every
+    // call, no matter what happened before it.
+    MaintainEmergencyStop(sc, *S, sc.Input[IN_MODE].GetIndex(), enabled, logLevel);
 
     // ---------------- signal labels ----------------
     // Walked backwards from the newest bar so "the last N sessions" is knowable: during the bar

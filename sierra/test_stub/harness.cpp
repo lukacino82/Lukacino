@@ -24,7 +24,7 @@ enum { IN_TRADING_ENABLED = 0, IN_MODE, IN_SEND_LIVE, IN_DIRECTION, IN_PRESET_FI
        IN_ENTRY_EXPIRY = 44, IN_TIME_STOP = 47, IN_LOG_LEVEL = 50,
        IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR = 53, IN_OV_RRR = 54,
        IN_DAILY_LOSS = 38, IN_MAX_DD_STOP = 39, IN_FAMX_SL = 65, IN_FAMX_RRR = 66,
-       IN_INSTRUMENT_IDX = 7, IN_LIVE_CONFIRM = 89 };
+       IN_INSTRUMENT_IDX = 7, IN_LIVE_CONFIRM = 89, IN_EMERG_BUFFER = 90 };
 
 // the study keeps its daily bars inside a private struct; for the harness we re-read the
 // subgraphs it publishes, which is exactly what a Sierra user can see on the chart
@@ -63,6 +63,9 @@ int main(int argc, char** argv)
     // LIVE_CONFIRM=0 closes the seatbelt, so the guard itself can be measured and not just
     // assumed: a full-auto run that sends nothing and says why exactly once.
     if (const char* v = getenv("LIVE_CONFIRM")) sc.Input[IN_LIVE_CONFIRM].SetYesNo(atoi(v));
+    // EMERG=<points> arms the single broker-held stop under the brackets, the same number the
+    // dialog takes. Off by default, as on a chart.
+    if (const char* v = getenv("EMERG"))        sc.Input[IN_EMERG_BUFFER].SetFloat((float)atof(v));
     if (const char* v = getenv("INSTRUMENT"))     sc.Input[IN_INSTRUMENT_IDX].SetCustomInputIndex(atoi(v));
     // FAM_SL / FAM_RRR take "family:value" pairs, 1-based, e.g. FAM_SL="1:2.0,3:1.5"
     for (int which = 0; which < 2; ++which) {
@@ -160,6 +163,9 @@ int main(int argc, char** argv)
                   << " oversold_calls " << sc.oversoldEvents
                   << " min_position " << (sc.minPositionSeen > 1e8 ? 0 : sc.minPositionSeen)
                   << " working_at_end " << sc.working.size()
+                  << " emerg_placed " << sc.emergPlaced
+                  << " emerg_refused " << sc.emergRefused
+                  << " emerg_fills " << sc.emergFills
                   << " max_position_allowed " << sc.MaximumPositionAllowed
                   << "\n";
     }
