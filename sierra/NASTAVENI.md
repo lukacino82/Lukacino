@@ -800,19 +800,22 @@ rozdíl je **jediný řádek**, a je v menu Sierry, ne ve studii.
 
 ## 2. Co nastavit ve studii
 
+Čísla jsou ta, která ukazuje dialog (`In:1`, `In:2`, …). **Dialog čísluje od 1, kód od 0**, takže
+`In:90` je v kódu index 89 — proto se ta dvě čísla ve starších poznámkách rozcházela.
+
 | Input | Hodnota | Pozn. |
 |---|---|---|
-| 1 `Trading Enabled` | Yes | |
-| 2 `Mode` | **Full auto** | |
-| 3 `Send Orders To Trade Service` | **Yes** | Pro Full auto to volba není. `No` je grafová simulace, která neumí řídit brackety. |
-| 8 `Instrument` | ES nebo MES | musí odpovídat symbolu grafu |
-| 35 `Max Gross Exposure` | **v MES ekvivalentech** | na ES děl deseti: `600` = strop 60 kontraktů. Status box ti to přepočítá. |
-| 39 `Daily Loss Limit USD` | **pro live nastav číslo** | `0` = vypnuto, což je špatný default pro ostrý účet |
-| 40 `Max Drawdown Stop USD` | **pro live nastav číslo** | dtto |
-| 89 `LIVE TRADING CONFIRMED` | **No, dokud si nejsi jistý** | dokud je No, nic neodejde |
-| 90 `Emergency Stop: points below the lowest book stop` | `0` při prvním replayi, pak **20** | jeden GTC stop na celou pozici, drží ho broker; `0` = vypnuto |
+| `In:1` Trading Enabled | Yes | |
+| `In:2` Mode | **Full auto** | |
+| `In:3` Send Orders To Trade Service | **Yes** | Pro Full auto to volba není. `No` je grafová simulace, která neumí řídit brackety. |
+| `In:8` Instrument | ES nebo MES | musí odpovídat symbolu grafu |
+| `In:35` Max Gross Exposure | **v MES ekvivalentech** | na ES děl deseti: `600` = strop 60 kontraktů. Status box ti to přepočítá. |
+| `In:39` Daily Loss Limit USD | **pro live nastav číslo** | `0` = vypnuto, což je špatný default pro ostrý účet |
+| `In:40` Max Drawdown Stop USD | **pro live nastav číslo** | dtto |
+| `In:90` LIVE TRADING CONFIRMED | **No, dokud si nejsi jistý** | dokud je No, nic neodejde |
+| `In:91` Emergency Stop: points below the lowest book stop | `0` při prvním replayi, pak **20** | jeden GTC stop na celou pozici, drží ho broker; `0` = vypnuto |
 
-Nakonec přepni Input 6 `Reload Presets` na **opačnou** hodnotu. Zvedne to případnou západku
+Nakonec přepni `In:6` `Reload Presets` na **opačnou** hodnotu. Zvedne to případnou západku
 `STOPPED`. Nastavit ho na to, co už tam je, nedělá nic.
 
 ## 3. Co musí status box hlásit, než odejdeš od počítače
@@ -825,7 +828,7 @@ book      N contracts   position N         ← tato dvě čísla si musí odpov�
 days      N   risk unit 1.00 ES
 cap       60 ES contracts   (Max Gross 600 MES)
 P&L       ...
-EMERG STOP 3561.25 for 4 contract(s), GTC at the broker   ← jen když je Input 90 > 0
+EMERG STOP 3561.25 for 4 contract(s), GTC at the broker   ← jen když je `In:91` > 0
 ```
 
 Čeho si všímat:
@@ -855,11 +858,11 @@ boxu je papírová. Přesně tahle kombinace nás stála den hledání, viz `CO_
 ## 5. Když to zastaví
 
 `STOPPED` znamená pět odmítnutí v jednom volání. Postup: zavři pozici ručně, srovnej, co hlásí
-odmítnutí, pak přepni Input 6 `Reload Presets`. Západka se jinak nezvedne.
+odmítnutí, pak přepni `In:6` `Reload Presets`. Západka se jinak nezvedne.
 
 ---
 
-# Emergency Stop (Input 90)
+# Emergency Stop (`In:91`)
 
 Jeden příkaz **u brokera** pod všemi 48 brackety: prodejní stop na celou pozici, GTC. Drží ho broker,
 takže funguje i když Sierra spadne, graf se přepočítává, nebo `ModifyOrder` na bracket neprojde.
@@ -891,7 +894,7 @@ Multi-Swing: EMERGENCY STOP FILLED at 3477.25 - 4 contract(s) are off the accoun
 ```
 
 a status box bude hlásit `NOT TRADING - the Emergency Stop fired, read the log`. Obchodovat to začne
-znovu až po přepnutí Inputu 6 `Reload Presets` na opačnou hodnotu. To je úmyslně ruční krok: když
+znovu až po přepnutí `In:6` `Reload Presets` na opačnou hodnotu. To je úmyslně ruční krok: když
 vystřelí net, brackety neudělaly svou práci, a to je potřeba přečíst, než kniha obchoduje dál.
 
 ## Může ho Sierra odmítnout?
@@ -906,4 +909,154 @@ Multi-Swing: EMERGENCY STOP REFUSED, Sierra returned -1: sell stop 4 at 3561.25.
 ```
 
 Pozice přitom není nechráněná — brackety pracují dál. Jen ta podlaha pod nimi není. Pak vrať
-Input 90 na `0` a pošli mi tu Sierrinu větu.
+`In:91` na `0` a pošli mi tu Sierrinu větu.
+
+---
+
+# FULL AUTO REPLAY — kompletní nastavení
+
+Jeden list, nic jiného nepotřebuješ. Čísla Inputů jsou ta, co ukazuje dialog (`In:1` … `In:91`).
+
+## A. Sierra — v tomhle pořadí
+
+| # | Kde | Co |
+|---|---|---|
+| 1 | *Global Settings → General Settings → Time Zone* | **New York (Eastern)** |
+| 2 | *File → Find Symbol* → ESZ26 → **Intraday Chart** | |
+| 3 | *Chart Settings → Bar Period* | **Minutes / 1** |
+| 4 | *Chart Settings → Symbol → Continuous Futures Contract* | **Date Rule Rollover – Back Adjusted** |
+| 5 | *Chart Settings → Data → Days to Load* | **1000** pro testovací replay, **3300** pro parity 2018–2026 |
+| 6 | *Chart Settings → Session Times → Use specific session times* | **vypnuto** |
+| 7 | *Trade → Trade Simulation Mode* | **zaškrtnuto** |
+| 8 | *Trade Window* nebo *Chart Settings → Trading* | vybrat účet **Sim1** |
+| 9 | *Trade → Flatten and Cancel All* | ručně, než začneš — účet musí být na nule |
+| 10 | *Trade → Auto Trading Enabled - Global* | **zaškrtnout** |
+| 11 | nastavit Inputy studie (sekce B) | |
+| 12 | *Chart → Chart Replay* → Start Date, Speed → **Start** | |
+| 13 | *Trade → Auto Trading Enabled for Chart* | **zaškrtnout teprve TEĎ** |
+| 14 | `In:6` Reload Presets → na **opačnou** hodnotu | zvedne případnou západku |
+
+**Bod 13 je ten, na kterém to padalo.** Sierra tohle zaškrtnutí shazuje při startu replaye, při
+reloadu grafu a při změně symbolu. Vždycky poslední.
+
+**Start Date replaye:** dej ho **12 měsíců zpátky**, ne na začátek natažených dat. Studie potřebuje
+252 seancí historie (≈ 14 kalendářních měsíců), než může první preset signalizovat — s 1000 dny
+natažených dat a startem před rokem zbyde na zahřátí ~21 měsíců. Dokud se nezahřeje, status box
+hlásí `WARMING UP n of 200 sessions` a to je správně, ne chyba.
+
+**Replay Speed:** `100`–`500`×. „As fast as possible" nedávej: fily se simulují a studie kontroluje
+účet jednou za volání, takže při extrémní rychlosti si knihu a účet jen zbytečně rozhodíš.
+
+## B. Inputy studie — všech 91
+
+### Global
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:1` Trading Enabled | **Yes** | bez toho se nic nepočítá |
+| `In:2` Mode | **Full auto** | |
+| `In:3` Send Orders To Trade Service (LIVE!) | **Yes** | `No` je grafová simulace, ta neumí řídit brackety |
+| `In:4` Direction Filter | Long only | |
+| `In:5` Preset File | `swing_presets.csv` | |
+| `In:6` Reload Presets (toggle) | přepni **naposledy** | |
+| `In:7` Risk Unit (contracts per preset) | `1.0` | |
+| `In:8` Instrument | **ES** | musí odpovídat symbolu grafu |
+| `In:9` Entry Timing | Fill at RTH close | odpovídá výzkumu, neměň |
+| `In:10` Journal CSV | `swing_journal.csv` | |
+
+### Rodiny — `In:11` … `In:34`
+
+Dvanáct dvojic *Enabled* / *Weight*. **Všechny `Yes` / `1.0`.** Nic neměň: tohle je ta kniha, která
+se měřila.
+
+### Riziko
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:35` Max Gross Exposure (MES ekvivalenty) | **600** | 48 presetů × 1 ES = 48 ES = 480 MES. Default 60 je pro MES a na ES by pustil 6 kontraktů. |
+| `In:36` Max Concurrent Presets | `48` | |
+| `In:37` Max Presets Per Family | `4` | |
+| `In:38` Max Presets Per Role | `12` | |
+| `In:39` Daily Loss Limit USD | **0** | pro replay vypnuto, ať vidíš všechno. Pro live číslo. |
+| `In:40` Max Drawdown Stop USD | **0** | dtto |
+| `In:41` (unused) Scale In | No | |
+| `In:42` (unused) Scale In Cap | `2.0` | |
+
+### Provedení
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:43` Entry Type Override | **As defined by preset** | |
+| `In:44` Limit / Stop Offset (ticks) | `0` | |
+| `In:45` Entry Order Expiry (sessions) | `1` | |
+| `In:46` (unused) Max Slippage | `8` | |
+| `In:47` (unused) Flatten At Session End | **No** | jsou to swingy, drží se přes noc |
+| `In:48` Time Stop Override | `0` | `0` = podle presetu |
+
+### Seance a diagnostika
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:49` RTH Start | **9:30:00** | v časové zóně grafu |
+| `In:50` RTH End | **16:00:00** | |
+| `In:51` Log Level | **Info** | `Debug` jen když něco ladíme — zahltí log |
+| `In:52` Draw Signals On Chart | Yes | `No` je rychlejší replay |
+
+### Exit override — `In:53` … `In:59`
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:53` Exit Override (overrides ALL presets) | **As defined by preset** | **kritické.** Cokoli jiného přepíše exity všech 48 presetů a parity proti harnessu padne. |
+| `In:54`–`In:59` | nech jak jsou | dokud je `In:53` na „As preset", ignorují se |
+
+### Zobrazení
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:60` Show Status Box On Chart | **Yes** | jediné místo, kde režim vidíš bez logu |
+| `In:61` Status Box Corner | podle vkusu | |
+| `In:62` Status Box Font Size | `10` | |
+| `In:63` Label Signals With Preset Count | **No** | při replayi by zavalil graf |
+| `In:64` Label Only The Last N Sessions | `60` | neaktivní |
+| `In:65` Feature Dump CSV | **prázdné** | |
+
+### Per-family exit override — `In:66` … `In:89`
+
+Dvanáct dvojic SL / RRR. **Všechny `0`.** `0` znamená „nech té rodině její změřený exit".
+
+### Seatbelt a net
+
+| Input | Hodnota | |
+|---|---|---|
+| `In:90` LIVE TRADING CONFIRMED | **Yes** | **tohle je ten přepínač, který pouští příkazy.** Dokud je `No`, Full auto počítá a loguje, ale neposílá nic. |
+| `In:91` Emergency Stop: points below the lowest book stop | **0** | na první full auto replay vypnuto. Až bude čisté, dej `20`. |
+
+## C. Co musí status box hlásit, než odejdeš
+
+```
+mode      FULL AUTO - ORDERS LIVE          ← červeně
+presets   48 in 12 families
+open      N presets
+book      N contracts   position N         ← tato dvě čísla si musí odpovídat
+days      N   risk unit 1.00 ES
+cap       60 ES contracts   (Max Gross 600 MES)
+P&L       ...
+```
+
+| Co vidíš | Co to znamená |
+|---|---|
+| `FULL AUTO - ARMED, not sending` | `In:90` je `No` |
+| `FULL AUTO - no exits: set Input 3 to Yes` | `In:3` je `No` |
+| `NOT TRADING - flatten the account first` | účet drží kontrakty, které tenhle run neposlal — bod 9 sekce A |
+| `STOPPED - rejections` | 5 odmítnutí za sebou; log říká proč, teď i Sierrinými slovy |
+| `WARMING UP n of 200 sessions` | **v pořádku**, replay startuje moc brzo v datech |
+| `book` ≠ `position` | tohle mi pošli, to je ta věc, kterou ladíme |
+
+## D. Rozdíl proti ostrému účtu
+
+**Jeden řádek:** bod 7 sekce A — *Trade → Trade Simulation Mode*. Zaškrtnuto = Sim, odškrtnuto =
+reálné peníze. **Studie ten rozdíl nevidí a status box vypadá v obou případech stejně.** To je celý
+důvod, proč `In:90` existuje.
+
+Pro ostrý účet navíc: `In:39` a `In:40` nastav na čísla, `In:91` na `20`, a `In:5` Days to Load
+stačí `1000`.
