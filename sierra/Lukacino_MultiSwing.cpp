@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.34";
+static const char* STUDY_VERSION = "2026-10-01.35";
 // Rides on every order so Trade Activity says which study sent it. Without it an account shared
 // with anything else - another study, a manual click - cannot be read back afterwards.
 static const char* ORDER_TAG = "MultiSwing";
@@ -83,6 +83,8 @@ enum InputIdx {
     IN_LIVE_CONFIRM = 89,                                                           // 89 live seatbelt
     IN_EMERG_BUFFER = 90,                                                           // 90 emergency stop
     IN_TRADE_LOG = 91,                                                              // 91 trade log CSV
+    IN_SEND_STOPLESS = 92,                                                          // 92 stopless entries
+    IN_BARE_FALLBACK = 93,                                                          // 93 bracket fallback
     IN_COUNT
 };
 
@@ -190,6 +192,14 @@ struct AccountLeg {
     // trail or breakeven says so, and to not re-send a move that is already in the market.
     unsigned int parentOrderId = 0;
     double stopOnAccount = 0;
+    // Sierra refused this entry with a bracket in either form and took it only bare, so there is
+    // no attached order to steer, move or cancel. Its only exit is a market sell, and the retire
+    // pass has to know that instead of hunting for children that were never created.
+    bool   bracketless = false;
+    // The entry's own fill price, asked of Sierra on a later call and written to the trade log
+    // once. An order cannot report its fill in the call that sends it - the fill has not happened
+    // yet - so this is the only way the record carries a price that is not the study's guess.
+    bool   fillLogged = false;
     // Retiring a closed preset can fail, and the old code wiped the leg anyway. Those contracts
     // then belonged to nobody: the book no longer counted them, no bracket could be steered
     // because the handle was gone, and the market sell for them was refused because they were
@@ -413,6 +423,9 @@ struct StudyState {
     bool     emergHalt = false;        // ... and after one, no new entry until acknowledged
     bool     emergHaltWarned = false;
     bool     emergNoStopWarned = false;
+    long     stoplessSent = 0;          // entries sent with no stop, because the preset has none
+    long     bareSent = 0;              // entries Sierra would only take with no bracket at all
+    bool     bareWarned = false;
 
     // ---- the trade log
     //
@@ -1728,6 +1741,7 @@ static void MoveAccountStop(SCStudyInterfaceRef sc, StudyState& S, size_t k, Acc
     }
 
     if (lg.parentOrderId == 0) return;                         // nothing to hang the lookup on
+    if (lg.bracketless) return;   // nothing was attached, so there is nothing to move
     int targetId = 0, stopId = 0;
     sc.GetAttachedOrderIDsForParentOrder((int)lg.parentOrderId, targetId, stopId);
     if (stopId == 0) return;   // no working stop child: already filled, or the bracket is gone
@@ -1923,6 +1937,26 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     }
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
+    // What the entries sent on earlier calls actually filled at.
+    //
+    // The row written when an order is accepted carries the close the book priced against, because
+    // at that instant nothing better exists. Sierra knows the real fill a call later, and an equity
+    // curve built on the book's price instead of the broker's is a different number - so it is read
+    // back and written down once per leg, with the order id to tie the two rows together.
+    if (send) {
+        for (size_t k = 0; k < S.legs.size() && k < S.presets.size(); ++k) {
+            AccountLeg& lg = S.legs[k];
+            if (lg.fillLogged || lg.parentOrderId == 0 || lg.qtyOnAccount <= 0) continue;
+            s_SCTradeOrder ord;
+            if (!sc.GetOrderByOrderID((int)lg.parentOrderId, ord)) continue;
+            if (ord.OrderStatusCode != SCT_OSC_FILLED) continue;
+            lg.fillLogged = true;
+            TradeLog(S, "ENTRY_FILLED", S.presets[k].id.GetChars(), lg.qtyOnAccount,
+                     ord.AvgFillPrice, lg.stopOnAccount, 0, (int)lg.parentOrderId, 0, 0,
+                     SCString(lg.bracketless ? "no bracket working" : "bracket working"));
+        }
+    }
+
     // The latch heals itself on a flat account.
     //
     // Five refusals stop the order layer for good, and that is right while the account is holding
@@ -2068,6 +2102,17 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // long as the run lasted. It changed nothing on the account and buried every other line.
         // Its contracts still count as held, and the report below has already said so once.
         if (lg.retireTries >= RETIRE_TRIES) { stillCovered += lg.qtyOnAccount; continue; }
+
+        // A bracketless leg has nothing to steer, and must not be counted as covered: its
+        // contracts are genuinely naked on the account, so the market sell below is both allowed
+        // to take them and the only thing that will. Releasing the leg here hands them to it.
+        if (lg.bracketless) {
+            TradeLog(S, "EXIT_MARKET", S.presets[k].id.GetChars(), lg.qtyOnAccount, last,
+                     0, 0, (int)lg.parentOrderId, 0, 0,
+                     SCString("bracketless leg released for the market sell"));
+            lg = AccountLeg();
+            continue;
+        }
 
         const RetireVerdict v = RetireLegNow(sc, S, lg, k, last, logLevel);
         if (v == RETIRE_ALREADY) {
@@ -2259,7 +2304,20 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
         // So it is held back. The preset keeps its paper trade and its journal row - the decision
         // engine is untouched, which is what keeps the replay comparable with the offline harness
         // - and the account simply does not take this one.
-        if (!RealPrice(st.stop, last)) {
+        // THE BOOK HAS NO STOP FOR THIS PRESET. Fifteen of the forty-eight are like this by
+        // design: their exit is a signal (x:C>SMA5, x:IBS>0.8, x:RSI2>90) or a trail that has not
+        // activated, and the research measured them that way. Holding all fifteen back, which is
+        // what this study did until now, silently removes 31 % of the book from the account - a
+        // deviation from the measured strategy large enough that no replay could ever agree with
+        // the harness, and one that showed up only as a counter in the status box. His run logged
+        // 241 of them in one replay.
+        //
+        // So it is a choice now, and the default sends them. An entry with no stop IS less safe
+        // between the fill and the book's own exit, and that is exactly what In:91's broker-held
+        // Emergency Stop is for. Running 31 % of the book as paper while the status box reads
+        // FULL AUTO is the worse of the two.
+        const bool stopless = !RealPrice(st.stop, last);
+        if (stopless && sc.Input[IN_SEND_STOPLESS].GetYesNo() == 0) {
             ++S.unprotectedHeld;
         TradeLog(S, "ENTRY_HELD", S.presets[k].id.GetChars(), qty, last, st.stop, st.target,
                  0, 0, projected, SCString("no usable stop in the book - nothing sent"));
@@ -2283,6 +2341,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             lg = AccountLeg();
             continue;
         }
+        if (stopless) ++S.stoplessSent;
 
         if (accountCap > 0 && projected + qty > accountCap) {
             if (logLevel >= LOG_DEBUG) {
@@ -2382,7 +2441,55 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
                 }
             }
         }
-        s_SCNewOrder& placed = viaOffsets ? off : o;
+        // THE THIRD AND LAST FORM: no bracket at all.
+        //
+        // His replay is what forced this. 805 entries refused, every one of them with Sierra's own
+        // words reading "General order error. Refer to Trade >> Trade Service Log" - which names
+        // no cause - and not one of them rescued by the offsets retry. Both bracketed forms were
+        // refused, so whatever Sierra objects to, it is not the ENCODING of the bracket.
+        //
+        // That leaves one question worth asking, and only an order can ask it: does Sierra take
+        // this entry with no attached orders at all? The other study on this account,
+        // Lukacino_MultiSystem.cpp, sends exactly that - SupportAttachedOrdersForTrading false,
+        // plain market orders - and it works. If the bare order goes through, the bracket is the
+        // thing being refused and the answer has been in front of us the whole time. If it is
+        // refused too, then study orders are being refused as such and nothing about this study's
+        // order building was ever the problem.
+        //
+        // Either way the replay stops producing a thousand refusals and no trades.
+        //
+        // The cost is real and is why it is an Input: a bare entry has nothing protecting it in
+        // the market. The book's own exit still closes it - the leg is marked bracketless and the
+        // retire pass sells it at market instead of hunting for children that do not exist - but
+        // between the fill and that exit there is no stop, exactly as in MultiSystem. In:91's
+        // broker-held Emergency Stop is the answer to that, and with no brackets it carries none
+        // of the double-coverage risk that made it default to off.
+        bool viaBare = false;
+        s_SCNewOrder bare;
+        if (rc <= 0 && !IsSkipCode(rc) && sc.Input[IN_BARE_FALLBACK].GetYesNo() != 0) {
+            bare.OrderQuantity = qty;
+            bare.OrderType     = SCT_ORDERTYPE_MARKET;
+            bare.TimeInForce   = SCT_TIF_DAY;
+            bare.TextTag       = ORDER_TAG;
+            const int rc3 = (int)sc.BuyEntry(bare);
+            if (rc3 > 0) {
+                rc = rc3;
+                viaBare = true;
+                ++S.bareSent;
+                if (!S.bareWarned) {
+                    S.bareWarned = true;
+                    sc.AddMessageToLog(
+                        "Multi-Swing: Sierra refused this entry WITH a bracket in both forms and "
+                        "accepted the SAME entry with NO bracket. That is the answer: what Sierra "
+                        "is refusing is the attached orders, not the entry. These trades now run "
+                        "WITHOUT a stop in the market - the book still closes them at its own exit, "
+                        "but nothing protects them in between. Set In:91 Emergency Stop to 20 for "
+                        "a broker-held floor under the whole position, and send me this line.", 1);
+                }
+            }
+        }
+
+        s_SCNewOrder& placed = viaBare ? bare : (viaOffsets ? off : o);
         if (SkippedForRecalc(sc, S, rc, logLevel)) { lg = AccountLeg(); return; }
         if (rc > 0) {
             S.recalcSkips = 0;
@@ -2390,15 +2497,22 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
             lg.parentOrderId = (unsigned int)placed.InternalOrderID;  // Sierra fills this in
             // With offsets Sierra owns the absolute level, so the study records what it asked for
             // rather than a price it never sent; the stop move logic only ever raises from here.
-            lg.stopOnAccount = viaOffsets ? (last - off.Stop1Offset) : o.Stop1Price;
+            lg.bracketless   = viaBare
+                            || (placed.Stop1Price   == 0.0 && placed.Target1Price  == 0.0
+                             && placed.Stop1Offset  == 0.0 && placed.Target1Offset == 0.0);
+            lg.stopOnAccount = viaBare    ? 0.0
+                             : viaOffsets ? (last - off.Stop1Offset) : o.Stop1Price;
             projected += qty;
             ++S.ordersPlaced;
             tally.anyOk = true;
-            TradeLog(S, viaOffsets ? "ENTRY_OK_OFFSETS" : "ENTRY_OK",
+            TradeLog(S, viaBare ? "ENTRY_OK_NOBRACKET"
+                               : viaOffsets ? "ENTRY_OK_OFFSETS" : "ENTRY_OK",
                      S.presets[k].id.GetChars(), qty, last,
-                     viaOffsets ? last - off.Stop1Offset   : o.Stop1Price,
-                     viaOffsets ? last + off.Target1Offset : o.Target1Price,
-                     (int)placed.InternalOrderID, rc, projected, SCString("market"));
+                     viaBare ? 0.0 : viaOffsets ? last - off.Stop1Offset   : o.Stop1Price,
+                     viaBare ? 0.0 : viaOffsets ? last + off.Target1Offset : o.Target1Price,
+                     (int)placed.InternalOrderID, rc, projected,
+                     SCString(viaBare ? "no bracket - Sierra refused both bracketed forms"
+                                      : "market"));
             if (logLevel >= LOG_INFO) {
                 SCString m; m.Format("Multi-Swing: BUY %d %s  stop %.2f  target %.2f%s",
                                      qty, S.presets[k].id.GetChars(),
@@ -2465,7 +2579,7 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
 // crash, or a brief unintended short. The buffer is what keeps the question academic - with it set
 // wide, the brackets fire first in any ordinary decline and this order is never reached.
 static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mode, bool enabled,
-                                  int logLevel)
+                                  int logLevel, double last)
 {
     const double buffer = sc.Input[IN_EMERG_BUFFER].GetFloat();
     const bool   armed  = enabled && mode == MODE_FULL
@@ -2529,11 +2643,24 @@ static void MaintainEmergencyStop(SCStudyInterfaceRef sc, StudyState& S, int mod
     // order exists for is Sierra's brackets being gone, and a level derived from them would be gone
     // with them. The lowest stop any held leg is working to, less the buffer, sits under all of
     // them by construction.
+    // Two sources, in this order. A leg working a real stop reports it; a leg with no bracket at
+    // all - because Sierra refused one, or because the preset has no stop to attach - reports
+    // nothing, and for those the book's own intended stop is used instead.
+    //
+    // That second source is not a nicety. Measured: with every bracket refused, every leg on the
+    // account is bracketless and reports stopOnAccount 0, so a level drawn only from the first
+    // source cannot be computed at all - and the safety net was absent in precisely the run where
+    // nothing else was protecting anything. Thirty-three of the forty-eight presets do carry a
+    // stop in the book even when nothing of it reached Sierra, and that is a real level.
     double lowest = 0;
     for (size_t k = 0; k < S.legs.size(); ++k) {
         const AccountLeg& lg = S.legs[k];
-        if (lg.qtyOnAccount <= 0 || lg.stopOnAccount <= 0) continue;
-        if (lowest == 0 || lg.stopOnAccount < lowest) lowest = lg.stopOnAccount;
+        if (lg.qtyOnAccount <= 0) continue;
+        double lvl = lg.stopOnAccount;
+        if (lvl <= 0 && k < S.states.size() && RealPrice(S.states[k].stop, last))
+            lvl = S.states[k].stop;
+        if (lvl <= 0) continue;
+        if (lowest == 0 || lvl < lowest) lowest = lvl;
     }
 
     const double tick = sc.TickSize > 0 ? sc.TickSize : 0.25;
@@ -2681,6 +2808,15 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
         SCString em;
         em.Format("\nEMERG STOP armed, nothing working yet");
         warn += em;
+    }
+    if (S.stoplessSent > 0 || S.bareSent > 0) {
+        SCString nk;
+        nk.Format("\nNO STOP    %ld entr%s sent with no stop in the market%s",
+                  S.stoplessSent + S.bareSent,
+                  (S.stoplessSent + S.bareSent) == 1 ? "y" : "ies",
+                  S.bareSent > 0 ? " - Sierra refused the brackets (In:94)"
+                                 : " - these presets have none (In:93)");
+        warn += nk;
     }
     if (S.incompleteDays > 0) {
         SCString inc;
@@ -2894,6 +3030,22 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
 
         sc.Input[IN_TRADE_LOG].Name = "Trade Log CSV (file name in Data folder, blank = off)";
         sc.Input[IN_TRADE_LOG].SetString("");
+
+        // Fifteen of the forty-eight presets have no stop at all - their exit is a signal or an
+        // unactivated trail, and that is how the research measured them. No means the account
+        // never sees those fifteen, which is a silent 31 % deviation from the book; Yes trades
+        // the book as written. Yes is the default because a status box reading FULL AUTO while a
+        // third of the strategy is paper is the worse of the two failures.
+        sc.Input[IN_SEND_STOPLESS].Name = "Send Entries That Have No Stop (15 of 48 presets)";
+        sc.Input[IN_SEND_STOPLESS].SetYesNo(1);
+
+        // When Sierra refuses an entry with its bracket in BOTH forms, offer the same entry with
+        // no attached orders at all. The book still closes the trade at its own exit, through a
+        // market sell; between the fill and that exit nothing protects it. In:91 is the answer to
+        // that. Yes by default because the alternative, measured on his chart, is 805 refusals
+        // and not one trade.
+        sc.Input[IN_BARE_FALLBACK].Name = "If Sierra Refuses The Bracket, Send Without One";
+        sc.Input[IN_BARE_FALLBACK].SetYesNo(1);
 
         // These six are study CONFIGURATION, not runtime state: Sierra reads them when the study
         // is configured, and assigning them later in the call - which is what this study did until
@@ -3277,7 +3429,8 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     // refused trim, the rejection latch, a recalculation - and every one of them is a moment when
     // the safety net matters MORE, not less. It is the last thing the order layer does on every
     // call, no matter what happened before it.
-    MaintainEmergencyStop(sc, *S, sc.Input[IN_MODE].GetIndex(), enabled, logLevel);
+    MaintainEmergencyStop(sc, *S, sc.Input[IN_MODE].GetIndex(), enabled, logLevel,
+                          S->daily.empty() ? 0.0 : S->daily.back().c);
 
     // ---------------- signal labels ----------------
     // Walked backwards from the newest bar so "the last N sessions" is knowable: during the bar

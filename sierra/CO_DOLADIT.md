@@ -1531,3 +1531,88 @@ vidět **který preset a kdy**.
 `DataFilesFolder()` vracel `"."` bez oddělovače, takže `DataPath` na Linuxu zvolil zpětné lomítko a
 soubor se jmenoval doslova `.\name.csv` — na Windows správně, tady neviditelný, a jediný test, který
 ten soubor čte zpátky, ho nenašel. Vrací `"./"`.
+
+---
+
+## P31 — 1 046 řádků a ani jeden obchod: dvě příčiny, obě odstraněné (`.35`)
+
+Jeho replay: **805 `ENTRY_REFUSED`, 241 `ENTRY_HELD`, 0 provedených obchodů.** Kniha si odjela 400
+dní a vydělala na papíře 24 142 bodů, na účet se nedostalo nic.
+
+Ty dvě čísla jsou **dvě různé příčiny** a jen jedna z nich je Sierra.
+
+### Příčina 1: 241 `ENTRY_HELD` — to jsme byli my
+
+**15 ze 48 presetů nemá vůbec žádný stop.** Změřeno nad `swing_presets.csv`:
+
+```
+LMT_RSIx<x_xAT_2 | x:Time1          C<wvwapxsd_4 | x:C>PrevHigh
+LMT_RSIx<x_xAT_3 | x:RSI2>90        C06_1        | x:C>SMA5@open
+LMT_RSIx<x_xAT_4 | x:Trail1.0ATR    IBS<x_2      | x:C>PrevHigh      ... a dalších 9
+```
+
+Exitují na signál nebo na trail, který se ještě neaktivoval. Tak je výzkum změřil.
+
+Od `.26` studie takový vstup **neposílala** — „entry with no stop is not something this study will
+put on an account". Ta úvaha je obhajitelná, ale její důsledek nikdo nespočítal: **31 % knihy
+nikdy neobchodovalo, zatímco status box hlásil FULL AUTO.** Parita proti harnessu je za toho stavu
+nemožná z definice, a jediná stopa po tom bylo číslo ve status boxu.
+
+→ **`In:93` „Send Entries That Have No Stop (15 of 48 presets)", default Yes.** Kniha se obchoduje,
+jak byla změřena. Ochrana účtu je `In:91`, ne tiché vypnutí třetiny strategie.
+
+### Příčina 2: 805 `ENTRY_REFUSED` — a tohle je ta odpověď
+
+Sierrina vlastní slova z `.32`: **`General order error. Refer to Trade >> Trade Service Log`.**
+Důvod nenese. Ale nesla ho ta čísla:
+
+- **ani jeden** vstup nezachránila offsetová záloha z `.31`
+- tedy **obě** bracketové formy odmítnuty
+- → co Sierra odmítá, **není kódování bracketu**
+
+A vedle toho na témž účtu běží `Lukacino_MultiSystem.cpp`, která posílá holé market příkazy
+(`SupportAttachedOrdersForTrading = false`) a **funguje**.
+
+→ **Třetí a poslední forma: `In:94` „If Sierra Refuses The Bracket, Send Without One", default Yes.**
+Po odmítnutí cen i offsetů se tentýž vstup nabídne **bez připojených příkazů**. Projde-li, je
+odpověď na stole: Sierra odmítá bracket, ne vstup. Neprojde-li, odmítá příkazy ze studie jako
+takové a na stavbě příkazů nikdy nic nebylo.
+
+Noha se označí `bracketless`: nemá co řídit, takže ji retire pass pustí a výstup jde market
+prodejem. `MoveAccountStop` ji přeskočí. Emergency Stop si hladinu vezme ze **zamýšleného** stopu
+knihy, když noha žádný nehlásí — bez toho by `In:91` nešlo umístit přesně v tom běhu, kde je všechno
+nechráněné.
+
+### Měřeno (smoke, 2 400 barů, 400 sessions)
+
+| | vstupů | `ENTRY_HELD` | bez bracketu | `STOPPED` | žurnál |
+|---|---|---|---|---|---|
+| **`.34`** (oba Inputy No) | 135 | **408** | 0 | 0 | `89fdf531` / 235 obchodů |
+| **`.35` default**, Sierra brackety bere | **218** | **0** | 83 | 0 | `89fdf531` / 235 |
+| **`.35` default**, Sierra odmítá KAŽDÝ bracket | **227** | **0** | 144 | 0 | `89fdf531` / 235 |
+
+Třetí řádek je jeho graf. **Z 1 046 řádků nicoty je 227 skutečných vstupů**, 225 výstupů, 73
+umístění Emergency Stopu, žádné `STOPPED`, žádné `CANNOT CLOSE`, `working_at_end 0`.
+
+Žurnál je `89fdf531` ve **všech třech** — rozhodovací vrstva se nedotkla ani o bajt. Změnilo se jen
+to, co z ní dojde na účet.
+
+### `ENTRY_FILLED` se skutečnou cenou
+
+Řádek při přijetí příkazu nese close, ze kterého kniha počítala — nic lepšího v tu chvíli
+neexistuje, fill ještě nenastal. O volání později ho Sierra zná, takže se přečte zpátky
+(`sc.GetOrderByOrderID` → `AvgFillPrice`) a zapíše jednou na nohu, se stejným `order_id`:
+
+```
+2019-11-13 19:30:00,ENTRY_FILLED,C06_2,1,3603.65,0.00,0.00,1,0,0,no bracket working
+```
+
+227 vstupů → 227 `ENTRY_FILLED`. Equity postavená na ceně knihy místo na ceně brokera je jiné číslo,
+a tohle je jediný způsob, jak v tom souboru mít tu druhou.
+
+### Co tím ale NENÍ vyřešené
+
+Výstupní fill cena. Bracketové dítko vyplní asynchronně a market prodej z `TrimSurplus` neví, čí
+kontrakty prodává. **Pro equity to ale potřeba není:** `swing_journal.csv` má
+`entry, exit, pnl_pts, mae, mfe, bars, reason` na obchod a preset — to je ta křivka. Trade log je
+záznam o příkazech, ne druhý žurnál.

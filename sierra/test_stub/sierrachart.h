@@ -223,6 +223,7 @@ struct SCStudyInterface {
     std::map<int, std::pair<int,int> > bracket; // parent -> (targetId, stopId)
     // counters the harness prints; every one of them was a question I could not answer before
     int    entriesOk = 0, entriesRefused = 0, refusedByWorkingOrders = 0, refusedByMaxPosition = 0;
+    int    bracketedRefused = 0, bareOk = 0;
     int    trimsOk = 0, trimQtyTotal = 0, trimOverSurplus = 0;
     int    stopMovesOk = 0, stopMovesOnDeadOrder = 0, cancelledByTrim = 0;
     double stubPeakPosition = 0;
@@ -286,9 +287,24 @@ struct SCStudyInterface {
         if (refusePriceBracket && (o.Stop1Price != 0 || o.Target1Price != 0)) {
             ++entriesRefused; return -1;
         }
+        // STUB_REFUSE_ANY_BRACKET=1 refuses an entry carrying a bracket in EITHER form and accepts
+        // the same entry bare. It models what his replay actually did: 805 refusals, both
+        // bracketed forms, Sierra's own words saying only "General order error", and not one
+        // trade. Without it the bare fallback cannot be measured at all, because this stub takes
+        // every bracket it is offered.
+        static const bool refuseAnyBracket =
+            getenv("STUB_REFUSE_ANY_BRACKET") && atoi(getenv("STUB_REFUSE_ANY_BRACKET")) == 1;
+        if (refuseAnyBracket && (o.Stop1Price != 0 || o.Target1Price != 0
+                              || o.Stop1Offset != 0 || o.Target1Offset != 0)) {
+            ++entriesRefused; ++bracketedRefused; return -1;
+        }
 
         const int id = nextOrderId++;
         o.InternalOrderID = id;
+        // A market entry is filled the moment it is accepted, so it is recorded as finished at
+        // the price the study last saw. Without this the parent order is in neither `working` nor
+        // `finished` and GetOrderByOrderID answers "no such order" for an order that certainly
+        // exists - which is how a study asking for its own fill price gets nothing back.
         stubPosition += o.OrderQuantity;
         if (stubPosition > stubPeakPosition) stubPeakPosition = stubPosition;
 
@@ -310,6 +326,9 @@ struct SCStudyInterface {
             t.price = o.Stop1Price; t.isStop = true; working[stopId] = t;
         }
         bracket[id] = std::make_pair(targetId, stopId);
+        finished[id] = SCT_OSC_FILLED;
+        lastFillPrice = fill;
+        if (targetId == 0 && stopId == 0) ++bareOk;   // nothing attached: a naked long
         ++entriesOk;
         return id;
     }

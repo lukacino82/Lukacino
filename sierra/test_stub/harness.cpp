@@ -24,7 +24,8 @@ enum { IN_TRADING_ENABLED = 0, IN_MODE, IN_SEND_LIVE, IN_DIRECTION, IN_PRESET_FI
        IN_ENTRY_EXPIRY = 44, IN_TIME_STOP = 47, IN_LOG_LEVEL = 50,
        IN_EXIT_OVERRIDE = 52, IN_OV_SL_ATR = 53, IN_OV_RRR = 54,
        IN_DAILY_LOSS = 38, IN_MAX_DD_STOP = 39, IN_FAMX_SL = 65, IN_FAMX_RRR = 66,
-       IN_INSTRUMENT_IDX = 7, IN_LIVE_CONFIRM = 89, IN_EMERG_BUFFER = 90, IN_TRADE_LOG = 91 };
+       IN_INSTRUMENT_IDX = 7, IN_LIVE_CONFIRM = 89, IN_EMERG_BUFFER = 90, IN_TRADE_LOG = 91,
+       IN_SEND_STOPLESS = 92, IN_BARE_FALLBACK = 93 };
 
 // the study keeps its daily bars inside a private struct; for the harness we re-read the
 // subgraphs it publishes, which is exactly what a Sierra user can see on the chart
@@ -69,6 +70,12 @@ int main(int argc, char** argv)
     // TRADE_LOG=<file> switches on the order-by-order record, the same as typing a name into the
     // dialog. Off by default, as on a chart.
     if (const char* v = getenv("TRADE_LOG"))    sc.Input[IN_TRADE_LOG].SetString(v);
+    // Both default to Yes in the study, as on a chart; these turn them back off so the old
+    // behaviour stays measurable against the new one.
+    sc.Input[IN_SEND_STOPLESS].SetYesNo(1);
+    sc.Input[IN_BARE_FALLBACK].SetYesNo(1);
+    if (const char* v = getenv("SEND_STOPLESS")) sc.Input[IN_SEND_STOPLESS].SetYesNo(atoi(v));
+    if (const char* v = getenv("BARE_FALLBACK")) sc.Input[IN_BARE_FALLBACK].SetYesNo(atoi(v));
     if (const char* v = getenv("INSTRUMENT"))     sc.Input[IN_INSTRUMENT_IDX].SetCustomInputIndex(atoi(v));
     // FAM_SL / FAM_RRR take "family:value" pairs, 1-based, e.g. FAM_SL="1:2.0,3:1.5"
     for (int which = 0; which < 2; ++which) {
@@ -166,6 +173,8 @@ int main(int argc, char** argv)
                   << " oversold_calls " << sc.oversoldEvents
                   << " min_position " << (sc.minPositionSeen > 1e8 ? 0 : sc.minPositionSeen)
                   << " working_at_end " << sc.working.size()
+                  << " bracketed_refused " << sc.bracketedRefused
+                  << " bare_ok " << sc.bareOk
                   << " emerg_placed " << sc.emergPlaced
                   << " emerg_refused " << sc.emergRefused
                   << " emerg_fills " << sc.emergFills
