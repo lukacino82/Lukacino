@@ -757,3 +757,67 @@ jeho disku, ne tady. Dost možná je to právě „position limit" a zmizí s to
 V harnessu jde **83 vstupů** ven s `stop 0.00 target 0.00` — tedy bez stopu i targetu. Ve full
 auto to je nekrytá pozice. Pro limitní presety (`LMT_*`) to může být správně, pro ostatní ne.
 Patří to k rozhodnutí, jestli ve full auto odmítnout vstup bez stopu rovnou ve studii.
+
+---
+
+## P20 — objednávková cesta prokázána, a dvě moje diagnózy odvolány (`.23`)
+
+Jeho log z `.22` obsahuje to, na co jsme čekali od P15:
+
+```
+Multi-Swing: BUY 1 C<dvwapxsd_1  stop 3646.50  target 3819.00
+Multi-Swing: BUY 1 C<dvwapxsd_3  stop 3639.25  target 3926.25
+Multi-Swing: BUY 1 C<wvwapxsd_2  stop 3589.00  target 4163.25
+Multi-Swing: BUY 1 IBS<x_1       stop 3703.00  target 3798.75
+Multi-Swing: STOP MOVED for IBS<x_1 from 3703.00 to 3735.00 (order 162856)
+```
+
+Čtyři přijaté vstupy s brackety a jeden úspěšně posunutý stop. Žádné `-1`, žádné `-8995`,
+žádné `STOPPED`. **Jediná skutečná příčina byla P17** — `sc.SupportAttachedOrdersForTrading`
+nastavovaný mimo `SetDefaults`.
+
+### Odvolávám P19: strop nikdy nebyl nula
+
+`sc.MaximumPositionAllowed` **čte zpátky vždy 0**, bez ohledu na to, co se do něj zapsalo. Je
+z pohledu studie write-only. Ten „cap 0", na kterém jsem postavil celé P19, byl artefakt čtení,
+ne skutečný strop — a v tom samém logu, kde se čte 0, příkazy procházejí.
+
+Co z `.22` zůstává platné: nastavit ho v `SetDefaults` a nechat skutečný limit na vlastním
+`Max Gross Exposure`. Co bylo špatně: tvrzení, že nula blokovala vstupy, a hláška
+„if Sierra's backstop ever reads 0 here ... that is a study bug", která uživatele zbytečně
+strašila. Obojí odstraněno, ze status boxu i z logu.
+
+### Odvolávám P14: grafová simulace brackety řídit UMÍ
+
+Tvrdil jsem, že vlastní simulace grafu odmítá `ModifyOrder` a `CancelOrder`, a napsal na to
+varování. `STOP MOVED ... (order 162856)` v chart simulaci to vyvrací. Příčina byla znovu táž:
+bez `SupportAttachedOrdersForTrading` neexistovaly žádné děti bracketu, které by šlo modifikovat,
+a Sierra vracela `-1` na modifikaci neexistujícího příkazu.
+
+Praktický důsledek: **`Send Orders To Trade Service = No` je pro replay plnohodnotný režim.**
+Fily jsou deterministické z barů grafu, brackety se řídí, účtu se nikdo nedotkne a není co špatně
+nastavit. To varování je z kódu odstraněné.
+
+### Log hygiena
+
+Hláška o režimu se říkala jednou per **full recalculation**. Replay rekalkuluje pořád a každý
+reload presetů je další, takže se v třiceti sekundách jeho logu objevila čtyřikrát. Teď je jednou
+per **load** — režim se nemění mezi rekalkulacemi, mění se se změnou Inputu, a ta reload vyvolá.
+
+### Měřeno
+
+| `LIVE_CONFIRM` | přijatých BUY | odmítnutí | řádků žurnálu | hláška o režimu |
+|---|---|---|---|---|
+| 0 | 0 | 0 | 236 | 1× |
+| 1 | 218 | 0 | 236 | 1× |
+
+Žurnál bit-identický s `.22`. Žádná zmínka o „backstop" v logu.
+
+### Zbývá
+
+- `NOT TRADING. The account holds 4 contracts that this run did not place` — sirotčí hlídka
+  zafungovala správně, když během otevřených pozic přeladil presety. Chování je v pořádku, postup
+  je v hlášce.
+- 83 vstupů v harnessu jde ven bez stopu i targetu (`stop 0.00 target 0.00`). Dotaz na uživatele
+  je odeslaný, odpověď zatím není.
+- Parita 2008–2026 v Semi-auto proti offline harnessu. Teprve teď má smysl.

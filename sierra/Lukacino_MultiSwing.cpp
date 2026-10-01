@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.22";
+static const char* STUDY_VERSION = "2026-10-01.23";
 
 static const int NUM_FAMILIES = 12;
 
@@ -1734,28 +1734,14 @@ static void SyncOrders(SCStudyInterfaceRef sc, StudyState& S, const RunCfg& cfg,
     }
     if (S.legs.size() != S.states.size()) S.legs.assign(S.states.size(), AccountLeg());
 
-    // Full auto in the chart's own simulation cannot work the brackets, and it costs a run to
-    // find out.
-    //
-    // His Message Log settled it. With 'Send Orders To Trade Service' = Yes the steer works:
-    // "EXIT ... through its own bracket - target order 162534 moved to 7729.50". With it set to No
-    // the same call comes back "could not steer ... Sierra returned -1", and CancelOrder is
-    // refused too, so a bracket can be neither moved nor removed. Entries are accepted either way,
-    // which is what makes it look like a working configuration: the position climbs and nothing
-    // can take it off except Sierra filling a child on its own.
-    //
-    // So this is not the safe half of a choice. For Full auto the Input has to be Yes; No is for
-    // Signals only and Semi-auto, where nothing is sent at all.
-    if (send && !sc.SendOrdersToTradeService && !S.chartSimWarned) {
-        S.chartSimWarned = true;
-        sc.AddMessageToLog(
-            "Multi-Swing: FULL AUTO with 'Send Orders To Trade Service' = No. Entries will be "
-            "accepted, but the chart's own simulation refuses ModifyOrder and CancelOrder, so no "
-            "preset's exit can be steered through its bracket and its contracts can only leave "
-            "when Sierra fills a stop or target by itself. The position will run above the book "
-            "and the log will say CANNOT CLOSE. Set that Input to Yes for Full auto; No is for "
-            "Signals only and Semi-auto.", 1);
-    }
+    // Retracted. This used to warn that the chart's own simulation refuses ModifyOrder and
+    // CancelOrder, so a bracket could be neither moved nor removed. That was wrong, and wrong for
+    // the same reason everything else was: sc.SupportAttachedOrdersForTrading was being assigned
+    // outside the SetDefaults block, so Sierra never had attached orders on and there were no
+    // bracket children to modify. With the flag set where Sierra reads it, a replay into the
+    // chart's own simulation logs "STOP MOVED for IBS<x_1 from 3703.00 to 3735.00 (order 162856)".
+    // It steers brackets. The note about which mode touches which account is further down, said
+    // once per load, and that is the only thing worth saying here.
 
     // A rejection means the account no longer holds what the book thinks, so every later order is
     // computed against a wrong position. Rather than repeat that for the rest of the run - the
@@ -2083,14 +2069,13 @@ static void DrawStatusBox(SCStudyInterfaceRef sc, const StudyState& S, const Run
                 "open      %d presets\n"
                 "book      %d contracts   position %d\n"
                 "days      %d   risk unit %.2f %s\n"
-                "cap       %d %s book / %d Sierra   (Max Gross %.0f MES)\n"
+                "cap       %d %s contracts   (Max Gross %.0f MES)\n"
                 "%s%s",
                 modeName, (int)S.presets.size(), S.familyCount, openPresets,
                 target, position, (int)S.daily.size(), cfg.riskUnit,
                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
                 cfg.contractMult > 0 ? (int)(cfg.maxGross / cfg.contractMult) : 0,
                 sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
-                sc.MaximumPositionAllowed,
                 cfg.maxGross,
                 pnl.GetChars(), warn.GetChars());
 
@@ -2364,13 +2349,16 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     if (!S->capLogged) {
         S->capLogged = true;
         SCString m;
+        // sc.MaximumPositionAllowed reads back 0 no matter what was written to it - it is
+        // write-only from a study's side. The previous version printed that readback and called a
+        // zero "a study bug", which was alarming and wrong: orders were going through at the same
+        // time it read 0. Only the book's own figure is reportable, so only that is reported.
         m.Format("Multi-Swing: the book may hold %d %s contract(s) (Max Gross Exposure %d MES "
-                 "equivalents / %.0f). Sierra's own backstop is %d. The book's figure is the limit "
-                 "that bites - raise Max Gross Exposure if it needs more. If Sierra's backstop "
-                 "ever reads 0 here, nothing can be sent at all and that is a study bug.",
+                 "equivalents / %.0f). That is the limit that bites - raise Max Gross Exposure if "
+                 "the book needs more.",
                  mult > 0 ? (int)std::floor(grossInput / mult) : 0,
                  sc.Input[IN_INSTRUMENT].GetIndex() == 1 ? "ES" : "MES",
-                 grossInput, mult, sc.MaximumPositionAllowed);
+                 grossInput, mult);
         sc.AddMessageToLog(m, 0);
     }
 
@@ -2672,9 +2660,12 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
             sc.AddMessageToLog(st, 0);
         }
     }
-    // Said once per full recalculation, so it is obvious from the log which of the three the study
-    // is actually doing - the difference between a paper run and a live account is one Input.
-    if (sc.UpdateStartIndex == 0 && enabled) {
+    // Said once per LOAD, not once per full recalculation. A replay full-recalculates constantly
+    // and every preset reload is another one, so the per-recalc version printed this paragraph
+    // four times in thirty seconds of his log. The mode does not change between recalculations;
+    // it changes when the Input changes, and that reloads.
+    if (sc.UpdateStartIndex == 0 && enabled && !S->chartSimWarned) {
+        S->chartSimWarned = true;
         const int mode = sc.Input[IN_MODE].GetIndex();
         if (mode == MODE_FULL && sc.Input[IN_SEND_LIVE].GetYesNo())
             sc.AddMessageToLog("Multi-Swing: FULL AUTO, orders ARE being sent to the trade service. "
