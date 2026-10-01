@@ -821,3 +821,56 @@ per **load** — režim se nemění mezi rekalkulacemi, mění se se změnou Inp
 - 83 vstupů v harnessu jde ven bez stopu i targetu (`stop 0.00 target 0.00`). Dotaz na uživatele
   je odeslaný, odpověď zatím není.
 - Parita 2008–2026 v Semi-auto proti offline harnessu. Teprve teď má smysl.
+
+---
+
+## P21 — `NOT TRADING` na knize, která byla v pořádku (`.24`)
+
+Status box hlásil:
+
+```
+book      3 contracts   position 3
+FLATTEN   the account holds contracts this run did not place
+```
+
+`book 3` a `position 3` **se shodují**. Účet drží přesně to, co kniha říká. Sirotčí pojistka
+přesto latchla `NOT TRADING` a žádala ruční flatten.
+
+### Proč
+
+Podmínka je `send && S.ordersPlaced == 0 && account > 0`. A `ordersPlaced` i `legs` se nulovaly
+při **každé plné rekalkulaci**:
+
+```cpp
+if (start == 0) { ...
+                  S->legs.clear();
+                  S->ordersPlaced = 0; ... }
+```
+
+Replay rekalkuluje při každé změně Inputu. Takže jakmile měl otevřenou pozici a na čemkoli hnul,
+`ordersPlaced` spadlo na 0, pojistka uviděla kontrakty, o kterých si myslela, že je tenhle běh
+neposlal, a zamkla obchodování — kvůli stavu, který nikdy nebyl rozbitý. Přesně to, co mu bránilo
+rychle testovat.
+
+### Oprava
+
+Rekalkulace **nezahazuje** `legs` ani `ordersPlaced`. Přehrává tytéž bary a staví tytéž stavy
+presetů, ale příkazy, které ty nohy popisují, jsou živé na účtu a nikam se neděly. Indexy presetů
+se rekalkulací nemění, takže noha `k` dál popisuje preset `k`.
+
+Reload presetů si handly nechá taky — ale **jen když je seznam presetů stejný**. Id se odeberou
+před načtením a porovnají po něm. Stejný seznam = každý handle pořád ukazuje na obchod, pro který
+vznikl. Jiný seznam = indexy už neznamenají totéž a handly jsou skutečně bezcenné, takže jdou
+pryč a pojistka zafunguje.
+
+### Měřeno
+
+| scénář | `NOT TRADING` | přijatých BUY |
+|---|---|---|
+| běžný běh, `CHUNK=6` | **0** | 218 |
+| běžný běh, `CHUNK=1` (víc rekalkulací) | **0** | 224 |
+| `STUB_START_POS=5` — účet drží cizí kontrakty | **1** | **0** |
+
+Poslední řádek je ten důležitý: pojistka se nevypnula, jen přestala hlásit planý poplach.
+Když účet opravdu drží kontrakty, pro které studie nemá handly, pořád odmítne poslat cokoli.
+Žurnál bit-identický s `.23`.

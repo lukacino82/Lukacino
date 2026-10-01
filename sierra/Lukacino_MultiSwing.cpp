@@ -51,7 +51,7 @@ SCDLLName("Lukacino Multi-Swing")
 // failed or empty compiler response leaves the OLD DLL loaded, which looks identical in the log -
 // so the study says which source it is, and a version that did not change means the build did not
 // take, however cleanly the build window reported it.
-static const char* STUDY_VERSION = "2026-10-01.23";
+static const char* STUDY_VERSION = "2026-10-01.24";
 
 static const int NUM_FAMILIES = 12;
 
@@ -2366,6 +2366,13 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
     int reloadFlag = sc.Input[IN_RELOAD].GetYesNo();
     if ((!S->loaded && !S->loadAttempted) || reloadFlag != sc.GetPersistentInt(1)) {
         sc.SetPersistentInt(1, reloadFlag);
+        // Taken before the load overwrites them, so afterwards the study can tell a reload of the
+        // same file from a reload of a different one. Only the second kind invalidates the order
+        // handles, and only the second kind should cost a flatten.
+        std::vector<SCString> idsBefore;
+        idsBefore.reserve(S->presets.size());
+        for (size_t i = 0; i < S->presets.size(); ++i) idsBefore.push_back(S->presets[i].id);
+
         SCString path = DataPath(sc, sc.Input[IN_PRESET_FILE].GetString());
         SCString err;
         bool ok = LoadPresets(sc, *S, path, err);
@@ -2375,16 +2382,24 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
         S->lastProcessedIndex = -1;
         S->daily.clear();
         ResetDayAccumulators(*S);
-        // A reload rebuilds the whole book from the first bar, so the order layer's view of the
-        // account has to go with it: legs left behind would describe entries of a book that no
-        // longer exists. It also clears the rejection cut-off, which is the only way to lift it
-        // from the Inputs - otherwise a run that hit five rejections stays STOPPED until the
-        // study is removed and added again, with no control on the dialog that says so.
+        // A reload rebuilds the book from the first bar. Whether the order layer's view has to go
+        // with it depends on one thing only: whether the presets are still the same presets. Leg k
+        // describes preset k, so an unchanged id list means every handle is still pointing at the
+        // trade it was opened for, and throwing them away would strand live brackets and trip the
+        // orphan guard for nothing - which is what toggling 'Reload Presets' with a position open
+        // used to do. A changed list means the indices no longer mean the same thing and the
+        // handles genuinely are worthless, so they go.
+        //
+        // The rejection cut-off is cleared either way: toggling this Input is the only control on
+        // the dialog that can lift it.
+        bool samePresets = idsBefore.size() == S->presets.size();
+        for (size_t i = 0; samePresets && i < S->presets.size(); ++i)
+            if (!(idsBefore[i] == S->presets[i].id)) samePresets = false;
+
         S->orderFailures = 0;
-        S->legs.clear();
+        if (!samePresets) { S->legs.clear(); S->ordersPlaced = 0; }
         S->trimSentQty = 0;
         S->trimWaited = 0;
-        S->ordersPlaced = 0;
         S->orphanHalt = false;
         S->orphanWarned = false;
         S->chartSimWarned = false;
@@ -2471,9 +2486,18 @@ SCSFExport scsf_LukacinoMultiSwing(SCStudyInterfaceRef sc)
                       S->wKey = S->mKey = S->qKey = -1; S->lastCompletedMvwap = 0;
                       for (size_t k = 0; k < S->states.size(); ++k) S->states[k] = PresetState();
                       S->journalRows = 0; S->semiPosition = 0;
-                      S->orderFailures = 0; S->legs.clear();
+                      S->orderFailures = 0;
+                      // NOT legs, and NOT ordersPlaced. A full recalculation replays the same bars
+                      // and rebuilds the same preset states, but the orders those legs describe are
+                      // live on the account and did not go anywhere. Clearing them here is what made
+                      // the orphan guard fire on a book that was perfectly in step: a replay
+                      // recalculates on every Input change, so the moment anything was touched with
+                      // a position open, ordersPlaced went to 0, the guard saw contracts it believed
+                      // this run had not placed, and latched NOT TRADING - demanding a manual
+                      // flatten to recover from a state that was never broken. Preset indices are
+                      // unchanged by a recalculation, so leg k still describes preset k.
                       S->trimSentQty = 0; S->trimWaited = 0;
-                      S->ordersPlaced = 0; S->orphanHalt = false; S->orphanWarned = false;
+                      S->orphanHalt = false; S->orphanWarned = false;
                       S->chartSimWarned = false;
                       S->bracketsSeen = S->bracketsEmpty = 0; S->modifyOk = S->modifyFail = 0;
                       S->incompleteDays = 0;
