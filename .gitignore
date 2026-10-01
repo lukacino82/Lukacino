@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 sierra/build/
+sierra/test_stub/w*
+!sierra/test_stub/*.cpp
+!sierra/test_stub/*.h
