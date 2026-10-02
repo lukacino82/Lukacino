@@ -1,1 +1,1 @@
-trigger full history refresh
+trigger es2008 full export
