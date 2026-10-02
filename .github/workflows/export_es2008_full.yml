@@ -1,0 +1,24 @@
+name: Export full ES2008 extracted
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  extract:
+    if: contains(github.event.head_commit.message, 'Trigger ES2008 full export')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract multipart archive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y p7zip-full
+          mkdir -p out
+          7z x ES2008.zip -oout -y
+          ls -lh out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: es2008-full-extracted
+          path: out/ES2008.txt
+          retention-days: 2
