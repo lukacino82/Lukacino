@@ -90,7 +90,7 @@ def test_moderate_conviction_upgraded_to_high_when_still_strongly_extended():
     report = TierReport(monthly=Position.ABOVE, weekly=Position.AT, intraday=Position.ABOVE)
     state = _state(
         last_price=130.0, vwap_monthly=100.0, vwap_weekly=130.0, vwap_intraday=100.0,
-        cum_delta=0.0, vwap_monthly_sd1=115.0,  # 1 SD width = 15; price is 30 away = 2.0x
+        cum_delta=0.0, vwap_monthly_sd1=15.0,  # distance, not a price level -- 1 SD width = 15; price is 30 away = 2.0x
     )
     bias = classify_htf_bias(report, state)
     assert bias.monthly_extension == 2.0
@@ -163,7 +163,7 @@ def test_counter_intraday_long_on_the_users_worked_scenario():
     vwap_weekly = 29580.0  # == last_price -- HF sitting right at rotation
     vwap_intraday = 29650.0  # price below this -- the intraday "selloff" read
     last_price = 29580.0
-    vwap_monthly_sd1 = 29550.0  # 1 SD width = 250; price is 280 away -- ~1.1x, i.e. "cooling" toward 1 SD
+    vwap_monthly_sd1 = 250.0  # distance, not a price level -- 1 SD width = 250; price is 280 away -- ~1.1x, i.e. "cooling" toward 1 SD
 
     state = _state(
         last_price=last_price,

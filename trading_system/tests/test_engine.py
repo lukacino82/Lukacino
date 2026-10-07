@@ -91,7 +91,7 @@ def _synthesis_state(last_price: float, cum_delta: float) -> LiveMarketState:
         vwap_weekly=29580.0,
         vwap_intraday=29650.0,
         cum_delta=cum_delta,
-        vwap_monthly_sd1=29550.0,
+        vwap_monthly_sd1=250.0,  # distance, not a price level -- 1 SD width = 250
     )
 
 

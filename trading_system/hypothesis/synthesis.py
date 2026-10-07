@@ -82,10 +82,12 @@ def classify_htf_bias(
         conviction = HTFConviction.LOW
 
     monthly_extension: Optional[float] = None
+    # vwap_monthly_sd1 is already a distance (ACSIL's own SD1Subgraph
+    # export -- see LiveMarketState's field docstring and tier_report's
+    # tolerance above for the same correction), not a price level, so no
+    # vwap subtraction here.
     if state.vwap_monthly_sd1 > 0:
-        sd1_distance = abs(state.vwap_monthly_sd1 - state.vwap_monthly)
-        if sd1_distance > 0:
-            monthly_extension = abs(state.last_price - state.vwap_monthly) / sd1_distance
+        monthly_extension = abs(state.last_price - state.vwap_monthly) / state.vwap_monthly_sd1
 
     # A monthly trend still strongly extended (not actually "cooling")
     # can outweigh a merely-rotating weekly tier -- HF's own read is what
