@@ -1,0 +1,18 @@
+                                         B&H  Vol-managed B&H  Crisis allocator (-3%, 0.5x, 2 vrstvy)  S1 Vault Break  S2 VWAP Pullback  S3 Overnight Bias  Noise-area momentum L/S  Turn of month  Pre-FOMC  IBS<0.2 bull
+B&H                                     1.00             0.86                                    0.95            0.27              0.05               0.03                    -0.09           0.41      0.07          0.31
+Vol-managed B&H                         0.86             1.00                                    0.82            0.22              0.06               0.01                    -0.10           0.42      0.07          0.38
+Crisis allocator (-3%, 0.5x, 2 vrstvy)  0.95             0.82                                    1.00            0.26              0.05               0.04                    -0.06           0.39      0.07          0.30
+S1 Vault Break                          0.27             0.22                                    0.26            1.00              0.04               0.32                     0.22           0.11     -0.01          0.07
+S2 VWAP Pullback                        0.05             0.06                                    0.05            0.04              1.00               0.05                    -0.00           0.03      0.01          0.04
+S3 Overnight Bias                       0.03             0.01                                    0.04            0.32              0.05               1.00                     0.30          -0.02     -0.02         -0.01
+Noise-area momentum L/S                -0.09            -0.10                                   -0.06            0.22             -0.00               0.30                     1.00          -0.05     -0.01         -0.08
+Turn of month                           0.41             0.42                                    0.39            0.11              0.03              -0.02                    -0.05           1.00      0.03          0.16
+Pre-FOMC                                0.07             0.07                                    0.07           -0.01              0.01              -0.02                    -0.01           0.03      1.00          0.05
+IBS<0.2 bull                            0.31             0.38                                    0.30            0.07              0.04              -0.01                    -0.08           0.16      0.05          1.00
+                                  book   CAGR    SR    DD   MAR   vol  PRE_SR  IS_SR  OOS_SR  B&H same vol CAGR  B&H same vol DD
+0                                  B&H   7.84  0.62 -32.5  0.24  13.7    0.53   0.47    1.12               7.84            -32.5
+1                          Vol-managed   9.93  0.73 -22.6  0.44  14.4    0.71   0.62    0.93               8.17            -33.8
+2  Vol-managed + Noise + S3 + Pre-FOMC  13.84  0.91 -19.1  0.73  15.6    0.71   1.12    1.11               8.78            -36.2
+3                     Crisis allocator  15.35  0.80 -35.6  0.43  20.5    0.67   0.77    1.16              11.14            -45.2
+4               Allocator + Noise + S3  18.76  0.91 -38.0  0.49  21.4    0.68   1.01    1.26              11.55            -46.8
+5                      Mattia S1+S2+S3  -0.35 -0.03 -46.6 -0.01   5.6   -0.65   0.37    0.83               3.37            -14.4

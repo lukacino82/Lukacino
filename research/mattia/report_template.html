@@ -1,0 +1,390 @@
+<title>ES Alpha Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES mini futures · 1min data květen 2008 – září 2026 · 6,44 mil. barů</div>
+  <h1>ES Alpha Map</h1>
+  <p class="lede">Test tří prop-firm strategií Mattia Kantiho (SQR Capital), jeho metody hodinové sezónnosti a 13 dalších systematických rodin na 18 letech ES. Výsledky jsou porovnané s tím, co už je v repozitáři a v brainstormu. Cíl: najít, kde je opravdová alfa, a oddělit ji od páky a od long biasu.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="eyebrow">Závěr</div>
+  <h2>Co z toho reálně stavět</h2>
+  <div class="callout"><p>Velkou alfu typu 20–100 % ročně při rozumném riziku jsem na samotných ES datech nenašel. Nenašel ji ani ChatGPT po 200 tisících variantách a nenašly ji ani dřívější výzkumy v repozitáři. Co data opakovaně potvrzují, je skromnější a robustnější: <b>řízení expozice</b> (volatilita, trend, páka v korekcích s potvrzením) a několik <b>nekorelovaných intradenních vrstev</b>. Složené dohromady dávají historicky Sharpe kolem 0,9 a drawdown −19 %. B&amp;H se stejnou volatilitou má Sharpe 0,62 a drawdown −36 %.</p></div>
+  <div class="grid3" id="recCards"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Video 1 · Mattia Kanti</div>
+  <h2>Tři prop-firm strategie na ES</h2>
+  <p class="sub">Přesně podle přepisu, převedeno z NQ na ES. Exity Vault Breaku jsou převedené z dolarů na NQ na zlomky ATR (TP 0,13 ATR, SL 0,25 ATR). Náklad 0,5 bodu na obchod. Období 2008–2017 Mattia nikdy neviděl, takže je to pro jeho pravidla čistý test mimo vzorek.</p>
+  <div class="tablewrap"><table id="tMattia"></table></div>
+  <div class="panel"><div class="legend" id="lgMattia"></div><div class="chart" id="chMattia"></div></div>
+  <div class="grid2">
+    <div class="card"><h3>Co z toho plyne</h3><ul class="why">
+      <li><b>Vault Break</b> je hrubě kladný, ale náklady ho srazí na nulu. V letech 2008–2017 byl ztrátový (−0,18 b./obchod).</li>
+      <li><b>VWAP Pullback</b> má TP na 5barovém high, často jen pár ticků nad vstupem. Hrubá edge je 0,05 b., takže po nákladech je ztrátový ve všech obdobích.</li>
+      <li><b>Overnight Bias</b> je jediný zajímavý: PF 1,26 v letech 2018–2022 i 2023–2026. Funguje ale jen long strana a v letech 2008–2017 vychází nulově. Edge je tedy pravděpodobně vázaná na současný režim trhu.</li>
+      <li>Mattia sám ve videu říká, že výhoda strategií není v síle edge, ale v jejich „geometrii“ pro pravidla prop firem. To data potvrzují.</li>
+    </ul></div>
+    <div class="card"><h3>Prop-firm challenge (účet 50k, cíl +3 000 $, trailing DD 2 000 $)</h3>
+      <p class="small">Start challenge každý obchodní den, max. 60 dní. 5 MES na každou strategii.</p>
+      <div class="tablewrap" style="border:0"><table>
+        <thead><tr><th>Kniha</th><th>2008–17</th><th>2018–22</th><th>2023–26</th></tr></thead>
+        <tbody>
+          <tr><td>S1 Vault Break</td><td class="num">0 % / 1 %</td><td class="num">5 % / 29 %</td><td class="num">9 % / 20 %</td></tr>
+          <tr><td>S3 Overnight Bias</td><td class="num">3 % / 3 %</td><td class="num">18 % / 21 %</td><td class="num">32 % / 35 %</td></tr>
+          <tr><td>S1 + S2 + S3</td><td class="num">3 % / 19 %</td><td class="num">19 % / 61 %</td><td class="num">37 % / 60 %</td></tr>
+          <tr><td>Placebo: long open → close</td><td class="num">0 % / 4 %</td><td class="num">5 % / 62 %</td><td class="num">17 % / 67 %</td></tr>
+        </tbody></table></div>
+      <p class="small">Hodnoty: podíl challengí, které prošly / selhaly (zbytek vypršel). Kombinace všech tří selže častěji, než projde.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Video 2 · Intraday bias</div>
+  <h2>Hodinová sezónnost</h2>
+  <p class="sub">Průměrný výnos každé hodiny globex dne v bazických bodech (ET, bez neúplné hodiny 16:00–17:00). Mattia vybírá hodiny na celé historii a na téže historii je testuje, sám to ve videu označuje za overfitting. Poctivá verze vybírá hodiny jen z předchozích 5 let a obchoduje je následující rok.</p>
+  <div class="panel"><div class="legend" id="lgHours"></div><div class="chart" id="chHours"></div></div>
+  <div class="callout"><p id="hourText"></p></div>
+</section>
+
+<section>
+  <div class="eyebrow">Všechny rodiny</div>
+  <h2>Co jsem dnes otestoval</h2>
+  <p class="sub">Denní výnosy na 1× nominál (body / předchozí close), aby šla roky 2008 a 2026 porovnat. Alfa = úsek regrese denních výnosů strategie na výnosech ES, t-statistika ukazuje, jestli jde o víc než náhodu. Sharpe po obdobích: 2008–17 · 2018–22 · 2023–26.</p>
+  <div class="tablewrap"><table id="tFam"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Páka v korekcích</div>
+  <h2>Je crisis allocator alfa, nebo jen páka?</h2>
+  <p class="sub" id="allocText"></p>
+  <div class="panel"><div class="legend" id="lgAlloc"></div><div class="chart" id="chAlloc"></div></div>
+  <div class="tablewrap"><table id="tAllocDD"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Složené portfolio</div>
+  <h2>Kandidátní kniha vs. B&amp;H se stejnou volatilitou</h2>
+  <p class="sub">Vol-managed ES jako jádro a k tomu noise-area momentum, Overnight Bias a pre-FOMC jako nekorelované vrstvy. Pro férové srovnání je B&amp;H přeškálovaný na stejnou volatilitu jako kniha. Logaritmická osa, růst 1 $.</p>
+  <div class="panel"><div class="legend" id="lgBook"></div><div class="chart" id="chBook"></div></div>
+  <div class="tablewrap"><table id="tBooks"></table></div>
+  <div class="panel"><h3>Korelace denních výnosů</h3><div class="tablewrap" style="border:0"><table class="heat" id="tCorr"></table></div></div>
+</section>
+
+<section>
+  <div class="eyebrow">Mapa všech přístupů</div>
+  <h2>Kde hledat dál a kde už ne</h2>
+  <p class="sub">Shrnutí dnešních testů, předchozích větví v repozitáři (<span class="mono">swing_lab</span>, <span class="mono">alpha_test</span>, Sierra MultiSwing) a brainstormu s ChatGPT. „Nová data“ = rodina, kterou na samotných ES datech nejde otestovat.</p>
+  <div class="filters" role="group" aria-label="Filtr mapy">
+    <button type="button" id="m-all" aria-pressed="true" data-f="all">Vše</button>
+    <button type="button" id="m-go" aria-pressed="false" data-f="go">Stavět</button>
+    <button type="button" id="m-watch" aria-pressed="false" data-f="watch">Sledovat</button>
+    <button type="button" id="m-no" aria-pressed="false" data-f="no">Zamítnuto</button>
+    <button type="button" id="m-data" aria-pressed="false" data-f="data">Nová data</button>
+  </div>
+  <div class="tablewrap"><table id="tMap"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Plán</div>
+  <h2>Co dělat od zítřka</h2>
+  <ol class="steps">
+    <li><p><b>Jádro: vol-managed ES/MES.</b> Expozice = cílová volatilita / realizovaná volatilita 20 dní, strop 2×. Je to jednoduché, funguje ve všech třech obdobích a snižuje drawdown z −33 % na −23 %. Do Sierry jde přidat jako jeden preset.</p></li>
+    <li><p><b>Crisis allocator jen v konzervativní verzi</b>: práh −3 %, 0,5× na vrstvu, max. 2 vrstvy, tvrdý strop drawdownu. Nad konstantní pákou přidal v letech 2008–17 +2,1 % a v letech 2018–22 +7,7 % ročně, v letech 2023–26 jen +2,6 %. Agresivní verze z brainstormu (22 % CAGR, DD −50 %) je hlavně páka.</p></li>
+    <li><p><b>Nekorelované intradenní vrstvy</b>: noise-area momentum má hrubou alfu ve všech obdobích, ale potřebuje náklady pod 0,3 bodu na obchod (ES, ne MES, a nejlevnější broker). Overnight Bias jen long stranu, na paper účtu.</p></li>
+    <li><p><b>Nová data jsou největší páka na alfu.</b> Na samotném OHLCV ES narážíme na informační strop. Priority: (1) denní SPX/ES historie od 1990 pro validaci expozičních pravidel, (2) VIX a VIX futures (term structure jako signál expozice), (3) NQ, ZN, CL futures pro trend-following napříč trhy, (4) opční data pro volatility risk premium a GEX.</p></li>
+    <li><p><b>Zmrazit pravidla a spustit forward test.</b> Každý nový nápad zapisovat do discovery ledgeru (kolik variant bylo zkoušeno), aby šel odhadnout podíl náhodných objevů.</p></li>
+  </ol>
+</section>
+
+<section>
+  <div class="eyebrow">Metodika</div>
+  <h2>Jak se testovalo</h2>
+  <div class="grid2">
+    <div class="card"><ul class="why">
+      <li><b>Data</b>: ES2008.txt z repa, 1min, back-adjusted, 4. 5. 2008 – 25. 9. 2026, časy v ET. Bid/Ask volume až od roku 2010.</li>
+      <li><b>Mattiovy časy</b> jsou v CT a převedené na ET: půlnoc CT = 01:00, 08:30 CT = 09:30, 14:30 CT = 15:30. Exit S2 v 15:55 ET.</li>
+      <li><b>Exekuce</b>: signál na close baru, vstup na open dalšího baru, SL má přednost, když se SL i TP trefí v jedné minutě. Náklad 0,5 bodu na round trip.</li>
+      <li><b>Období</b>: 2008–2017 (Mattia neviděl), 2018–2022 (jeho in-sample), 2023–2026 (jeho out-of-sample).</li>
+    </ul></div>
+    <div class="card"><ul class="why">
+      <li><b>Noise-area momentum</b> podle Zarattini, Aziz a Barbon (2024): hranice = open ± průměrný pohyb od open ve stejný čas za 14 dní, kontrola každou půlhodinu od 10:00, trailing stop na max(hranice, VWAP), flat na close.</li>
+      <li><b>Crisis allocator</b> je přiblížení pravidel z brainstormu: DD ≥ 3 % od ATH, 3 nižší low, MA50 &gt; MA200 a rostoucí MA200, vrstva po reclaimu low předchozího dne, držení 60 dní.</li>
+      <li><b>Férové srovnání páky</b>: strategie s průměrnou expozicí 1,45× se porovnává s B&amp;H 1,45×, ne s 1×.</li>
+      <li><b>Sdílený ChatGPT odkaz a YouTube</b> síťová politika tohoto prostředí nepustila. Přepis videa je převzatý z nahraného souboru.</li>
+    </ul></div>
+  </div>
+</section>
+
+<footer>Kód: <span class="mono">research/mattia/</span> (base.py, strategies.py, families.py, m_run*.py, report.py) ve větvi <span class="mono">claude/alpha-brainstorm-trading-zttwoc</span>. Historický backtest, ne záruka budoucích výnosů.</footer>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString("cs-CZ", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+const cls = v => v == null ? "" : v < 0 ? "neg" : "";
+const PILL = {go: ["go", "Stavět"], watch: ["watch", "Sledovat"], no: ["no", "Zamítnuto"], beta: ["no", "Jen beta"], data: ["watch", "Nová data"], "—": ["", "Měřítko"]};
+const pill = v => { const p = PILL[v] || ["", v]; return p[0] ? `<span class="pill ${p[0]}">${p[1]}</span>` : `<span class="small">${p[1]}</span>`; };
+const B = DATA.books;
+
+/* KPIs */
+$("#kpis").innerHTML = [
+  ["3 + 13", "strategií z videa a dalších rodin otestováno"],
+  ["0,91", `Sharpe kandidátní knihy (B&H ${fmt(B.bh.sr)})`],
+  [fmt(B.book.dd, 0) + " %", `max. drawdown knihy (B&H se stejnou vol ${fmt(B.book.bh_same_vol.dd, 0)} %)`],
+  [fmt(B.mattia.sr), "Sharpe tří strategií z videa dohromady"],
+].map(([b, s]) => `<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+$("#recCards").innerHTML = [
+  ["Jádro: vol-managed ES", "go", `Sharpe ${fmt(B.vm.sr)} vs ${fmt(B.bh.sr)}, drawdown ${fmt(B.vm.dd,0)} % vs ${fmt(B.bh.dd,0)} %, lepší v letech 2008–17 i 2018–22. Nejjednodušší a nejrobustnější zlepšení B&H, které data ukazují.`],
+  ["Páka v korekcích, konzervativně", "watch", `Při stejné průměrné páce ${fmt(DATA.alloc.avg_w)}× porazil konstantní páku v CAGR i drawdownu. Na mřížce 144 variant je ale přínos citlivý na práh a v letech 2023–26 v průměru nulový.`],
+  ["Nekorelované intradenní vrstvy", "watch", "Noise-area momentum (korelace s ES −0,10) a long strana Overnight Bias. Samostatně slabé, v knize zvedají Sharpe z 0,73 na 0,91. Rozhodující budou náklady na exekuci."],
+].map(([h, v, t]) => `<div class="card"><div class="head"><h3>${h}</h3>${pill(v)}</div><p class="why">${t}</p></div>`).join("");
+
+/* ---------- charts ---------- */
+const BANDS = [["2008-01-01","2017-12-31","2008–17"],["2018-01-01","2022-12-31","2018–22"],["2023-01-01","2026-12-31","2023–26"]];
+function niceStep(r) { const p = Math.pow(10, Math.floor(Math.log10(r))), f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function lineChart(host, series, opt = {}) {
+  const W = 1000, H = opt.h || 360, m = {l: 60, r: 16, t: 14, b: 28}, LOG = !!opt.log;
+  const tf = v => LOG ? Math.log(v) : v;
+  const all = series.flatMap(s => s.pts.map(p => [+new Date(p[0]), p[1]])).filter(p => p[1] != null && (!LOG || p[1] > 0));
+  let x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+  let y0 = Math.min(LOG ? Infinity : 0, ...all.map(p => tf(p[1]))), y1 = Math.max(LOG ? -Infinity : 0, ...all.map(p => tf(p[1])));
+  const pad = (y1 - y0) * .06; y0 -= pad; y1 += pad;
+  const X = t => m.l + (t - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => m.t + (y1 - tf(v)) / (y1 - y0) * (H - m.t - m.b);
+  const mut = css("--muted"), grid = css("--grid"), font = 'font-size="11" font-family="IBM Plex Mono,monospace"';
+  let g = "";
+  BANDS.forEach(([a, b, n], i) => { const xa = Math.max(X(+new Date(a)), m.l), xb = Math.min(X(+new Date(b)), W - m.r);
+    if (xb > xa) g += `<rect x="${xa}" y="${m.t}" width="${xb - xa}" height="${H - m.t - m.b}" fill="${i % 2 ? "transparent" : css("--band")}"/><text x="${xa + 6}" y="${m.t + 12}" fill="${mut}" ${font}>${n}</text>`; });
+  let ticks = [];
+  if (LOG) { for (const v of [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, 24, 32]) if (Math.log(v) >= y0 && Math.log(v) <= y1) ticks.push(v); }
+  else { const st = niceStep((y1 - y0) / 5); for (let v = Math.ceil(y0 / st) * st; v <= y1; v += st) ticks.push(v); }
+  ticks.forEach(v => g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${(LOG ? v === 1 : v === 0) ? mut : grid}"/><text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${font}>${LOG ? fmt(v, v < 1 ? 2 : 0) + "×" : fmt(v, 0)}</text>`);
+  const ystep = (new Date(x1).getFullYear() - new Date(x0).getFullYear()) > 10 ? 2 : 1;
+  for (let y = new Date(x0).getFullYear() + 1; y <= new Date(x1).getFullYear(); y += ystep) g += `<text x="${X(+new Date(y + "-01-01"))}" y="${H - 8}" text-anchor="middle" fill="${mut}" ${font}>${y}</text>`;
+  series.forEach(s => { const d = s.pts.filter(p => p[1] != null).map((p, i) => (i ? "L" : "M") + X(+new Date(p[0])).toFixed(1) + "," + Y(p[1]).toFixed(1)).join("");
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w || 2}" ${s.dash ? 'stroke-dasharray="5 4"' : ""} stroke-linejoin="round"/>`; });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${opt.label || "graf"}">${g}<line class="xh" y1="${m.t}" y2="${H - m.b}" stroke="${css("--ink2")}" opacity="0"/><g class="dots"></g><rect class="hit" x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), xh = svg.querySelector(".xh"), dots = svg.querySelector(".dots");
+  const idx = series.map(s => s.pts.map(p => +new Date(p[0])));
+  const hide = () => { tip.hidden = true; xh.setAttribute("opacity", 0); dots.innerHTML = ""; };
+  svg.querySelector(".hit").addEventListener("pointermove", ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width * W, t = x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+    const rows = [];
+    series.forEach((s, k) => { const a = idx[k]; if (!a.length || t < a[0]) return; let lo = 0, hi = a.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; a[mid] <= t ? lo = mid : hi = mid - 1; } if (s.pts[lo][1] != null) rows.push([s, s.pts[lo]]); });
+    if (!rows.length) return hide();
+    xh.setAttribute("x1", px); xh.setAttribute("x2", px); xh.setAttribute("opacity", .35);
+    dots.innerHTML = rows.map(([s, p]) => `<circle cx="${X(+new Date(p[0]))}" cy="${Y(p[1])}" r="4.5" fill="${s.color}" stroke="${css("--surface")}" stroke-width="2"/>`).join("");
+    tip.innerHTML = `<div class="d">${new Date(t).toLocaleDateString("cs-CZ")}</div>` + rows.map(([s, p]) => `<div class="row"><span><i style="background:${s.color}"></i>${s.name}</span><b class="num">${LOG ? fmt(p[1]) + "×" : sgn(p[1], 0)}</b></div>`).join("");
+    tip.hidden = false; const hw = host.clientWidth; tip.style.left = Math.min(Math.max(px / W * hw + 12, 0), hw - tip.offsetWidth - 4) + "px"; tip.style.top = "8px";
+  });
+  svg.querySelector(".hit").addEventListener("pointerleave", hide);
+}
+const legend = (el, ss) => el.innerHTML = ss.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+
+function drawMattia() {
+  const M = DATA.mattia;
+  $("#tMattia").innerHTML = `<thead><tr><th>Strategie</th><th>Obchodů</th><th>b./obch. hrubě</th><th>b./obch. čistě</th><th>Win %</th><th>PF</th><th>Max DD b.</th><th>2008–17</th><th>2018–22</th><th>2023–26</th></tr></thead><tbody>` +
+    M.map(s => `<tr><td class="name">${s.key} · ${s.name}</td><td class="num">${s.n}</td><td class="num ${cls(s.gross)}">${sgn(s.gross)}</td><td class="num ${cls(s.exp)}">${sgn(s.exp)}</td><td class="num">${s.win}</td><td class="num">${fmt(s.pf)}</td><td class="num">${fmt(s.dd,0)}</td>${s.per.map((v,i) => `<td class="num ${cls(v)}">${sgn(v)} <span class="small">(${s.pern[i]})</span></td>`).join("")}</tr>`).join("") +
+    `<tr><td class="name">S3 jen long</td><td></td><td></td><td></td><td></td><td></td><td></td>${DATA.side.long.map(v => `<td class="num ${cls(v)}">${sgn(v)}</td>`).join("")}</tr>` +
+    `<tr><td class="name">S3 jen short</td><td></td><td></td><td></td><td></td><td></td><td></td>${DATA.side.short.map(v => `<td class="num ${cls(v)}">${sgn(v)}</td>`).join("")}</tr></tbody>`;
+  const col = [css("--s1"), css("--s2"), css("--s3")];
+  const ss = M.map((s, i) => ({name: s.key + " " + s.name.split(" (")[0], pts: s.eq, color: col[i]}));
+  legend($("#lgMattia"), ss); lineChart($("#chMattia"), ss, {label: "Equity Mattiových strategií v bodech"});
+}
+function drawHours() {
+  const Hh = DATA.hours, W = 1000, H = 300, m = {l: 50, r: 10, t: 14, b: 34};
+  const vals = Hh.flatMap(h => [h.pre, h.post]), mx = Math.max(...vals.map(Math.abs)) * 1.1;
+  const Y = v => m.t + (mx - v) / (2 * mx) * (H - m.t - m.b), bw = (W - m.l - m.r) / Hh.length, mut = css("--muted"), font = 'font-size="11" font-family="IBM Plex Mono,monospace"';
+  let g = "";
+  for (const v of [-1, -0.5, 0, 0.5, 1].map(f => f * Math.floor(mx))) g += `<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 0 ? mut : css("--grid")}"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end" fill="${mut}" ${font}>${fmt(v,0)}</text>`;
+  Hh.forEach((h, i) => { const x = m.l + i * bw;
+    [[h.pre, css("--s1"), 0], [h.post, css("--s2"), 1]].forEach(([v, c, k]) => { const y = Y(Math.max(v, 0)), hh = Math.abs(Y(v) - Y(0));
+      g += `<rect x="${x + bw * (0.12 + k * 0.4)}" y="${y}" width="${bw * 0.36}" height="${Math.max(hh, 1)}" rx="2" fill="${c}"><title>${h.h} · ${k ? "2018–26" : "2008–17"}: ${sgn(v)} bp</title></rect>`; });
+    if (i % 2 === 0) g += `<text x="${x + bw / 2}" y="${H - 12}" text-anchor="middle" fill="${mut}" ${font}>${h.h.slice(0,2)}</text>`; });
+  $("#chHours").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Průměrný výnos podle hodiny">${g}</svg>`;
+  legend($("#lgHours"), [{name: "2008–2017", color: css("--s1")}, {name: "2018–2026", color: css("--s2")}]);
+  const f = n => DATA.fams.find(x => x.name.startsWith(n));
+  const a = f("Hodinová sezónnost, walk-forward (video 2)"), b = f("Hodinová sezónnost, walk-forward, po");
+  $("#hourText").innerHTML = `Silné hodiny se mezi obdobími mění, viz 09:00 nebo 14:00 ET. Když se hodiny vybírají jen z minulosti, dává strategie hrubě Sharpe ${fmt(a.sr)} a alfa t = ${fmt(a.at)}. Po nákladech, protože se obchoduje několik oddělených bloků denně, je výsledek ${sgn(b.ann,1)} % ročně. Video ukazuje, jak sezónnost <i>změřit</i>. Obchodovatelná strategie z ní na ES nevzniká. Jako filtr času (kdy neobchodovat) může mít smysl.`;
+}
+function drawFams() {
+  $("#tFam").innerHTML = `<thead><tr><th>Rodina</th><th>Verdikt</th><th>Výnos/rok</th><th>Sharpe</th><th>Alfa/rok</th><th>Alfa t</th><th>Beta</th><th>Max DD</th><th>V trhu</th><th>08–17</th><th>18–22</th><th>23–26</th></tr></thead><tbody>` +
+    DATA.fams.map(f => `<tr><td class="name">${f.name}<small>${f.grp}</small></td><td>${pill(f.verdict)}</td><td class="num ${cls(f.ann)}">${sgn(f.ann)} %</td><td class="num ${cls(f.sr)}">${fmt(f.sr)}</td><td class="num ${cls(f.alpha)}">${sgn(f.alpha)} %</td><td class="num ${cls(f.at)}">${fmt(f.at)}</td><td class="num">${fmt(f.beta)}</td><td class="num">${fmt(f.dd,1)} %</td><td class="num">${fmt(f.expo,0)} %</td>${f.per.map(v => `<td class="num ${cls(v)}">${fmt(v)}</td>`).join("")}</tr>`).join("") + "</tbody>";
+}
+function drawAlloc() {
+  const A = DATA.alloc, S = A.stats;
+  $("#allocText").innerHTML = `Brainstorm uvádí 15–25 % CAGR proti 7,5 % B&amp;H. Jenže strategie drží průměrně víc než 1× ES. Férová otázka je, jestli páku přidává ve správnou chvíli. Proto ji srovnávám s B&amp;H držícím konstantně stejnou průměrnou páku ${fmt(A.avg_w)}× a s vol-managed B&amp;H přeškálovaným na stejnou průměrnou expozici. Allocator: CAGR ${fmt(S.alloc.cagr)} %, Sharpe ${fmt(S.alloc.sr)}, DD ${fmt(S.alloc.dd,0)} %. Konstantní páka: ${fmt(S.lev.cagr)} %, ${fmt(S.lev.sr)}, ${fmt(S.lev.dd,0)} %. Vol-managed: ${fmt(S.vm.cagr)} %, ${fmt(S.vm.sr)}, ${fmt(S.vm.dd,0)} %. Na mřížce ${A.grid.n} variant je průměrná alfa t ${fmt(A.grid.mean_at)} a nad konstantní pákou ve všech třech obdobích je jen ${A.grid.share_all} % variant.`;
+  const ss = [{name: "Crisis allocator", pts: A.curves.alloc, color: css("--s1"), w: 2.5}, {name: `B&H konstantně ${fmt(A.avg_w)}×`, pts: A.curves.lev, color: css("--s2")},
+    {name: "Vol-managed, stejná průměrná expozice", pts: A.curves.vm, color: css("--s3")}, {name: "B&H 1×", pts: A.curves.bh, color: css("--bh"), dash: 1}];
+  legend($("#lgAlloc"), ss); lineChart($("#chAlloc"), ss, {log: 1, label: "Allocator vs páka"});
+  $("#tAllocDD").innerHTML = `<thead><tr><th>Práh DD od ATH</th><th>Alfa t (průměr)</th><th>Nad konst. pákou 08–17</th><th>18–22</th><th>23–26</th></tr></thead><tbody>` +
+    A.grid.by_dd.map(r => `<tr><td class="num">${fmt(r.dd*100,0)} %</td><td class="num">${fmt(r.alpha_t)}</td><td class="num ${cls(r["PRE_exc%"])}">${sgn(r["PRE_exc%"])} %</td><td class="num ${cls(r["IS_exc%"])}">${sgn(r["IS_exc%"])} %</td><td class="num ${cls(r["OOS_exc%"])}">${sgn(r["OOS_exc%"])} %</td></tr>`).join("") + "</tbody>";
+}
+function drawBook() {
+  const ss = [{name: "Kandidátní kniha", pts: B.book.curve, color: css("--s1"), w: 2.5}, {name: "B&H se stejnou volatilitou", pts: B.bh_book_vol.curve, color: css("--s2")},
+    {name: "Vol-managed ES", pts: B.vm.curve, color: css("--s3")}, {name: "B&H 1×", pts: B.bh.curve, color: css("--bh"), dash: 1}];
+  legend($("#lgBook"), ss); lineChart($("#chBook"), ss, {log: 1, label: "Kniha vs B&H"});
+  const lab = {bh: "B&H 1×", vm: "Vol-managed ES", book: "Vol-managed + Noise + S3 + Pre-FOMC", alloc_book: "Allocator + Noise + S3", mattia: "Mattia S1 + S2 + S3"};
+  $("#tBooks").innerHTML = `<thead><tr><th>Kniha</th><th>CAGR</th><th>Sharpe</th><th>Max DD</th><th>Vol</th><th>08–17</th><th>18–22</th><th>23–26</th><th>B&H stejná vol: CAGR / DD</th></tr></thead><tbody>` +
+    Object.keys(lab).map(k => { const b = B[k]; return `<tr><td class="name">${lab[k]}</td><td class="num ${cls(b.cagr)}">${fmt(b.cagr)} %</td><td class="num">${fmt(b.sr)}</td><td class="num">${fmt(b.dd,1)} %</td><td class="num">${fmt(b.vol,1)} %</td>${b.per.map(v => `<td class="num ${cls(v)}">${fmt(v)}</td>`).join("")}<td class="num">${fmt(b.bh_same_vol.cagr)} % / ${fmt(b.bh_same_vol.dd,1)} %</td></tr>`; }).join("") + "</tbody>";
+  const C = DATA.corr, short = ["B&H", "Vol-mgd", "Allocator", "S1", "S3", "Noise", "TOM", "FOMC"];
+  const col = v => v >= 0.999 ? css("--mid") : `color-mix(in oklab, ${v > 0 ? css("--pos") : css("--neg")} ${Math.round(Math.min(Math.abs(v), 1) * 80)}%, ${css("--mid")})`;
+  $("#tCorr").innerHTML = `<thead><tr><th></th>${short.map(s => `<th>${s}</th>`).join("")}</tr></thead><tbody>` +
+    C.m.map((row, i) => `<tr><td class="rowh">${short[i]}</td>${row.map(v => `<td style="background:${col(v)};color:${Math.abs(v) > .55 && v < .999 ? "#fff" : "var(--ink)"}">${fmt(v)}</td>`).join("")}</tr>`).join("") + "</tbody>";
+}
+
+/* ---------- approach map ---------- */
+const MAP = [
+  ["Expozice", "Vol-managed B&H (Moreira–Muir)", "go", "Dnes: Sharpe 0,73 vs 0,62, DD −23 % vs −33 %, alfa t 1,7. Lepší v 08–17 i 18–22."],
+  ["Expozice", "Trend filtr MA200 (Faber)", "go", "Dnes: Sharpe 0,70, DD −17 %, v trhu 73 % času. Alternativa nebo doplněk jádra."],
+  ["Expozice", "Crisis allocator: páka v korekci s potvrzením", "watch", "Dnes: nad konstantní pákou +2–8 % ročně, citlivé na práh, 2023–26 ≈ 0. Jen konzervativně se stropem DD."],
+  ["Expozice", "Páka podle drawdownu bez potvrzení", "no", "Dnes: alfa t 0,5, prakticky jen páka."],
+  ["Expozice", "State Atlas / nearest neighbors (ChatGPT)", "watch", "ChatGPT: stav C6 má 2,4× vyšší 20denní výnos. Black-box ML mimo vzorek AUC 0,52–0,59. Nikdo nezreplikoval."],
+  ["Expozice", "Hazard model korekcí", "no", "swing_lab: AUC 0,45–0,53 mimo vzorek. Korekce se předpovídat nedají, edge je v hloubce poklesu."],
+  ["Intraday momentum", "Noise-area momentum (Zarattini 2024)", "watch", "Dnes: hrubě alfa t 4,1 ve všech obdobích. Po 0,5 b. nákladech Sharpe 0,32. Rozhoduje exekuce."],
+  ["Intraday momentum", "Mattia S3 Overnight Bias ORB", "watch", "Dnes: PF 1,26 v letech 2018–26, jen long strana, 2008–17 nula."],
+  ["Intraday momentum", "Mattia S1 Vault Break", "no", "Dnes: po nákladech nula, 2008–17 záporný."],
+  ["Intraday momentum", "Intradenní momentum Gao 2018", "no", "Dnes: záporné na ES."],
+  ["Intraday momentum", "Open ± X breakout long", "no", "alpha_test: t ≈ 1,6, z 640 variant."],
+  ["Intraday reverze", "Mattia S2 VWAP Pullback + ADX", "no", "Dnes: hrubá edge 0,05 b., po nákladech ztráta."],
+  ["Intraday reverze", "Phase 1–4 order-flow reverze (29 strategií)", "watch", "alpha_test: 0/29 prošlo sítem, 3 kandidáti na paper trading. Edge jen od roku 2023."],
+  ["Intraday reverze", "Open ± X fade", "no", "alpha_test: ztrátové napříč 640 variantami."],
+  ["Swing reverze", "Kanonické Connors systémy (RSI2, IBS, Double 7s…)", "watch", "swing_lab: 8/9 kladné i při 1,5 b. nákladech, Sharpe knihy 0,68 vs 0,65. V Sierra MultiSwing."],
+  ["Swing reverze", "Korekční rodiny (DD + RSI2/IBS, N down dnů pod VWAP)", "watch", "swing_lab: 12 rodin, vol-matched CAGR 12,95 % vs 9,66 %, slepý test alfa t 1,33."],
+  ["Swing reverze", "Lower-close série z ChatGPT reportu", "no", "sierra/CO_DOLADIT: look-ahead chyba, obchodovatelná verze je záporná."],
+  ["Swing reverze", "Delta exhaustion jako důvod vstupu", "no", "swing_lab: záporná alfa."],
+  ["Čas a kalendář", "Hodinová sezónnost (video 2)", "no", "Dnes: walk-forward hrubě Sharpe 0,08, po nákladech silně záporné."],
+  ["Čas a kalendář", "Overnight drift", "beta", "Dnes: hrubě Sharpe 0,56, ale je to beta (alfa t 0,95). Při držení B&H ho máš zadarmo."],
+  ["Čas a kalendář", "Turn of month", "beta", "Dnes: kladné ve všech obdobích, ale alfa ≈ 0. Hodí se jako náklon expozice."],
+  ["Čas a kalendář", "Pre-FOMC drift (Lucca–Moench)", "watch", "Dnes: alfa t 2,0 od roku 2016, 8 dní ročně. Seznam FOMC před 2016 chybí."],
+  ["Čas a kalendář", "Pre-holiday, OPEX week", "no", "Dnes: bez edge."],
+  ["Trend", "Breakout pyramiding (Livermore)", "no", "ChatGPT: CAGR 4,9 % při DD −30 %."],
+  ["Trend", "Trend-following napříč 20–50 futures (CTA)", "data", "Nejlépe zdokumentovaný zdroj krizové alfy. Na jednom trhu nefunguje, potřebuje NQ, ZN, CL, GC, měny."],
+  ["Volatilita", "VIX term structure jako filtr expozice", "data", "Contango/backwardation VIX futures, silná literatura. Potřebuje VIX a VX futures."],
+  ["Opce", "Volatility risk premium (put-write, covered call)", "data", "Indexy PUT/BXM: podobný výnos jako S&P s nižší volatilitou. Potřebuje opční data."],
+  ["Opce", "0DTE / GEX, dealer gamma", "data", "Navazuje na tvůj GEX setup. Potřebuje opční řetězec a open interest."],
+  ["Cross-market", "Lead-lag NQ → ES, ES vs ZN", "data", "Potřebuje synchronizovaná 1min nebo tick data dalších trhů."],
+  ["Mikrostruktura", "Tick/MBO: imbalance, sweepy, queue", "data", "Na 1min barech nejde. Potřebuje tick nebo MBO data a simulátor fillů."],
+  ["Prop firm", "Geometrie strategií pro challenge (Mattia)", "watch", "Dnes: S1+S2+S3 projde 19–37 % a selže 60 % challengí. Nejde o tržní alfu, jen o řízení rizika vůči pravidlům."],
+];
+let mf = "all";
+function drawMap() {
+  const rows = MAP.filter(r => mf === "all" || r[2] === mf || (mf === "no" && r[2] === "beta"));
+  $("#tMap").innerHTML = `<thead><tr><th>Oblast</th><th>Přístup</th><th>Stav</th><th style="text-align:left">Co víme</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td class="small" style="text-align:left">${r[0]}</td><td class="name" style="white-space:normal;min-width:220px">${r[1]}</td><td>${pill(r[2])}</td><td style="text-align:left;white-space:normal;min-width:280px">${r[3]}</td></tr>`).join("") + "</tbody>";
+}
+document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => { mf = b.dataset.f;
+  document.querySelectorAll(".filters button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawMap(); }));
+
+function drawAll() { drawMattia(); drawHours(); drawFams(); drawAlloc(); drawBook(); drawMap(); }
+drawAll();
+new MutationObserver(drawAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+</script>

@@ -1,0 +1,10 @@
+                                      book  MES/strategie        IS 18-22       OOS 23-26      PRE 08-17  median dní k pass
+0                                       S1              2    0% (fail 0%)    0% (fail 0%)   0% (fail 0%)                NaN
+1                                       S1              5   5% (fail 29%)   9% (fail 20%)   0% (fail 1%)               46.0
+2                                       S2              2    0% (fail 0%)    0% (fail 0%)   0% (fail 0%)                NaN
+3                                       S2              5    0% (fail 0%)    0% (fail 0%)   0% (fail 0%)                NaN
+4                                       S3              2    4% (fail 0%)    1% (fail 0%)   0% (fail 0%)               41.0
+5                                       S3              5  18% (fail 21%)  32% (fail 35%)   3% (fail 3%)               33.0
+6                                 S1+S2+S3              2    6% (fail 4%)    4% (fail 1%)   0% (fail 0%)               42.0
+7                                 S1+S2+S3              5  19% (fail 61%)  37% (fail 60%)  3% (fail 19%)               23.0
+8  Placebo: long RTH open->close každý den              2   5% (fail 62%)  17% (fail 67%)   0% (fail 4%)                NaN
