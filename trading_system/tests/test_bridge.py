@@ -31,6 +31,30 @@ def test_daily_profiles_round_trip(tmp_path):
     assert result == profiles
 
 
+def test_daily_profiles_round_trip_preserves_volume_at_price(tmp_path):
+    # Needed for CompositeEngine's merge check to use the real volume-weighted
+    # overlap (composite/overlap.py's overlap_fraction) instead of its
+    # price-range fallback.
+    profile = DailyProfile(
+        "ES", date(2024, 1, 1), val=100, vah=110, poc=105,
+        volume_at_price={100.0: 50.0, 105.0: 200.0, 110.0: 30.0},
+    )
+    path = tmp_path / "daily_profile_export.csv"
+    write_daily_profiles(path, [profile])
+    result = read_daily_profiles(path)
+    assert result == [profile]
+
+
+def test_daily_profiles_read_without_volume_at_price_column(tmp_path):
+    # A file written before this column existed (or by ACSIL, which doesn't
+    # export a histogram over the bridge) should still parse, with
+    # volume_at_price defaulting to None rather than raising.
+    path = tmp_path / "daily_profile_export.csv"
+    path.write_text("date,instrument,val,vah,poc\n2024-01-01,ES,100,110,105\n")
+    result = read_daily_profiles(path)
+    assert result == [DailyProfile("ES", date(2024, 1, 1), val=100, vah=110, poc=105)]
+
+
 def test_daily_profiles_keeps_last_row_when_a_date_is_duplicated(tmp_path):
     """Reproduces a real run: two conflicting rows for the same date ended
     up in daily_profile_export.csv (see ARCHITECTURE.md). The last one

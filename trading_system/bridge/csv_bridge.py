@@ -13,7 +13,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from ..composite.models import Composite, DailyProfile, classify_tier
 
@@ -108,7 +108,7 @@ ORDER_PROPOSAL_FIELDS = [
     "contracts_runner",
 ]
 
-DAILY_PROFILE_FIELDS = ["date", "instrument", "val", "vah", "poc"]
+DAILY_PROFILE_FIELDS = ["date", "instrument", "val", "vah", "poc", "volume_at_price"]
 LIVE_STATE_FIELDS = [
     "timestamp",
     "instrument",
@@ -150,12 +150,40 @@ def _parse_ranges(text: str) -> Tuple[Tuple[float, float], ...]:
     return tuple(segments)
 
 
+def _format_volume_at_price(volume_at_price: Optional[Dict[float, float]]) -> str:
+    """Same ``lo:hi;lo:hi`` style as ``_format_ranges`` above, reused here as
+    ``price:volume;price:volume`` -- optional (empty string when absent, the
+    same convention every other "not supplied" bridge field uses) since nothing
+    writes this yet except backtest data-import tooling (ACSIL doesn't export
+    a volume-at-price histogram over the bridge). Without it, CompositeEngine's
+    merge check (composite/overlap.py's overlap_fraction) falls back to a
+    plain value-area price-range overlap instead of the true "N% of a day's
+    transactions" volume-weighted check the methodology calls for.
+    """
+    if not volume_at_price:
+        return ""
+    return ";".join(f"{price}:{vol}" for price, vol in volume_at_price.items())
+
+
+def _parse_volume_at_price(text: str) -> Optional[Dict[float, float]]:
+    if not text:
+        return None
+    result: Dict[float, float] = {}
+    for part in text.split(";"):
+        price_str, vol_str = part.split(":")
+        result[float(price_str)] = float(vol_str)
+    return result
+
+
 def write_daily_profiles(path: Path, profiles: Iterable[DailyProfile]) -> None:
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(DAILY_PROFILE_FIELDS)
         for p in profiles:
-            writer.writerow([p.session_date.isoformat(), p.instrument, p.val, p.vah, p.poc])
+            writer.writerow([
+                p.session_date.isoformat(), p.instrument, p.val, p.vah, p.poc,
+                _format_volume_at_price(p.volume_at_price),
+            ])
 
 
 def read_daily_profiles(path: Path) -> List[DailyProfile]:
@@ -186,6 +214,12 @@ def read_daily_profiles(path: Path) -> List[DailyProfile]:
                 val=float(row["val"]),
                 vah=float(row["vah"]),
                 poc=float(row["poc"]),
+                # .get, not row["..."] -- a daily_profile_export.csv row
+                # written before this column existed won't have it at all;
+                # treat that the same as "not available" (None) rather than
+                # raising, same convention LIVE_STATE_FIELDS' later additions
+                # (vwap_*_sd1) already use.
+                volume_at_price=_parse_volume_at_price(row.get("volume_at_price") or ""),
             )
             key = (profile.instrument, profile.session_date)
             by_key.pop(key, None)  # drop any earlier row for this key so re-inserting moves it to the end
