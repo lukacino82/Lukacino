@@ -142,7 +142,7 @@ def main() -> None:
             if day_key != cur_day:
                 if cur_day is not None:
                     val, vah, poc = value_area(day_hist, day_vol, tick_size)
-                    daily_rows.append((f"{cur_day[0]:04d}-{cur_day[1]:02d}-{cur_day[2]:02d}", val, vah, poc))
+                    daily_rows.append((f"{cur_day[0]:04d}-{cur_day[1]:02d}-{cur_day[2]:02d}", val, vah, poc, dict(day_hist)))
                 cur_day = day_key
                 intraday = RunningVWAP()
                 cum_delta = 0.0
@@ -179,13 +179,14 @@ def main() -> None:
 
         if cur_day is not None:
             val, vah, poc = value_area(day_hist, day_vol, tick_size)
-            daily_rows.append((f"{cur_day[0]:04d}-{cur_day[1]:02d}-{cur_day[2]:02d}", val, vah, poc))
+            daily_rows.append((f"{cur_day[0]:04d}-{cur_day[1]:02d}-{cur_day[2]:02d}", val, vah, poc, dict(day_hist)))
 
     with open(f"{out_dir}/daily_profile_export.csv", "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["date", "instrument", "val", "vah", "poc"])
-        for date_s, val, vah, poc in daily_rows:
-            writer.writerow([date_s, instrument, val, vah, poc])
+        writer.writerow(["date", "instrument", "val", "vah", "poc", "volume_at_price"])
+        for date_s, val, vah, poc, hist in daily_rows:
+            vap = ";".join(f"{price}:{vol}" for price, vol in hist.items())
+            writer.writerow([date_s, instrument, val, vah, poc, vap])
 
     print(f"Done: {n:,} intraday rows, {len(daily_rows):,} daily profile rows.", file=sys.stderr)
 
