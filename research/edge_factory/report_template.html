@@ -1,0 +1,403 @@
+<title>ES Edge Factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES mini futures · 1min data 2008–2026 · 1,29 mil. 5min barů · 4 708 dní</div>
+  <h1>ES Edge Factory</h1>
+  <p class="lede">Kde v tradingu skutečně vzniká edge, a co z toho je vidět v našich datech. Hypotézy z tvého zadání (kalendář, hodiny, VWAP retesty, objem a absorpce, divergence kumulativní delty od hodin po roky, stop-hunty, vzorce davu) i strojové učení na kombinacích prošly jedním přísným protokolem. K tomu Kelly, pokerový bankroll a matematika strategií s nízkým win rate.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="eyebrow">Hlavní odpověď</div>
+  <h2>Kde reálně vzniká edge</h2>
+  <div class="callout"><p>Edge vzniká jen tam, kde někdo jiný systematicky platí: za převzetí rizika, za likviditu, kvůli svým chybám nebo kvůli tomu, že obchodovat <i>musí</i>. Ze stovek „patternů“ v cenách a objemech ES dnes drží jen ty, které mají takový mechanismus: dlouhodobá riziková prémie (držení indexu), krátkodobá reverze po přeprodanosti v býčím trhu a řízení expozice. Kalendář, hodiny dne, VWAP retesty, divergence delty a stop-hunty se v datech chovají jako čistá náhoda.</p></div>
+  <div class="grid3" id="sources"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Továrna na hypotézy</div>
+  <h2>3 157 testů a co z nich zbylo</h2>
+  <p class="sub">Rozdělení |t| v objevovacím období 2008–2016 (sloupce) proti tomu, co by vyrobila čistá náhoda (čára). Kdyby v datech byla skrytá edge, pravý konec by výrazně převyšoval čáru.</p>
+  <div class="panel"><div class="legend" id="lgHist"></div><div class="chart" id="chHist"></div></div>
+  <div class="callout"><p id="histText"></p></div>
+</section>
+
+<section>
+  <div class="eyebrow">Tvoje nápady</div>
+  <h2>Jeden po druhém</h2>
+  <p class="sub">„Silných“ = podíl testů s |t| &gt; 2 v letech 2008–16, náhoda dává 4,6 %. „Znaménko drží“ = jak často byl efekt v letech 2017–26 ve stejném směru, náhoda dává 50 %. Nejsilnější varianta je uvedená s t-statistikou ve třech obdobích (2008–16 · 2017–21 · 2022–26).</p>
+  <div class="tablewrap"><table id="tIdeas"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Rodiny</div>
+  <h2>Nese rodina informaci, nebo jen šum?</h2>
+  <p class="sub">Každý bod je jedna hypotéza: vodorovně síla v objevovacím období, svisle t-statistika ve dvou dalších obdobích dohromady. U skutečné edge by silné body vpravo ležely nad nulou.</p>
+  <div class="grid2">
+    <div class="panel"><div class="chart" id="chScatter"></div></div>
+    <div class="tablewrap" style="align-self:start"><table id="tFam"></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Co drží ve všech obdobích</div>
+  <h2>13 konzistentních nálezů</h2>
+  <p class="sub">|t| &gt; 2 v letech 2008–16 a t &gt; 1 ve stejném směru v letech 2017–21 i 2022–26. Excess a čistý výsledek v bazických bodech na obchod (po 0,5 bodu nákladů).</p>
+  <div class="tablewrap"><table id="tCons"></table></div>
+  <div class="callout"><p>Tři skutečné, i když malé efekty. (1) <b>Přeprodanost v denním horizontu</b>: RSI(2) &lt; 10 nebo &lt; 20 a long na další den, kladné po nákladech ve všech obdobích. Je to známá Connorsova reverze, kterou už potvrdil i <span class="mono">swing_lab</span>. (2) <b>Nová 52týdenní maxima</b>: dalších 5–20 dní ES roste pomaleji než průměrně, takže na ATH nepřidávat páku. (3) <b>Absorpce</b>: hodina s 2× objemem, nákupní deltou a stojící nebo klesající cenou je následujících 30 min mírně silnější. Objevuje se jen mimo RTH, kdy je likvidita nižší. Podporuje to tvou hypotézu o skrytém nákupu, ale efekt je jen 1–3 bp a sotva pokryje náklady. Prodejní zrcadlo existuje jen slabě.</p></div>
+</section>
+
+<section>
+  <div class="eyebrow">Strojové učení</div>
+  <h2>Najde stroj kombinace, které pravidla nevidí?</h2>
+  <p class="sub">LightGBM, 60 vlastností stavu trhu, walk-forward po letech (model nikdy nevidí rok, který předpovídá). Informační koeficient = korelace předpovědi a skutečnosti. Nula znamená, že model nic neví.</p>
+  <div class="panel"><div class="legend" id="lgML"></div><div class="chart" id="chML"></div></div>
+  <div class="grid2">
+    <div class="card"><h3>Výsledek</h3><p class="why" id="mlText"></p></div>
+    <div class="tablewrap" style="align-self:start"><table id="tMLs"></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Money management · poker · Kelly</div>
+  <h2>Co velikost pozice umí a co ne</h2>
+  <div class="callout"><p><b>Řízení velikosti pozic edge nevytvoří, jen ji zesílí nebo zničí.</b> Je to matematická věta (optional stopping): když má každý obchod nulovou očekávanou hodnotu, žádná posloupnost sázek ji nezmění. Kelly u nulové edge doporučí vsadit nulu. Poker funguje stejně: vyhrávají hráči, kteří mají edge nad stolem (informace, pozice, chyby soupeřů). Bankroll management je jen chrání před krachem, než se edge projeví.</p></div>
+  <div class="grid2">
+    <div class="panel"><h3>Očekávaná hodnota obchodu v R</h3><p class="small">Řádky = win rate, sloupce = reward:risk. Záporné = ztrátový systém bez ohledu na sizing.</p><div class="tablewrap" style="border:0"><table class="heat" id="tEV"></table></div></div>
+    <div class="panel"><h3>Kolik obchodů je potřeba k důkazu edge (t = 2)</h3><p class="small">Při nízkém win rate a vysokém RRR potřebuješ stovky až tisíce obchodů, než se edge odliší od štěstí.</p><div class="tablewrap" style="border:0"><table class="heat" id="tN"></table></div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><h3>Kellyho optimální riziko na obchod</h3><p class="small">f* = p − (1 − p) / R. V praxi ½ Kelly nebo méně.</p><div class="tablewrap" style="border:0"><table class="heat" id="tKelly"></table></div></div>
+    <div class="card"><h3>Série ztrát, se kterými musíš počítat</h3><p class="small">Očekávaná nejdelší série ztrát za N obchodů.</p><div class="tablewrap" style="border:0"><table id="tStreak"></table></div>
+      <p class="why">Systém s 10% win rate a 12R má i s reálnou edge v 500 obchodech typicky sérii kolem 37 ztrát v řadě. Psychicky i statisticky je to nejtěžší typ systému.</p></div>
+  </div>
+  <h3>Monte Carlo: 500 obchodů, 4 000 cest</h3>
+  <div class="tablewrap"><table id="tMC"></table></div>
+  <div class="panel"><h3>Reálná data: RSI(2) &lt; 10 vs. placebo</h3><p class="small">Long na další den po RSI(2) &lt; 10 (t = 3,2) a placebo se stejným počtem náhodných dní. Logaritmická osa, růst 1 $.</p><div class="legend" id="lgMM"></div><div class="chart" id="chMM"></div></div>
+  <div class="grid2">
+    <div class="panel"><h3>„Hrát jen prémiové ruce“: A-setupy</h3><p class="small">3 000 hypotéz seřazených podle win rate v letech 2008–16 (decily) a jejich win rate v letech 2017–26. Vysoký win rate se vrací k průměru.</p><div class="chart" id="chWR"></div></div>
+    <div class="panel"><h3>Přísnost filtru na reálné edge</h3><p class="small">RSI(2) práh: čím přísněji, tím méně obchodů a širší interval spolehlivosti (±2 SE).</p><div class="tablewrap" style="border:0"><table id="tRSI"></table></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Co si z pokeru vzít</h3><ul class="why">
+      <li><b>Bankroll = Kelly.</b> Riziko na obchod podle odhadnuté edge, ne podle pocitu. Odhad edge je nejistý, proto ½ Kelly nebo méně.</li>
+      <li><b>Výběr stolu = výběr režimu.</b> Reverze funguje v býčím režimu nad MA200, v medvědím ne. Neobchodovat, když chybí soupeř, je taky edge.</li>
+      <li><b>Hrát silné ruce, ale ne jen ty nejsilnější.</b> Nejvíc vydělal středně přísný filtr (RSI &lt; 20). Extrémní selektivita snižuje celkový zisk a zvyšuje nejistotu.</li>
+      <li><b>Variance není chyba.</b> Série 20–40 ztrát přijde i u dobrého systému s nízkým win rate. Pravidla zastavení si urči předem, ne v drawdownu.</li>
+      <li><b>Tilt.</b> Martingale je matematicky zakódovaný tilt: v simulaci krachuje ve 38–100 % cest, i když systém edge má.</li>
+    </ul></div>
+    <div class="card"><h3>Equity filtr a „odložení strategie v drawdownu“</h3><p class="why" id="eqText"></p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Plán</div>
+  <h2>Kam s tím dál</h2>
+  <ol class="steps">
+    <li><p><b>Postavit portfolio na zdrojích, které mají mechanismus</b>: držení ES s řízením expozice (volatilita, trend, žádná páka na ATH) a k tomu denní reverze po přeprodanosti v býčím režimu (RSI(2), IBS, korekční rodiny ze <span class="mono">swing_lab</span>). Sizing ½ Kelly z walk-forward odhadu, ne z nejlepšího backtestu.</p></li>
+    <li><p><b>Intradenní „patterny“ přestat hledat na OHLCV a deltě ES.</b> 3 157 testů a model se 60 vlastnostmi dávají výsledek na úrovni náhody. Další miliony kombinací by jen přidaly falešné objevy.</p></li>
+    <li><p><b>Přidat data, která nesou nový mechanismus</b>: opce (volatility risk premium, dealer gamma a OPEX toky), VIX a VX futures (term structure), další futures pro trend-following napříč trhy, COT pozice a toky ETF. Továrna je na to připravená: nová rodina = nový generátor hypotéz.</p></li>
+    <li><p><b>Discovery ledger a protokol</b>: každý nápad projde stejnou cestou (objev 2008–16, FDR, potvrzení 2017–21 a 2022–26, náklady). Výsledky tohoto reportu jsou v CSV, lze na ně navazovat.</p></li>
+  </ol>
+</section>
+
+<section>
+  <div class="eyebrow">Metodika</div>
+  <h2>Jak se testovalo</h2>
+  <div class="grid2">
+    <div class="card"><ul class="why">
+      <li><b>Data</b>: ES2008, 1min back-adjusted, květen 2008 – září 2026, převedeno na 5min bary globex dne (18:00–17:00 ET). Delta (Ask − Bid volume) až od června 2010.</li>
+      <li><b>Hypotéza</b> = podmínka na baru nebo dni. Směr není předem daný, určí ho objevovací období. Každá podmínka × horizont je tedy jeden test.</li>
+      <li><b>Horizonty</b>: 30 min, 2 h, do close RTH, do close dalšího dne; u denních close→close, open→close, close→open, 5 a 20 dní.</li>
+      <li><b>Nulový model</b>: průměrný výnos stejné půlhodiny dne (u denních všech dní) ve stejném roce. Excess tak neobsahuje long bias ani měnící se drift.</li>
+    </ul></div>
+    <div class="card"><ul class="why">
+      <li><b>Nepřekrývání</b>: události bližší než horizont se zahodí. U denních a end-of-day horizontů max. 1 událost denně.</li>
+      <li><b>Období</b>: objev 2008–16, potvrzení 2017–21 a 2022–26 ve stejném směru.</li>
+      <li><b>Mnohonásobné testování</b>: Benjamini–Hochberg FDR 10 % přes všech 3 157 testů.</li>
+      <li><b>Náklady</b>: 0,5 bodu na round trip. Opční pinning nešel testovat, protože back-adjusted ceny neodpovídají strikům.</li>
+      <li><b>Sdílené odkazy</b> (ChatGPT, YouTube) a obecný web síťová politika prostředí nepustila. Taxonomie zdrojů edge vychází z odborné literatury (McLean–Pontiff, Harvey–Liu–Zhu, Moreira–Muir, Lucca–Moench, Zarattini a další).</li>
+    </ul></div>
+  </div>
+</section>
+
+<footer>Kód a výsledky: <span class="mono">research/edge_factory/</span> (data.py, factory.py, hypotheses.py, ml.py, money.py, out/*.csv) ve větvi <span class="mono">claude/alpha-brainstorm-trading-zttwoc</span>. Historický backtest, ne záruka budoucích výnosů.</footer>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString("cs-CZ", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+const cls = v => v == null ? "" : v < 0 ? "neg" : "";
+const FONT = 'font-size="11" font-family="IBM Plex Mono,monospace"';
+const K = DATA.kpi, ML = DATA.ml, MM = DATA.money;
+const FEAT = {ret5: "výnos za 5 dní", ret20: "výnos za 20 dní", ma200d: "vzdálenost od MA200", ret1: "včerejší výnos", dd_ath: "drawdown od ATH",
+  gap: "gap", ibs_prev: "včerejší IBS", on_range: "overnight rozpětí", d_pwh: "vzdálenost od high minulého týdne", atr_rank: "percentil ATR", rsi2: "RSI(2)"};
+function niceStep(r) { const p = Math.pow(10, Math.floor(Math.log10(r))), f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+const legend = (el, ss) => el.innerHTML = ss.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+const pill = (cl, t) => `<span class="pill ${cl}">${t}</span>`;
+
+$("#kpis").innerHTML = [
+  [fmt(K.tests, 0), "hypotéz × horizontů otestováno jedním protokolem"],
+  [`${K.t2} / ${fmt(K.t2_exp, 0)}`, "testů s |t| > 2 / kolik jich dá čistá náhoda"],
+  [K.fdr, "prošly kontrolou falešných objevů (FDR 10 %)"],
+  [K.tradeable, "obchodovatelné ve všech obdobích po nákladech"],
+  [fmt(ML.intra_mean.auc, 3), "AUC strojového učení intraday (0,5 = náhoda)"],
+].map(([b, s]) => `<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+const SOURCES = [
+  ["Rizikové prémie", "go", "Platí ti za to, že neseš riziko, které jiní nechtějí: akciová prémie (držení indexu), prodej volatility (opce), carry, likvidita.", "ES drží +8,5 % ročně. Řízení expozice podle volatility a trendu zlepšuje poměr výnos/riziko. Prodej volatility potřebuje opční data."],
+  ["Behaviorální chyby davu", "go", "Přehnaná reakce na krátké výprodeje, pomalá reakce na trendy, kotvení. Platí ti ti, kdo prodávají v panice nebo kupují pozdě.", "Denní reverze po přeprodanosti (RSI(2), IBS) v býčím režimu drží ve všech obdobích. Po zveřejnění anomálie podle literatury slábnou zhruba o polovinu."],
+  ["Nucené toky", "data", "Někdo musí obchodovat bez ohledu na cenu: rebalancing fondů, roll, volatility targeting a CTA, zajišťování dealerů (gamma), margin cally, LETF na close.", "Na samotném ES nevidět (konec měsíce, OPEX, FOMC bez efektu). Potřebuje data o tocích: opce a open interest, toky ETF, COT."],
+  ["Poskytování likvidity", "no", "Market maker vydělává spread a nese riziko inventáře. Tady opravdu „velké peníze obchodují retail“: v akciích přes internalizaci toku (PFOF).", "Ve futures PFOF neexistuje. Lov stopů se v datech jako edge neprojevuje: u stop-hunt hypotéz drží znaménko jen v 51 % případů."],
+  ["Informační výhoda", "data", "Lepší nebo rychlejší informace: opční trh, alternativní data, makro, zprávy, pozicování ostatních.", "OHLCV a delta ES už svou informaci vydaly: intraday ML s 60 vlastnostmi má AUC 0,506. Nová informace musí přijít z nových dat."],
+  ["Rychlost a arbitráž", "no", "Latence, kolokace, basis ES vs. SPY, cross-venue arbitráž.", "Pro retail nedosažitelné. Na 1min barech ani netestovatelné."],
+  ["Omezení institucí", "go", "Fondy mají benchmark, limity páky, krátký horizont a kariérní riziko. Malý účet nic z toho nemá a může držet přes drawdown.", "Tvoje skutečná strukturální výhoda: trpělivost, malá velikost, žádný benchmark. Podporuje swingové a expoziční strategie."],
+  ["Náklady a exekuce", "watch", "Nejsnáze ovladatelná edge: provize, slippage, daně, typ příkazu.", "Noise-area momentum má hrubě t = 4,1, ale náklady 0,5 bodu ho smažou. Intradenní efekty se v datech pohybují kolem 1–3 bp, tedy pod náklady."],
+  ["Řízení rizika a velikosti", "watch", "Kelly, bankroll, volatility targeting. Zesiluje existující edge a chrání před krachem.", "Edge nevytvoří: bez edge Kelly vsadí 0 a martingale krachuje. S edge ½ Kelly z 2,4× udělal 13× za cenu drawdownu −46 %."],
+];
+const SP = {go: ["go", "Máme v datech"], watch: ["watch", "Zesiluje / chrání"], data: ["watch", "Potřebuje nová data"], no: ["no", "Ne pro retail"]};
+$("#sources").innerHTML = SOURCES.map(([h, v, a, b]) => `<div class="card"><div class="head"><h3>${h}</h3>${pill(SP[v][0], SP[v][1])}</div><p class="why">${a}</p><p class="small"><b>Naše data:</b> ${b}</p></div>`).join("");
+
+/* histogram */
+function drawHist() {
+  const H = DATA.hist, W = 1000, Hh = 300, m = {l: 50, r: 12, t: 12, b: 34};
+  const n = H.counts.length, mx = Math.max(...H.counts, ...H.expect) * 1.08, bw = (W - m.l - m.r) / n;
+  const Y = v => m.t + (1 - v / mx) * (Hh - m.t - m.b), mut = css("--muted");
+  let g = "";
+  for (let v = 0; v <= mx; v += niceStep(mx / 4)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v, 0)}</text>`;
+  H.counts.forEach((c, i) => { const x = m.l + i * bw, y = Y(c), hot = H.edges[i] >= 2;
+    g += `<rect x="${x + 1}" y="${y}" width="${bw - 2}" height="${Hh - m.b - y}" rx="2" fill="${hot ? css("--s2") : css("--s1")}"><title>|t| ${H.edges[i]}–${H.edges[i + 1]}: ${c} testů (náhoda ${fmt(H.expect[i], 0)})</title></rect>`;
+    if (i % 2 === 0 && i < n - 3) g += `<text x="${x}" y="${Hh - 12}" fill="${mut}" ${FONT}>${fmt(H.edges[i], 1)}</text>`; });
+  const pts = H.expect.map((e, i) => `${(m.l + (i + 0.5) * bw).toFixed(1)},${Y(e).toFixed(1)}`).join(" ");
+  g += `<polyline points="${pts}" fill="none" stroke="${css("--ink")}" stroke-width="2"/>`;
+  g += `<text x="${W - m.r}" y="${Hh - 12}" text-anchor="end" fill="${mut}" ${FONT}>|t| v letech 2008–16</text>`;
+  $("#chHist").innerHTML = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Histogram t statistik">${g}</svg>`;
+  legend($("#lgHist"), [{name: "|t| < 2", color: css("--s1")}, {name: "|t| ≥ 2", color: css("--s2")}, {name: "Očekávání při čisté náhodě", color: css("--ink")}]);
+  $("#histText").innerHTML = `Ze ${fmt(K.tests, 0)} testů má |t| &gt; 2 celkem ${K.t2}. Čistá náhoda by jich vyrobila ${fmt(K.t2_exp, 0)}. Rozdělení se od náhody prakticky neliší. Kontrolou falešných objevů prošly ${K.fdr} testy, potvrzení v obou pozdějších obdobích ${K.confirm} a obchodovatelný po nákladech ve všech obdobích ${K.tradeable}. V běžných 5min a denních patternech ES tedy žádná skrytá edge, která by unikla, není. Kdo z takového prostoru vybere „nejlepší strategii“, vybírá šťastlivce.`;
+}
+
+/* ideas */
+const VP = {info: ["go", "Informace"], weak: ["watch", "Slabá informace"], noise: ["no", "Šum"]};
+function drawIdeas() {
+  $("#tIdeas").innerHTML = `<thead><tr><th>Nápad</th><th>Verdikt</th><th>Testů</th><th>Silných %</th><th>Znaménko drží %</th><th style="text-align:left">Nejsilnější varianta</th><th>t 08–16 · 17–21 · 22–26</th></tr></thead><tbody>` +
+    DATA.ideas.map(r => `<tr><td class="name" style="white-space:normal;min-width:220px;font-family:inherit">${r.idea}</td><td>${pill(VP[r.verdict][0], VP[r.verdict][1])}</td><td class="num">${r.n}</td><td class="num">${fmt(r.share_t2, 1)}</td><td class="num">${fmt(r.holds, 0)}</td><td style="text-align:left;white-space:normal;min-width:240px" class="small">${r.best}</td><td class="num">${r.bt.map(v => `<span class="${cls(v)}">${fmt(v)}</span>`).join(" · ")}</td></tr>`).join("") + "</tbody>";
+}
+
+/* scatter + family table */
+function drawScatter() {
+  const P = DATA.scatter, W = 600, Hh = 420, m = {l: 46, r: 12, t: 12, b: 36};
+  const x1 = 4.5, y0 = -4, y1 = 4.5;
+  const X = v => m.l + Math.min(v, x1) / x1 * (W - m.l - m.r), Y = v => m.t + (y1 - Math.max(Math.min(v, y1), y0)) / (y1 - y0) * (Hh - m.t - m.b), mut = css("--muted");
+  let g = "";
+  for (let v = -4; v <= 4; v += 2) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 0 ? mut : css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${v}</text>`;
+  for (let v = 0; v <= 4; v += 1) g += `<line x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${Hh - m.b}" stroke="${v === 2 ? css("--s2") : css("--grid")}"/><text x="${X(v)}" y="${Hh - 18}" text-anchor="middle" fill="${mut}" ${FONT}>${v}</text>`;
+  g += P.map(([a, b]) => `<circle cx="${X(a).toFixed(1)}" cy="${Y(b).toFixed(1)}" r="2.4" fill="${css("--s1")}" opacity=".45"/>`).join("");
+  g += `<text x="${(W + m.l) / 2}" y="${Hh - 2}" text-anchor="middle" fill="${mut}" ${FONT}>|t| 2008–16</text><text x="12" y="${m.t + 8}" fill="${mut}" ${FONT}>t 2017–26</text>`;
+  $("#chScatter").innerHTML = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Síla v objevu vs později">${g}</svg>`;
+  const lab = {"share_t2": "Silných %", "sign_holds": "Znaménko drží %", "sign_holds_t2": "Drží u silných %", "corr": "Korelace síly", "net_all": "Net > 0 všude %"};
+  $("#tFam").innerHTML = `<thead><tr><th>Rodina</th><th>Testů</th>${Object.values(lab).map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>` +
+    DATA.fam.map(r => `<tr${r.f === "CELKEM" ? ' style="font-weight:600"' : ""}><td class="name" style="font-family:inherit">${r.f}</td><td class="num">${fmt(r.tests, 0)}</td>${Object.keys(lab).map(k => `<td class="num">${fmt(r[k], k === "corr" ? 2 : 1)}</td>`).join("")}</tr>`).join("") + "</tbody>";
+}
+
+function drawCons() {
+  $("#tCons").innerHTML = `<thead><tr><th>Hypotéza</th><th>Horizont</th><th>Směr</th><th>Obch. 08–16</th><th>t 08–16 · 17–21 · 22–26</th><th>Excess bp</th><th>Čistě bp</th></tr></thead><tbody>` +
+    DATA.consistent.map(r => `<tr><td class="name" style="white-space:normal;min-width:260px;font-family:inherit">${r.name}</td><td class="num">${r.h}</td><td>${r.d}</td><td class="num">${r.n}</td><td class="num">${r.t.map(v => fmt(v)).join(" · ")}</td><td class="num">${r.ex.map(v => sgn(v, 1)).join(" · ")}</td><td class="num">${r.net.map(v => `<span class="${cls(v)}">${sgn(v, 1)}</span>`).join(" · ")}</td></tr>`).join("") + "</tbody>";
+}
+
+/* ML */
+function drawML() {
+  const A = ML.intra, B = ML.daily, W = 1000, Hh = 280, m = {l: 50, r: 12, t: 14, b: 30};
+  const ys = A.map(a => a.y), n = ys.length, bw = (W - m.l - m.r) / n, mx = 0.3;
+  const Y = v => m.t + (mx - v) / (2 * mx) * (Hh - m.t - m.b), mut = css("--muted");
+  let g = "";
+  for (const v of [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3]) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 0 ? mut : css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v, 1)}</text>`;
+  ys.forEach((y, i) => { const x = m.l + i * bw; const a = A[i].ic, b = (B.find(z => z.y === y) || {}).ic;
+    [[a, css("--s1"), 0, "intraday 2 h"], [b, css("--s2"), 1, "denní 5 dní"]].forEach(([v, c, k, nm]) => { if (v == null) return; const y0 = Y(Math.max(v, 0)), hh = Math.abs(Y(v) - Y(0));
+      g += `<rect x="${x + bw * (0.14 + k * 0.38)}" y="${y0}" width="${bw * 0.34}" height="${Math.max(hh, 1)}" rx="2" fill="${c}"><title>${y} ${nm}: IC ${fmt(v, 3)}</title></rect>`; });
+    g += `<text x="${x + bw / 2}" y="${Hh - 10}" text-anchor="middle" fill="${mut}" ${FONT}>${y}</text>`; });
+  $("#chML").innerHTML = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="IC strojového učení podle roku">${g}</svg>`;
+  legend($("#lgML"), [{name: "Intraday, horizont 2 h", color: css("--s1")}, {name: "Denní, horizont 5 dní", color: css("--s2")}]);
+  $("#mlText").innerHTML = `Intradenní model má průměrnou AUC ${fmt(ML.intra_mean.auc, 3)} a IC ${fmt(ML.intra_mean.ic, 3)}. Po nákladech dává ${sgn(ML.intra_mean.net)} bp na obchod. Stroj na 5min datech nenašel nic, co by jednotlivá pravidla přehlédla. Denní model má IC kladné ve ${ML.daily_mean.pos} z ${ML.daily_mean.years} let (průměr ${fmt(ML.daily_mean.ic, 3)}). Nejvíc váží ${ML.imp.slice(0, 5).map(x => FEAT[x[0]] || x[0]).join(", ")}. Je to stejná informace, jakou nese reverze a řízení expozice. Jako přímé řízení expozice ale B&amp;H nepřekoná (tabulka).`;
+  const S = ML.strat;
+  $("#tMLs").innerHTML = `<thead><tr><th>Denní model 2012–26</th><th>CAGR</th><th>Sharpe</th><th>Max DD</th><th>Alfa t</th></tr></thead><tbody>` +
+    S.map(r => `<tr><td class="name" style="white-space:normal;min-width:200px;font-family:inherit">${r.name}</td><td class="num">${fmt(r.CAGR)} %</td><td class="num">${fmt(r.SR)}</td><td class="num">${fmt(r.DD, 1)} %</td><td class="num">${fmt(r.alpha_t)}</td></tr>`).join("") + "</tbody>";
+}
+
+/* money */
+function heatTable(el, M, opt) {
+  const col = v => { if (v == null) return css("--mid"); const a = Math.min(Math.abs(v) / opt.lim, 1); const c = opt.pos(v) ? css("--pos") : css("--neg");
+    return `color-mix(in oklab, ${c} ${Math.round(a * 80)}%, ${css("--mid")})`; };
+  el.innerHTML = `<thead><tr><th>WR \\ RRR</th>${MM.rr.map(r => `<th>${r}:1</th>`).join("")}</tr></thead><tbody>` +
+    M.map((row, i) => `<tr><td class="rowh">${fmt(MM.wr[i] * 100, 0)} %</td>${row.map(v => { const a = v == null ? 0 : Math.min(Math.abs(v) / opt.lim, 1);
+      return `<td style="background:${opt.color ? col(v) : "transparent"};color:${opt.color && a > .55 ? "#fff" : "var(--ink)"}">${opt.f(v)}</td>`; }).join("")}</tr>`).join("") + "</tbody>";
+}
+function drawMoney() {
+  heatTable($("#tEV"), MM.ev, {lim: 3, pos: v => v > 0, color: 1, f: v => sgn(v, 2)});
+  heatTable($("#tN"), MM.n2, {lim: 1, pos: v => false, color: 0, f: v => v == null ? "∞" : v > 1e6 ? "∞" : fmt(Math.ceil(v), 0)});
+  heatTable($("#tKelly"), MM.kelly, {lim: 0.5, pos: v => v > 0, color: 1, f: v => v ? fmt(v * 100, 1) + " %" : "0"});
+  const st = MM.streak;
+  $("#tStreak").innerHTML = `<thead><tr><th>Win rate</th><th>100 obchodů</th><th>500</th><th>1 000</th></tr></thead><tbody>` +
+    Object.keys(st).map(p => `<tr><td class="num">${fmt(p * 100, 0)} %</td>${["100", "500", "1000"].map(n => `<td class="num">${fmt(st[p][n], 0)}</td>`).join("")}</tr>`).join("") + "</tbody>";
+  $("#tMC").innerHTML = `<thead><tr><th>Systém</th><th>Sizing</th><th>Medián konečného účtu</th><th>P(zisk)</th><th>P(krach &lt; 10 %)</th><th>Medián max DD</th></tr></thead><tbody>` +
+    MM.mc.map(r => `<tr><td class="small" style="text-align:left">${r.setting}</td><td class="name" style="font-family:inherit">${r.scheme}</td><td class="num ${r.median < 1 ? "neg" : ""}">${fmt(r.median, 2)}×</td><td class="num">${fmt(r.p_profit * 100, 0)} %</td><td class="num ${r.ruin > 0.05 ? "neg" : ""}">${fmt(r.ruin * 100, 1)} %</td><td class="num">${fmt(r.mdd * 100, 0)} %</td></tr>`).join("") + "</tbody>";
+  // curves
+  const names = Object.keys(MM.curves), cols = [css("--s1"), css("--s3"), css("--s2"), css("--bh"), css("--s4"), css("--neg")];
+  const ss = names.map((k, i) => ({name: k, pts: MM.curves[k], color: cols[i % cols.length], dash: k.startsWith("Placebo") ? 1 : 0}));
+  legend($("#lgMM"), ss); lineChart($("#chMM"), ss, {log: 1, label: "RSI2 vs placebo"});
+  // A-setups bars
+  const B = MM.wrbins, W = 600, Hh = 300, m = {l: 44, r: 10, t: 12, b: 34}, bw = (W - m.l - m.r) / B.length;
+  const lo = 0.25, hi = 0.65, Y = v => m.t + (hi - v) / (hi - lo) * (Hh - m.t - m.b), mut = css("--muted");
+  let g = "";
+  for (let v = 0.3; v <= 0.61; v += 0.1) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v * 100, 0)} %</text>`;
+  B.forEach((b, i) => { const x = m.l + i * bw;
+    [[b.win_disc, css("--s1"), 0], [b.win_later, css("--s2"), 1]].forEach(([v, c, k]) => { const y = Y(v);
+      g += `<rect x="${x + bw * (0.12 + k * 0.4)}" y="${y}" width="${bw * 0.36}" height="${Hh - m.b - y}" rx="2" fill="${c}"><title>${k ? "2017–26" : "2008–16"}: ${fmt(v * 100, 1)} %</title></rect>`; });
+    g += `<text x="${x + bw / 2}" y="${Hh - 14}" text-anchor="middle" fill="${mut}" ${FONT}>${i + 1}</text>`; });
+  g += `<text x="${(W + m.l) / 2}" y="${Hh - 1}" text-anchor="middle" fill="${mut}" ${FONT}>decil podle win rate 2008–16</text>`;
+  $("#chWR").innerHTML = `<div class="legend"><span><i style="background:${css("--s1")}"></i>Win rate 2008–16</span><span><i style="background:${css("--s2")}"></i>Win rate 2017–26</span></div><svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Regrese win rate k průměru">${g}</svg>`;
+  $("#tRSI").innerHTML = `<thead><tr><th>RSI(2) &lt;</th><th>Obchodů</th><th>Za rok</th><th>Win %</th><th>bp/obch.</th><th>Interval ±2 SE</th><th>t</th><th>Celkem %</th></tr></thead><tbody>` +
+    MM.rsi.map(r => `<tr><td class="num">${r.threshold}</td><td class="num">${r.n}</td><td class="num">${fmt(r.trades_per_year, 1)}</td><td class="num">${fmt(r.win, 1)}</td><td class="num">${sgn(r.mean_bps, 1)}</td><td class="num">${sgn(r.ci_lo, 1)} … ${sgn(r.ci_hi, 1)}</td><td class="num">${fmt(r.t)}</td><td class="num">${fmt(r.total_pct, 1)}</td></tr>`).join("") + "</tbody>";
+  const R = MM.real, F = MM.fin, D = MM.dd;
+  $("#eqText").innerHTML = `Mattia ve videu radí odložit strategii, když je v drawdownu, a vrátit ji až na novém maximu. Na reálné edge RSI(2) &lt; 10 filtr „obchoduj jen nad 20denním průměrem vlastní equity“ snížil drawdown z ${fmt(D["RSI(2)<10 · 1× nominál"], 1)} % na ${fmt(D["RSI(2)<10 · equity filtr (MA20)"], 1)} %, ale i konečný výsledek z ${fmt(F["RSI(2)<10 · 1× nominál"])}× na ${fmt(F["RSI(2)<10 · equity filtr (MA20)"])}×. Průměrný obchod se nezlepšil (${sgn(R["RSI(2)<10_filter"].mean_bps, 1)} vs ${sgn(R.edge.mean_bps, 1)} bp). Filtr tedy jen ubírá obchody, edge nepřidává. Na placebu mírně pomohl (${fmt(F["Placebo · equity filtr (MA20)"])}× vs ${fmt(F["Placebo · 1× nominál"])}×), protože tam stačí méně obchodovat.`;
+}
+
+/* generic line chart (log option) */
+const BANDS = [["2008-01-01", "2016-12-31", "2008–16"], ["2017-01-01", "2021-12-31", "2017–21"], ["2022-01-01", "2026-12-31", "2022–26"]];
+function lineChart(host, series, opt = {}) {
+  const W = 1000, H = opt.h || 340, m = {l: 60, r: 16, t: 14, b: 28}, LOG = !!opt.log, tf = v => LOG ? Math.log(v) : v;
+  const all = series.flatMap(s => s.pts.map(p => [+new Date(p[0]), p[1]])).filter(p => p[1] != null && (!LOG || p[1] > 0));
+  const x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+  let y0 = Math.min(...all.map(p => tf(p[1]))), y1 = Math.max(...all.map(p => tf(p[1]))); const pad = (y1 - y0) * .06; y0 -= pad; y1 += pad;
+  const X = t => m.l + (t - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => m.t + (y1 - tf(v)) / (y1 - y0) * (H - m.t - m.b), mut = css("--muted");
+  let g = "";
+  BANDS.forEach(([a, b, nm], i) => { const xa = Math.max(X(+new Date(a)), m.l), xb = Math.min(X(+new Date(b)), W - m.r);
+    if (xb > xa) g += `<rect x="${xa}" y="${m.t}" width="${xb - xa}" height="${H - m.t - m.b}" fill="${i % 2 ? "transparent" : css("--band")}"/><text x="${xa + 6}" y="${m.t + 12}" fill="${mut}" ${FONT}>${nm}</text>`; });
+  for (const v of [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16]) if (tf(v) >= y0 && tf(v) <= y1) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 1 ? mut : css("--grid")}"/><text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v, v < 1 ? 2 : 0)}×</text>`;
+  for (let y = new Date(x0).getFullYear() + 1; y <= new Date(x1).getFullYear(); y += 2) g += `<text x="${X(+new Date(y + "-01-01"))}" y="${H - 8}" text-anchor="middle" fill="${mut}" ${FONT}>${y}</text>`;
+  series.forEach(s => { const d = s.pts.filter(p => p[1] > 0).map((p, i) => (i ? "L" : "M") + X(+new Date(p[0])).toFixed(1) + "," + Y(p[1]).toFixed(1)).join("");
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w || 2}" ${s.dash ? 'stroke-dasharray="5 4"' : ""}/>`; });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${opt.label || "graf"}">${g}<line class="xh" y1="${m.t}" y2="${H - m.b}" stroke="${css("--ink2")}" opacity="0"/><g class="dots"></g><rect class="hit" x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), xh = svg.querySelector(".xh"), dots = svg.querySelector(".dots");
+  const idx = series.map(s => s.pts.map(p => +new Date(p[0])));
+  const hide = () => { tip.hidden = true; xh.setAttribute("opacity", 0); dots.innerHTML = ""; };
+  svg.querySelector(".hit").addEventListener("pointermove", ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width * W, t = x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0);
+    const rows = [];
+    series.forEach((s, k) => { const a = idx[k]; if (!a.length || t < a[0]) return; let lo = 0, hi = a.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; a[mid] <= t ? lo = mid : hi = mid - 1; } rows.push([s, s.pts[lo]]); });
+    if (!rows.length) return hide();
+    xh.setAttribute("x1", px); xh.setAttribute("x2", px); xh.setAttribute("opacity", .35);
+    dots.innerHTML = rows.map(([s, p]) => `<circle cx="${X(+new Date(p[0]))}" cy="${Y(p[1])}" r="4.5" fill="${s.color}" stroke="${css("--surface")}" stroke-width="2"/>`).join("");
+    tip.innerHTML = `<div class="d">${new Date(t).toLocaleDateString("cs-CZ")}</div>` + rows.map(([s, p]) => `<div class="row"><span><i style="background:${s.color}"></i>${s.name}</span><b class="num">${fmt(p[1])}×</b></div>`).join("");
+    tip.hidden = false; const hw = host.clientWidth; tip.style.left = Math.min(Math.max(px / W * hw + 12, 0), hw - tip.offsetWidth - 4) + "px"; tip.style.top = "8px";
+  });
+  svg.querySelector(".hit").addEventListener("pointerleave", hide);
+}
+
+function drawAll() { drawHist(); drawIdeas(); drawScatter(); drawCons(); drawML(); drawMoney(); }
+drawAll();
+new MutationObserver(drawAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+</script>
