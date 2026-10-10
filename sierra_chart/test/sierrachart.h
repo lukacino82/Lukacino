@@ -132,6 +132,7 @@ struct SimOrder {
   int Qty = 0;
   int Action = 0;      // +1 buy, -1 sell
   int IsEntry = 0, IsStop = 0;
+  int TerminalAge = 0;
   int SiblingID = 0;   // OCO
 };
 
@@ -159,6 +160,8 @@ struct s_sc {
   double NetQty = 0.0, AvgPrice = 0.0;
   void* Persist[8] = {0};
   float SimATR = 10.0f;
+  bool PurgeTerminalOrders = false;
+  int EntrySubmitCount = 0;
 
   void SetCustomStudyControlBarButtonText(int, const char*){}
   void* GetPersistentPointer(int i){ return Persist[i]; }
@@ -228,6 +231,7 @@ struct s_sc {
     Orders.push_back(tgt); Orders.push_back(stp);
 
     no.InternalOrderID = e.ID;
+    EntrySubmitCount++;
     return 1;
   }
   int BuyEntry(s_SCNewOrder& no){ return SubmitEntry(no, +1); }
@@ -250,6 +254,15 @@ struct s_sc {
       for (size_t j=0;j<Orders.size();j++)
         if (Orders[j].ID==o.SiblingID && Orders[j].Status==SCT_OSC_OPEN)
           Orders[j].Status=SCT_OSC_CANCELED;
+    }
+    // Sierra Chart dokoncene ordery ze seznamu odklizi
+    if (PurgeTerminalOrders){
+      for (size_t i=0;i<Orders.size();i++)
+        if (Orders[i].Status!=SCT_OSC_OPEN) Orders[i].TerminalAge++;
+      std::vector<SimOrder> keep;
+      for (size_t i=0;i<Orders.size();i++)
+        if (Orders[i].Status==SCT_OSC_OPEN || Orders[i].TerminalAge<1) keep.push_back(Orders[i]);
+      Orders.swap(keep);
     }
   }
 };

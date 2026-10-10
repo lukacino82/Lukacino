@@ -227,6 +227,36 @@ int main(){
     printf("      entries: %d\n", CountFilledEntries());
   }
 
+  printf("\n=== TEST 9: Sierra uklizi fillnute ordery ze seznamu ===\n");
+  {
+    ResetAll(); ApplyUserSettings();
+    sc.PurgeTerminalOrders = true;           // chovani skutecne Sierry
+    sc.Input[I_AUTO].SetCustomInputIndex(0); // semi auto
+    sc.EntrySubmitCount = 0;
+    double p = 29800.0;
+    for (int i=0;i<5;i++) Tick(p, i);
+    sc.Input[I_OPENNOW].SetYesNo(1);
+    for (int i=0;i<8;i++) Tick(p, 5+i);      // entry order mezitim zmizi ze seznamu
+
+    bool lostTrack=false;
+    for (size_t i=0;i<g_Log.size();i++)
+      if (g_Log[i].find("POZOR")!=std::string::npos) lostTrack=true;
+    DumpLog("T9");
+    Check("study neztratila stopu po vlastni pozici", !lostTrack);
+    Check("odeslan prave jeden vstup", sc.EntrySubmitCount==1);
+    Check("pozice je otevrena", sc.NetQty==1.0);
+
+    g_Log.clear();
+    for (int i=0;i<4;i++) Tick(29845.0, 20+i);   // TP 29840
+    bool sawExit=false;
+    for (size_t i=0;i<g_Log.size();i++)
+      if (g_Log[i].find("EXIT")!=std::string::npos) sawExit=true;
+    DumpLog("T9b");
+    Check("uzavreni na TP bylo detekovano", sawExit);
+    Check("pozice je flat", sc.NetQty==0.0);
+    sc.PurgeTerminalOrders = false;
+  }
+
   printf("\n=========== %s ===========\n\n", g_Fail==0 ? "VSE PROSLO" : "NEKTERE TESTY SELHALY");
   return g_Fail;
 }

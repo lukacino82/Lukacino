@@ -55,7 +55,8 @@ namespace
     int   StopOrderID;
     int   EntryFilled;     // vstup fillnuty -> EntryPrice je platna
     int   EntryBarIndex;
-    int   GraceTicks;      // po fillu: pocka nez se brackety objevi v order listu
+    int   GraceTicks;      // pocka nez se pozice / brackety objevi
+    int   BracketWarnLogged;
     float EntryPrice;
     float TargetPrice;
     float StopPrice;       // aktualni stop (i po trailingu)
@@ -461,24 +462,39 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   // ==========================================================================
   int OpenSlots = 0;
 
+  const int    NetDirSign = (NetQuantity > 0.0) ? DIR_LONG
+                          : ((NetQuantity < 0.0) ? DIR_SHORT : DIR_NONE);
+  const double NetAbsQty  = (NetQuantity < 0.0) ? -NetQuantity : NetQuantity;
+
   for (int s = 0; s < MAX_SLOTS; s++)
   {
     TradeSlot& Slot = St.Slots[s];
     if (Slot.Active == 0)
       continue;
 
+    if (Slot.GraceTicks > 0)
+      --Slot.GraceTicks;
+
+    // Kolik kontraktu drzi ostatni sledovane sloty - a pokryva aktualni pozice
+    // jeste tenhle slot? Tohle je zdroj pravdy. Sierra Chart fillnute a zrusene
+    // ordery ze seznamu odklizi, takze "order nenalezen" NEZNAMENA, ze obchod
+    // neexistuje.
+    double OtherQty = 0.0;
+    for (int k = 0; k < MAX_SLOTS; k++)
+      if (k != s && St.Slots[k].Active != 0 && St.Slots[k].EntryFilled != 0)
+        OtherQty += St.Slots[k].Quantity;
+
+    const bool PositionCoversSlot = (NetDirSign == Slot.Direction)
+                                 && (NetAbsQty >= OtherQty + Slot.Quantity - 0.0001);
+
     s_SCTradeOrder Order;
 
-    // --- entry order jeste neni fillnuty
+    // ---------------- vstupni order ----------------
     if (Slot.EntryFilled == 0)
     {
-      if (sc.GetOrderByOrderID(Slot.EntryOrderID, Order) == SCTRADING_ORDER_ERROR)
-      {
-        LcnResetSlot(sc, Slot, s);           // order zmizel -> slot volny
-        continue;
-      }
+      const int Found = sc.GetOrderByOrderID(Slot.EntryOrderID, Order);
 
-      if (Order.OrderStatusCode == SCT_OSC_FILLED)
+      if (Found != SCTRADING_ORDER_ERROR && Order.OrderStatusCode == SCT_OSC_FILLED)
       {
         Slot.EntryFilled   = 1;
         Slot.EntryPrice    = (float)Order.AvgFillPrice;
@@ -495,9 +511,37 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
           sc.AddMessageToLog(Message, 0);
         }
       }
-      else if (LcnIsTerminal(Order.OrderStatusCode))
+      else if (PositionCoversSlot)
       {
-        LcnResetSlot(sc, Slot, s);           // cancel / error pred fillem
+        // Order uz v seznamu neni (Sierra ho po fillu uklidila), ale pozice v DOM
+        // existuje -> vstup je fillnuty. Vstupni cenu vezmi z pozice.
+        Slot.EntryFilled   = 1;
+        Slot.EntryPrice    = (float)PositionData.AveragePrice;
+        if (Slot.EntryPrice <= 0.0f)
+          Slot.EntryPrice = Price;
+        Slot.BestPrice     = Slot.EntryPrice;
+        Slot.EntryBarIndex = LastIndex;
+        Slot.GraceTicks    = 10;
+
+        if (DoLog)
+        {
+          SCString Message;
+          Message.Format("LCN slot %d: ENTRY %s qty %d @ %.5f (podle pozice)",
+                         s, Slot.Direction == DIR_LONG ? "LONG" : "SHORT",
+                         Slot.Quantity, Slot.EntryPrice);
+          sc.AddMessageToLog(Message, 0);
+        }
+      }
+      else if (Found == SCTRADING_ORDER_ERROR || LcnIsTerminal(Order.OrderStatusCode))
+      {
+        // Ani order, ani pozice. Jeste chvili pockej - mezi odeslanim a
+        // objevenim pozice je zpozdeni.
+        if (Slot.GraceTicks > 0)
+        {
+          OpenSlots++;
+          continue;
+        }
+        LcnResetSlot(sc, Slot, s);
         continue;
       }
       else
@@ -507,26 +551,21 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
       }
     }
 
-    if (Slot.GraceTicks > 0)
-      --Slot.GraceTicks;
-
     LcnResolveAttachedOrders(sc, Slot);
 
-    // attached ordery jeste nejsou zname
+    // ---------------- attached ordery jeste nejsou zname ----------------
     if (Slot.StopOrderID == 0 || Slot.TargetOrderID == 0)
     {
-      // bezpecnostni ventil: pozice je flat a brackety se nenasly ani po grace
-      if (NetQuantity == 0.0 && Slot.GraceTicks == 0
-          && Slot.StopOrderID == 0 && Slot.TargetOrderID == 0)
+      if (!PositionCoversSlot && Slot.GraceTicks == 0)
       {
-        LcnResetSlot(sc, Slot, s);
+        LcnResetSlot(sc, Slot, s);           // pozice neexistuje -> uklid slot
         continue;
       }
       OpenSlots++;
       continue;
     }
 
-    // --- exit ordery (TP / SL)
+    // ---------------- exit ordery (TP / SL) ----------------
     bool  StopLive = false, TargetLive = false;
     float ExitPrice = 0.0f;
     const char* ExitReason = "CLOSE";
@@ -557,9 +596,49 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
 
     if (!StopLive && !TargetLive)
     {
-      // obchod je uzavreny
+      if (PositionCoversSlot)
+      {
+        // Brackety zmizely ze seznamu, ale pozice zije dal - obchod NENI
+        // uzavreny. Zahod ID a zkus je najit znovu.
+        Slot.StopOrderID   = 0;
+        Slot.TargetOrderID = 0;
+
+        if (DoLog && Slot.BracketWarnLogged == 0)
+        {
+          SCString Message;
+          Message.Format("LCN slot %d: TP/SL ordery zmizely ze seznamu, ale pozice "
+                         "trva. Slot zustava otevreny a hledam je znovu.", s);
+          sc.AddMessageToLog(Message, 1);
+          Slot.BracketWarnLogged = 1;
+        }
+
+        OpenSlots++;
+        continue;
+      }
+
+      // obchod je opravdu uzavreny
       if (ExitPrice <= 0.0f)
-        ExitPrice = Price;                   // rucni flatten apod.
+      {
+        // Ordery uz Sierra uklidila, takze fill cenu nemame. Odvod ji z toho,
+        // kterou hladinu cena protla - jinak by denni P/L (a tim i loss limit)
+        // bylo zkreslene o celou vzdalenost posledniho pohybu.
+        if (Slot.TargetPrice > 0.0f
+            && Slot.Direction * (Price - Slot.TargetPrice) >= 0.0f)
+        {
+          ExitPrice  = Slot.TargetPrice;
+          ExitReason = "TARGET";
+        }
+        else if (Slot.StopPrice > 0.0f
+                 && Slot.Direction * (Price - Slot.StopPrice) <= 0.0f)
+        {
+          ExitPrice  = Slot.StopPrice;
+          ExitReason = "STOP";
+        }
+        else
+        {
+          ExitPrice = Price;                 // rucni flatten apod.
+        }
+      }
 
       const float PnL = Slot.Direction * (ExitPrice - Slot.EntryPrice)
                       / TickSize * ValuePerTick * Slot.Quantity;
@@ -1033,6 +1112,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
         Slot.Quantity      = Qty;
         Slot.EntryOrderID  = NewOrder.InternalOrderID;
         Slot.EntryBarIndex = LastIndex;
+        Slot.GraceTicks    = 20;   // nez se pozice objevi v DOM
 
         St.TradesToday++;
         OpenSlots++;
