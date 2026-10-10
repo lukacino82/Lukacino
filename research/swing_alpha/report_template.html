@@ -1,0 +1,372 @@
+<title>ES Swing Alpha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES mini futures · denní rozhodnutí z 1min dat 2009–2026 · držení 1–20 dní</div>
+  <h1>ES Swing Alpha</h1>
+  <p class="lede">Navazuje na předchozí výzkum: intradenní vzorce byly na úrovni šumu, informace se ukázala až na horizontu dnů. Tady je otestovaná celá specifikace SWING ALPHA: SW01 migrace hodnoty, SW02 zarovnání VWAP D/W/M, SW03 breakout z kompozitu, SW04 persistence režimu a SW05 optimální držení s exit modely E01–E08. Každé pravidlo je testované long i short, proti benchmarku a ve třech oddělených obdobích.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="eyebrow">Odpověď</div>
+  <h2>Můžeme navázat? Ano. Ale edge leží jinde, než specifikace předpokládá</h2>
+  <div class="callout"><p id="mainText"></p></div>
+  <div class="grid3" id="findCards"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Experiment A · SW01–SW04, H1–H5, benchmarky</div>
+  <h2>Forward výnos po signálu: t-statistika nadvýnosu podle horizontu</h2>
+  <p class="sub">Vstup na RTH open dne t+1, výstup na RTH close dne t+h. Nadvýnos = výnos v ATR minus průměr všech dnů téhož roku na stejné straně, takže drift je odečtený. t-stat počítán jen z nepřekrývajících se událostí. Modrá = signál pomáhá, červená = signál škodí. Červená v řádku znamená, že by fungoval opačný obchod.</p>
+  <div class="filters" id="heatBtns"></div>
+  <div class="tablewrap"><table class="heat" id="tHeat"></table></div>
+  <p class="small" id="heatNote"></p>
+</section>
+
+<section>
+  <div class="eyebrow">Experiment B · obchodovatelné verze</div>
+  <h2>Pokračování vs. fade: průměrná edge všech kombinací vstup × exit</h2>
+  <p class="sub">Edge = výsledek obchodu (po 1 bodu nákladů) minus průměrný obchod se stejným exitem, který vstupuje každý den ve stejném roce. Nula = vstup nepřidává nic navíc k samotnému držení ES.</p>
+  <div class="grid2">
+    <div class="panel"><h3>Podle skupiny</h3><div class="legend" id="lgFam"></div><div class="chart" id="cFam"></div></div>
+    <div class="panel"><h3>Podle systému SW (long a short)</h3><div class="legend" id="lgSW"></div><div class="chart" id="cSW"></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">SW04 · persistence režimu</div>
+  <h2>Režimy jsou perzistentní, ale nenesou nadvýnos</h2>
+  <div class="grid2">
+    <div class="panel"><h3>Markovova matice (den → další den)</h3><div class="tablewrap" style="border:0"><table class="heat" id="tMarkov"></table></div><p class="small" id="markovNote" style="margin-top:10px"></p></div>
+    <div class="panel"><h3>Semi-Markov: P(režim pokračuje zítra) podle stáří</h3><div class="legend" id="lgSM"></div><div class="chart" id="cSM"></div></div>
+  </div>
+  <p class="sub" id="regText"></p>
+</section>
+
+<section>
+  <div class="eyebrow">SW05 · exit modely a prostor pro SL/RRR</div>
+  <h2>Dát stopu prostor: SL × RRR na vícedenním držení</h2>
+  <p class="sub" id="slText"></p>
+  <div class="grid2">
+    <div class="panel"><h3>Long každý den · expectancy v ATR a nejdelší série ztrát</h3><div class="tablewrap" style="border:0"><table class="heat" id="tGrid"></table></div></div>
+    <div class="panel"><h3>Jádro fade (long) · stejná mřížka</h3><div class="tablewrap" style="border:0"><table class="heat" id="tGrid2"></table></div></div>
+  </div>
+  <div class="tablewrap"><table id="tExit"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Kandidáti</div>
+  <h2>Swing reverzní long: equity na 1 kontrakt ES</h2>
+  <p class="sub" id="candText"></p>
+  <div class="filters" id="eqBtns"></div>
+  <div class="panel"><div class="legend" id="lgEq"></div><div class="chart" id="cEq"></div></div>
+  <div class="tablewrap"><table id="tCand"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Kontrola přeučení</div>
+  <h2>Výběr jedné nejlepší konfigurace neprošel</h2>
+  <p class="sub" id="wfText"></p>
+  <div class="grid2">
+    <div class="tablewrap"><table id="tWF"></table></div>
+    <div class="tablewrap"><table id="tRob"></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Co dál</div>
+  <h2>Doporučení a další kroky</h2>
+  <ol class="steps" id="steps"></ol>
+</section>
+
+<section>
+  <div class="eyebrow">Metodika</div>
+  <h2>Jak se testovalo</h2>
+  <div class="grid2">
+    <div class="card"><ul class="why" id="audit"></ul></div>
+    <div class="card"><ul class="why">
+      <li><b>Profil trhu</b>: data nemají volume-at-price. Profil RTH se rekonstruuje z 1min barů, objem baru se rozdělí rovnoměrně mezi ticky 0,25 mezi jeho low a high. POC = tick s nejvyšším objemem, VA 70 % rozšiřováním od POC.</li>
+      <li><b>VWAP</b>: denní = RTH; týdenní a měsíční = od první session týdne/měsíce. „Sklon“ = aktuální VWAP minus konečná hodnota předchozího týdne/měsíce, v ATR.</li>
+      <li><b>Kompozit</b>: řetěz po sobě jdoucích dní s překryvem VA ≥ 60 % (vůči užší VA), sloučený histogram. Pro breakout se používá kompozit uzamčený k dni t−1.</li>
+      <li><b>Režim</b>: Bull/Bear = cena vs EMA50, EMA20 vs EMA50, cena vs měsíční VWAP a jeho sklon se shodují a TE10 ≥ 0,25. Balance = TE10 &lt; 0,20. Jinak Transition. HV = 20denní volatilita v horním kvintilu roku.</li>
+      <li><b>Období</b>: DISC 2009–2018, VAL 2019–2022, OOS 2023–2026. Žádná data nejsou použita před časem rozhodnutí (close dne t, vstup na open t+1).</li>
+      <li><b>Exity</b>: model po segmentech dne (open → RTH rozsah → close → post + overnight). Stop se kontroluje před targetem, gap přes stop se plní na open. Jedna pozice najednou. Náklady 1 bod na obchod (citlivost 0,5 a 2 body). BH-FDR 10 %.</li>
+    </ul></div>
+  </div>
+</section>
+
+<footer>Kód: <span class="mono">research/swing_alpha/</span> (features.py, signals.py, event_study.py, experiment_b.py, candidates.py, out/*.csv) ve větvi <span class="mono">claude/alpha-brainstorm-trading-zttwoc</span>. Historický backtest, ne záruka budoucích výnosů.</footer>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 2) => v == null || v === "" ? "–" : Number(v).toLocaleString("cs-CZ", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+const pct = (v, d = 0) => v == null ? "–" : fmt(v * 100, d) + " %";
+const cls = v => v == null ? "" : v < 0 ? "neg" : "";
+const FONT = 'font-size="11" font-family="IBM Plex Mono,monospace"';
+const legend = (el, ss) => el.innerHTML = ss.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+const pill = (cl, t) => `<span class="pill ${cl}">${t}</span>`;
+function niceStep(r) { const p = Math.pow(10, Math.floor(Math.log10(r))), f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function mix(a, b, t) { const h = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = h(a), B = h(b); return "rgb(" + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",") + ")"; }
+function hcol(v, lim) { if (v == null) return css("--surface"); const t = Math.min(1, Math.abs(v) / lim); return mix(css("--mid"), v > 0 ? css("--pos") : css("--neg"), t * 0.85); }
+function hink(v, lim) { return v != null && Math.abs(v) / lim > 0.55 ? "#fff" : css("--ink"); }
+const K = DATA.kpi;
+const CAND = DATA.cand, cget = (s, e) => CAND.find(r => r.system === s && r.exit === e);
+
+$("#kpis").innerHTML = [
+  [fmt(K.days, 0), "obchodních dní s profilem, VWAP D/W/M, kompozity a režimem"],
+  [fmt(K.rules, 0), "pravidel (SW01–SW04, H1–H5, benchmarky; long i short)"],
+  [fmt(K.combos, 0), "obchodovatelných kombinací vstup × 32 exitů (včetně fade)"],
+  [fmt(K.fdr, 0) + " / " + fmt(K.robust, 0), "prošlo FDR / konzistentní edge ve všech 3 obdobích"],
+].map(([b, s]) => `<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+const c10 = cget("jádro fade (long)", "E01 čas 10D"), e10 = cget("každý den (long)", "E01 čas 10D");
+const c20 = cget("jádro fade (long)", "E01 čas 20D"), e20 = cget("každý den (long)", "E01 čas 20D");
+$("#mainText").innerHTML = `Na horizontu 1–20 dní ES informaci nese, ale ne ve směru, který specifikace předpokládá. <b>Pokračovací logika</b> (rostoucí POC, zarovnané VWAPy, breakout z kompozitu, Bull režim) má po odečtení driftu ve všech třech obdobích <b>nulový až záporný nadvýnos</b>: 93 % pravidel SW má na 5 dní záporný excess. Čím silnější zarovnání, tím horší další týden (skóre 90–100: t = −2,4 long, −3,1 short). Trh na tomto horizontu <b>vrací</b>. Funguje proto opačný obchod: <b>koupit, když všechno ukazuje dolů</b>. Pravidla vybraná jen z let 2009–2018 („jádro fade“: proražení low kompozitu, retest prolomené hrany dolů, plně bear zarovnání VWAP a sklonů) dají při držení 10 dní ${sgn(c10.exp)} ATR na obchod oproti ${sgn(e10.exp)} ATR při vstupu každý den. Na pozici jsou přitom jen ${pct(c10.exposure)} času. Rozdíl drží v DISC i VAL, v OOS 2023–26 na 10 dní ne. <b>Short</b> nefunguje v žádné variantě, protože drift ES je silnější než jakýkoli signál.`;
+$("#findCards").innerHTML = [
+  ["Trend-following na dny = mínus", "no", "SW01 migrace, SW02 zarovnání, SW03 breakout i SW04 režim mají záporný nadvýnos vs. drift. Benchmarky (momentum, Donchian, EMA/ADX) taky. Žádné pravidlo SW neprošlo FDR."],
+  ["Fade extrémů = konzistentní plus", "watch", "Opačný směr pravidel SW má kladnou průměrnou edge ve všech obdobích (long +0,06 / +0,17 / +0,06 ATR). Stejný obraz jako dřívější RSI(2) reverze. Výběr jediné konfigurace ale ve walk-forward nepřežil, sázet se dá jen na rodinu."],
+  ["SL potřebuje ≥ 1,5–2 ATR", "go", "Stop 0,5 ATR je záporný u všeho a dává série 14–29 ztrát. Stop 2 ATR s RRR 1:3–1:5 má nejdelší sérii 8 ztrát a nejvyšší expectancy. Jednoduchý časový exit 10–20 dní je stejně dobrý nebo lepší než všechny „chytré“ exity."],
+].map(([h, v, t]) => `<div class="card"><div class="head"><h3>${h}</h3>${pill(v, v === "go" ? "Stavět" : v === "watch" ? "Ověřit dopředu" : "Zamítnuto")}</div><p class="why">${t}</p></div>`).join("");
+
+/* heat table */
+const HS = [1, 2, 3, 5, 7, 10, 20];
+const FAMS = [["all", "Vše"], ["SW01", "SW01 migrace"], ["SW02", "SW02 VWAP"], ["SW03", "SW03 kompozit"], ["SW04", "SW04 režim"], ["H", "H1–H5"], ["BENCH", "Benchmarky"], ["REF", "Reference"]];
+let hf = "all";
+$("#heatBtns").innerHTML = FAMS.map(([k, n]) => `<button type="button" aria-pressed="${k === hf}" data-k="${k}">${n}</button>`).join("");
+$("#heatBtns").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; hf = b.dataset.k; [...$("#heatBtns").children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawHeat(); });
+function drawHeat() {
+  const rows = DATA.heat.filter(r => hf === "all" || r.family === hf);
+  $("#tHeat").innerHTML = `<thead><tr><th style="text-align:left">Pravidlo</th><th>Strana</th><th>Událostí</th>${HS.map(h => `<th>${h}D</th>`).join("")}<th>Excess 5D</th><th>5D DISC · VAL · OOS</th><th>Win 5D</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td class="rowh" style="white-space:normal;min-width:220px"><span class="small mono">${r.family}</span> ${r.signal}</td><td class="rowh">${r.side}</td><td class="rowh num">${fmt(r.n, 0)}</td>` +
+      r.t.map(v => `<td style="background:${hcol(v, 3)};color:${hink(v, 3)}">${v == null ? "–" : fmt(v, 1)}</td>`).join("") +
+      `<td class="num ${cls(r.ex5)}" style="background:var(--surface)">${sgn(r.ex5)}</td><td class="num" style="background:var(--surface)">${r.p5.map(v => sgn(v)).join(" · ")}</td><td class="num" style="background:var(--surface)">${pct(r.win5)}</td></tr>`).join("") + "</tbody>";
+}
+$("#heatNote").textContent = `FDR (10 %) napříč ${fmt(DATA.heat.length * 7, 0)} testy: prošly jen 2 a obě jsou záporné (CB8 short s kompozitem 4 dny, 28 událostí). Konzistentní ve všech obdobích s t ≥ 2 v DISC: jen H5 long na 2 dny (hodnota migrovala nahoru, cena ne).`;
+
+/* bar charts */
+function bars(el, lg, groups, series) {
+  const W = 520, H = 250, m = {l: 44, r: 8, t: 10, b: 50};
+  const vals = groups.flatMap(g => series.map(s => g.v[s.k])).filter(v => v != null);
+  const mx = Math.max(0.05, ...vals.map(Math.abs)) * 1.15, Y = v => m.t + (1 - (v + mx) / (2 * mx)) * (H - m.t - m.b);
+  const gw = (W - m.l - m.r) / groups.length, bw = Math.min(26, gw / (series.length + 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  const st = niceStep(mx / 2);
+  for (let v = -Math.floor(mx / st) * st; v <= mx; v += st) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${Math.abs(v) < 1e-9 ? css("--ink2") : css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" ${FONT}>${sgn(v, 2)}</text>`;
+  groups.forEach((g, i) => {
+    const x0 = m.l + i * gw + (gw - bw * series.length) / 2;
+    series.forEach((se, j) => { const v = g.v[se.k]; if (v == null) return; const y = Y(Math.max(v, 0)), h = Math.abs(Y(v) - Y(0));
+      s += `<rect x="${x0 + j * bw}" y="${y}" width="${bw - 3}" height="${Math.max(h, 1)}" fill="${se.color}"><title>${g.name} · ${se.name}: ${sgn(v, 3)} ATR</title></rect>`; });
+    const lines = g.name.split("\n");
+    lines.forEach((t, k) => s += `<text x="${m.l + i * gw + gw / 2}" y="${H - m.b + 16 + k * 13}" text-anchor="middle" fill="${css("--ink2")}" font-size="11" font-family="IBM Plex Sans,sans-serif">${t}</text>`);
+  });
+  el.innerHTML = s + "</svg>";
+  legend(lg, series);
+}
+function drawFam() {
+  const P = [{k: "edge_DISC", name: "DISC 2009–18", color: css("--s1")}, {k: "edge_VAL", name: "VAL 2019–22", color: css("--s2")}, {k: "edge_OOS", name: "OOS 2023–26", color: css("--s3")}];
+  const nm = {"SW01–SW04 + H1–H5": "SW + H", "fade (opačný směr)": "fade", "benchmarky": "benchmarky"};
+  const order = ["SW01–SW04 + H1–H5", "benchmarky", "fade (opačný směr)"];
+  const G = order.flatMap(g => ["long", "short"].map(s => { const r = DATA.fam.find(x => x.grp === g && x.side === s); return {name: nm[g] + "\n" + s, v: r}; }));
+  bars($("#cFam"), $("#lgFam"), G, P);
+  const G2 = ["SW01", "SW02", "SW03", "SW04", "H"].flatMap(f => ["long", "short"].map(s => ({name: f + "\n" + s, v: DATA.sw_fam.find(x => x.family === f && x.side === s)})));
+  bars($("#cSW"), $("#lgSW"), G2, P);
+}
+
+/* markov */
+function drawMarkov() {
+  const M = DATA.markov, S = M.states, CZ = {Bull: "Bull", Bear: "Bear", Balance: "Balance", Transition: "Transition"};
+  $("#tMarkov").innerHTML = `<thead><tr><th>z \\ do</th>${S.map(s => `<th>${CZ[s]}</th>`).join("")}<th>Podíl dní</th><th>Prům. délka</th></tr></thead><tbody>` +
+    S.map((s, i) => `<tr><td class="rowh">${s}</td>${M.m[i].map(v => `<td style="background:${hcol(v, 1)};color:${hink(v, 1)}">${fmt(v, 2)}</td>`).join("")}<td class="num" style="background:var(--surface)">${pct(DATA.share[s])}</td><td class="num" style="background:var(--surface)">${fmt(DATA.runs[s].mean, 1)} d</td></tr>`).join("") + "</tbody>";
+  $("#markovNote").textContent = "Diagonála (zůstat v režimu) v DISC / VAL / OOS: " + S.map((s, i) => `${s} ${["DISC", "VAL", "OOS"].map(p => fmt(M.diag[p][i], 2)).join("/")}`).join(" · ") + ". Matice je stabilní napříč obdobími.";
+  const W = 520, H = 250, m = {l: 40, r: 10, t: 10, b: 30}, X = a => m.l + (a - 1) / 14 * (W - m.l - m.r), Y = v => m.t + (1 - (v - 0.3) / 0.7) * (H - m.t - m.b);
+  const cols = {Bull: css("--s1"), Bear: css("--s2"), Balance: css("--s3"), Transition: css("--s4")};
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  for (let v = 0.3; v <= 1.001; v += 0.1) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" ${FONT}>${fmt(v, 1)}</text>`;
+  for (let a = 1; a <= 15; a += 2) s += `<text x="${X(a)}" y="${H - 10}" text-anchor="middle" fill="${css("--muted")}" ${FONT}>${a}</text>`;
+  s += `<text x="${W - m.r}" y="${H - 22}" text-anchor="end" fill="${css("--muted")}" ${FONT}>stáří režimu (dny)</text>`;
+  Object.entries(DATA.sm).forEach(([g, pts]) => { const p = pts.filter(x => x[0] <= 15 && x[3] >= 15);
+    s += `<polyline fill="none" stroke="${cols[g]}" stroke-width="2" points="${p.map(x => X(x[0]) + "," + Y(x[1])).join(" ")}"/>` + p.map(x => `<circle cx="${X(x[0])}" cy="${Y(x[1])}" r="3" fill="${cols[g]}"><title>${g} stáří ${x[0]}: P(pokračuje) ${fmt(x[1], 2)}, zbývá ${fmt(x[2], 1)} d, n=${x[3]}</title></circle>`).join(""); });
+  $("#cSM").innerHTML = s + "</svg>";
+  legend($("#lgSM"), Object.keys(cols).map(k => ({name: k, color: cols[k]})));
+}
+$("#regText").innerHTML = "Bull režim trvá v průměru 4,8 dne (max 23), pravděpodobnost pokračování roste se stářím z 0,68 (1. den) na 0,90 (5. den) a očekávaná zbývající délka je 4–5 dní. Persistence je tedy reálná a stabilní. <b>Výnos ale nenese</b>: long v Bull režimu má na 5 dní nadvýnos −0,14 ATR (stáří 3–10 dní −0,15), short v Bear režimu −0,34 ATR. Režim popisuje, co se už stalo; další týden v něm ES vrací k průměru. H3 (stáří režimu + držení) proto zamítnuto.";
+
+/* SL x RRR */
+function gridTab(el, key, lkey) {
+  const SL = [0.5, 1.0, 1.5, 2.0], RR = [1, 2, 3, 5];
+  el.innerHTML = `<thead><tr><th>SL \\ RRR</th>${RR.map(r => `<th>1:${r}</th>`).join("")}</tr></thead><tbody>` +
+    SL.map(s => `<tr><td class="rowh">${fmt(s, 1)} ATR</td>${RR.map(r => { const g = DATA.grid.find(x => x.sl === s && x.rr === r); const v = g[key];
+      return `<td style="background:${hcol(v, 0.4)};color:${hink(v, 0.4)}">${sgn(v, 2)}<br><span style="opacity:.8;font-size:11px">série ${g[lkey]}</span></td>`; }).join("")}</tr>`).join("") + "</tbody>";
+}
+const g05 = DATA.grid.find(x => x.sl === 0.5 && x.rr === 5), g23 = DATA.grid.find(x => x.sl === 2 && x.rr === 3);
+$("#slText").innerHTML = `Pro systém s držením až 20 dní je ATR stop přirozená jednotka (medián ATR14 v letech 2023–26 je 47–78 bodů). Těsný stop 0,5 ATR je záporný nebo nulový pro všechny vstupy. S RRR 1:5 dává win rate ${pct(g05.win)} a nejdelší sérii ${g05.longest} ztrát. Stop 2 ATR s RRR 1:3 dává win rate ${pct(g23.win)} a sérii ${g23.longest}, expectancy ${sgn(g23.exp)} ATR. Tohle potvrzuje dřívější Loss Streak Lab: série ztrát dělá hlavně stop malý vůči volatilitě. Exity podle denního close (týdenní VWAP, opačná migrace, změna režimu) vyřazují obchody příliš brzy (průměrně 3–5 dní) a jsou horší než prostý čas.`;
+function drawExit() {
+  $("#tExit").innerHTML = `<thead><tr><th>Exit model (long)</th><th>Prům. přes všechny vstupy</th><th>Edge vs každý den</th><th>Držení (dny)</th><th>Každý den: exp</th><th>win</th><th>PF</th><th>nejdelší série</th><th>Jádro fade: exp</th><th>série</th></tr></thead><tbody>` +
+    DATA.exits.map(r => `<tr><td>${r.exit}</td><td class="num ${cls(r.exp_all)}">${sgn(r.exp_all, 3)}</td><td class="num ${cls(r.edge_all)}">${sgn(r.edge_all, 3)}</td><td class="num">${fmt(r.hold, 1)}</td><td class="num ${cls(r.every_exp)}">${sgn(r.every_exp, 3)}</td><td class="num">${pct(r.every_win)}</td><td class="num">${fmt(r.every_pf, 2)}</td><td class="num">${r.every_longest}</td><td class="num ${cls(r.core_exp)}">${sgn(r.core_exp, 3)}</td><td class="num">${r.core_longest}</td></tr>`).join("") + "</tbody>";
+}
+
+/* equity */
+const EQX = [["E01 čas 10D", "Držení 10 dní"], ["E01 čas 20D", "Držení 20 dní"], ["E06 SL 2.0 ATR · RRR 3", "SL 2 ATR · RRR 1:3"]];
+let eqx = "E01 čas 10D";
+$("#eqBtns").innerHTML = EQX.map(([k, n]) => `<button type="button" aria-pressed="${k === eqx}" data-k="${k}">${n}</button>`).join("");
+$("#eqBtns").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; eqx = b.dataset.k; [...$("#eqBtns").children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawEq(); });
+function drawEq() {
+  const SS = [{k: "jádro fade (long)", name: "Jádro fade long (4 pravidla z DISC)", color: css("--s1")}, {k: "ansámbl fade (long)", name: "Ansámbl fade long (12 pravidel)", color: css("--s3")},
+              {k: "každý den (long)", name: "Long každý den (benchmark)", color: css("--bh")}, {k: "jádro fade (short)", name: "Jádro fade short (kontrola)", color: css("--s2")}];
+  const W = 1000, H = 340, m = {l: 60, r: 14, t: 12, b: 30};
+  const all = SS.map(s => DATA.curves[s.k + "|" + eqx] || []);
+  const t0 = new Date("2009-03-01").getTime(), t1 = new Date("2026-10-01").getTime();
+  const vs = all.flat().map(p => p[1]); const lo = Math.min(0, ...vs), hi = Math.max(...vs);
+  const X = d => m.l + (new Date(d).getTime() - t0) / (t1 - t0) * (W - m.l - m.r), Y = v => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  s += `<rect x="${X("2019-01-01")}" y="${m.t}" width="${X("2023-01-01") - X("2019-01-01")}" height="${H - m.t - m.b}" fill="var(--band)"/><rect x="${X("2023-01-01")}" y="${m.t}" width="${X("2026-10-01") - X("2023-01-01")}" height="${H - m.t - m.b}" fill="var(--band)" opacity=".6"/>`;
+  s += `<text x="${X("2019-01-01") + 6}" y="${m.t + 14}" fill="${css("--muted")}" ${FONT}>VAL</text><text x="${X("2023-01-01") + 6}" y="${m.t + 14}" fill="${css("--muted")}" ${FONT}>OOS</text>`;
+  const st = niceStep((hi - lo) / 5);
+  for (let v = Math.ceil(lo / st) * st; v <= hi; v += st) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${Math.abs(v) < 1e-9 ? css("--ink2") : css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" ${FONT}>${fmt(v, 0)}</text>`;
+  for (let y = 2010; y <= 2026; y += 2) s += `<text x="${X(y + "-01-01")}" y="${H - 10}" text-anchor="middle" fill="${css("--muted")}" ${FONT}>${y}</text>`;
+  SS.forEach((se, i) => { const p = all[i]; if (!p.length) return; s += `<polyline fill="none" stroke="${se.color}" stroke-width="${i === 0 ? 2.2 : 1.5}" points="${p.map(q => X(q[0]).toFixed(1) + "," + Y(q[1]).toFixed(1)).join(" ")}"/>`; });
+  s += `<text x="${m.l + 4}" y="${m.t + 14}" fill="${css("--muted")}" ${FONT}>body na 1 kontrakt (×50 USD)</text>`;
+  $("#cEq").innerHTML = s + "</svg>";
+  legend($("#lgEq"), SS);
+}
+$("#candText").innerHTML = `Pravidla jsou vybraná <b>jen z let 2009–2018</b>: fade verze s kladnou edge na 10 dní (jádro: t ≥ 2, ansámbl: t ≥ 1). Vstup long na RTH open po dni, kdy nastal kterýkoli bearish extrém: ${(DATA.rules["jádro fade (long)"] || "").split(" | ").join(", ")}. Obchoduje se jedna pozice, další až po výstupu. Šedá křivka je stejný exit se vstupem každý den. Ukazuje, kolik dělá samotný drift ES.`;
+function drawCand() {
+  const order = ["jádro fade (long)", "ansámbl fade (long)", "každý den (long)", "jádro fade (short)", "každý den (short)"];
+  const rows = CAND.filter(r => order.includes(r.system)).sort((a, b) => order.indexOf(a.system) - order.indexOf(b.system));
+  $("#tCand").innerHTML = `<thead><tr><th>Systém</th><th>Exit</th><th>Obchodů</th><th>Exp ATR</th><th>vs každý den</th><th>Body/obchod</th><th>Win</th><th>PF</th><th>Série</th><th>Max DD (ATR)</th><th>t</th><th>DISC · VAL · OOS</th><th>Benchmark DISC · VAL · OOS</th><th>Čas v trhu</th></tr></thead><tbody>` +
+    rows.map(r => `<tr${r.system.startsWith("jádro fade (long)") ? ' style="font-weight:600"' : ""}><td style="text-align:left">${r.system}</td><td style="text-align:left">${r.exit}</td><td class="num">${fmt(r.n, 0)}</td><td class="num ${cls(r.exp)}">${sgn(r.exp, 3)}</td><td class="num ${cls(r.exp - r.base_exp)}">${sgn(r.exp - r.base_exp, 3)}</td><td class="num ${cls(r.pts)}">${sgn(r.pts, 1)}</td><td class="num">${pct(r.win)}</td><td class="num">${fmt(r.pf, 2)}</td><td class="num">${r.longest}</td><td class="num">${fmt(r.maxdd, 1)}</td><td class="num">${fmt(r.t, 1)}</td><td class="num">${[r.exp_DISC, r.exp_VAL, r.exp_OOS].map(v => sgn(v)).join(" · ")}</td><td class="num">${[r.base_exp_DISC, r.base_exp_VAL, r.base_exp_OOS].map(v => sgn(v)).join(" · ")}</td><td class="num">${pct(r.exposure)}</td></tr>`).join("") + "</tbody>";
+}
+
+/* WF + robust */
+const ws = DATA.wf_sum.find(r => r.mode === "long+short");
+$("#wfText").innerHTML = `Walk-forward: každý rok se z ${fmt(K.combos, 0)} kombinací vybere ta s nejvyšší t-statistikou edge za předchozí 4 roky (embargo 30 dní) a obchoduje se další rok. Výsledek 2013–2026: ${fmt(ws.count, 0)} obchodů, průměr ${sgn(ws.mean, 3)} ATR, celkem ${sgn(ws.sum, 1)} ATR. To je prakticky nula, vítěz jednoho období v dalším nevyhrává. Z 25 nejlepších kombinací vybraných jen v DISC má kladnou edge ve VAL ${pct(DATA.sel.val_pos)} a v OOS ${pct(DATA.sel.oos_pos)}: lepší než mince, ale ne spolehlivě. Obchodovatelná je proto jen <b>rodina</b> (fade extrémů + dlouhé držení + široký stop), ne konkrétní nastavení.`;
+$("#tWF").innerHTML = `<thead><tr><th>Rok</th><th>Vybraná kombinace</th><th>t (trénink)</th><th>Obchodů</th><th>Exp ATR</th></tr></thead><tbody>` +
+  DATA.wf.map(r => `<tr><td>${r.year}</td><td style="text-align:left;white-space:normal;min-width:260px" class="small">${r.pick}</td><td class="num">${fmt(r.t_train, 1)}</td><td class="num">${r.n}</td><td class="num ${cls(r.exp)}">${sgn(r.exp, 2)}</td></tr>`).join("") + "</tbody>";
+$("#tRob").innerHTML = `<thead><tr><th>Kombinace s edge &gt; 0 ve všech obdobích a t<sub>DISC</sub> ≥ 2</th><th>Obch.</th><th>Edge</th><th>t</th><th>DISC · VAL · OOS</th></tr></thead><tbody>` +
+  DATA.rob.map(r => `<tr><td style="text-align:left;white-space:normal;min-width:260px" class="small">${r.signal} · ${r.side} · ${r.exit}</td><td class="num">${r.n}</td><td class="num">${sgn(r.edge)}</td><td class="num">${fmt(r.t_edge, 1)}</td><td class="num">${[r.edge_DISC, r.edge_VAL, r.edge_OOS].map(v => sgn(v)).join(" · ")}</td></tr>`).join("") + "</tbody>";
+
+$("#steps").innerHTML = [
+  "<b>Swing výzkum dává smysl a navazuje na dřívější výsledky.</b> Denní horizont je jediné místo, kde se v ES opakovaně ukazuje informace (RSI(2) reverze, denní ML IC 0,10, a teď fade extrémů). Intraday filtry ani trend-following tam nejsou.",
+  "<b>Stavět long-only reverzní swing.</b> Vstup po bearish extrému (proražení low kompozitu, plně bear zarovnání VWAP D/W/M se sklony, retest prolomené hrany), držení 10–20 dní, katastrofický stop 2 ATR, bez těsných stopů a bez exitů podle VWAP/migrace. Short jen jako zajištění, ne jako zdroj alfy.",
+  "<b>Dimenzovat podle ATR, ne podle bodů.</b> Stop 2 ATR je dnes zhruba 95–155 bodů, tedy 4 750–7 800 USD na kontrakt ES. Pro menší účet MES (1/10). Riziko na obchod ≤ 0,5–1 % účtu.",
+  "<b>Kombinovat s předchozími kandidáty</b> (RSI(2) reverze, denní ML skóre) do jednoho skóre „přeprodanosti“ místo OR přes 12 pravidel. Ansámbl z 12 pravidel je skoro „long každý den“, jádro ze 4 pravidel nese víc informace.",
+  "<b>Paper trading 3–6 měsíců</b> s pevně zamčenými pravidly (vybranými z DISC, ověřenými ve VAL). OOS 2023–26 na 10 dní edge nepotvrdil, na 20 dní mírně ano, takže to ještě není hotový systém.",
+].map(t => `<li><span>${t}</span></li>`).join("");
+
+const AU = DATA.audit;
+$("#audit").innerHTML = [
+  `<b>Data (audit)</b>: ${AU.rows ?? ""} řádků 1min ES2008, ${AU.first ?? ""} až ${AU.last ?? ""}, ${AU.duplicates ?? 0} duplicit, ${AU.bad_ohlc ?? 0} chybných OHLC, ${AU.zero_volume_rows ?? ""} barů s nulovým objemem.`,
+  `Bid/ask objem (delta) od ${AU.bidask_from ?? "2010-12-27"}; signály s deltou se před tímto datem nespouštějí. ${AU.missing_weekdays ?? ""} chybějících pracovních dní (svátky), ${AU.gaps_over_60min_inside_day ?? ""} mezer &gt; 60 min uvnitř dne.`,
+  `<b>Nadvýnos</b> = výnos v ATR14 minus průměr všech dní stejného roku. Tím se odečte býčí drift ES 2009–2026.`,
+  `<b>Benchmark obchodů</b>: stejný exit se vstupem každý den. Tak se pozná, jestli vstup přidává informaci, nebo jen drží ES.`,
+].map(t => `<li>${t}</li>`).join("");
+
+function drawAll() { drawHeat(); drawFam(); drawMarkov(); gridTab($("#tGrid"), "exp", "longest"); gridTab($("#tGrid2"), "core_exp", "core_longest"); drawExit(); drawEq(); drawCand(); }
+drawAll();
+new MutationObserver(drawAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+</script>
