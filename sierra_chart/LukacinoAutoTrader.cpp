@@ -207,6 +207,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   SCInputRef Input_SendToService   = sc.Input[25];
   SCInputRef Input_ShowLevels      = sc.Input[26];
   SCInputRef Input_DoLog           = sc.Input[27];
+  SCInputRef Input_OpenInitialNow  = sc.Input[28];
 
   SCSubgraphRef Subgraph_ATR       = sc.Subgraph[0];
 
@@ -222,7 +223,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
     sc.SupportAttachedOrdersForTrading = 1;
     sc.AllowMultipleEntriesInSameDirection = 1;
     sc.AllowOnlyOneTradePerBar = 0;
-    sc.MaintainTradeStatsAndTradesData = 1;
+    sc.MaintainTradeStatisticsAndTradesData = 1;
     sc.CancelAllOrdersOnEntriesAndReversals = 0;
     sc.AllowEntryWithWorkingOrders = 1;
     sc.SupportReversals = 0;
@@ -325,6 +326,9 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
     Input_DoLog.Name = "28. Log events to Message Log";
     Input_DoLog.SetYesNo(1);
 
+    Input_OpenInitialNow.Name = "29. Open initial position now";
+    Input_OpenInitialNow.SetYesNo(0);
+
 #if LCN_USE_ACS_BUTTONS
     sc.SetCustomStudyControlBarButtonText(LCN_BUTTON_BUY,  "LCN Buy");
     sc.SetCustomStudyControlBarButtonText(LCN_BUTTON_SELL, "LCN Sell");
@@ -416,7 +420,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   const float ValuePerTick = (float)sc.CurrencyValuePerTick;
 
   // ---- novy obchodni den -------------------------------------------------
-  const int TradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[LastIndex]).GetDate();
+  const int TradingDay = sc.GetTradingDayDate(sc.BaseDateTimeIn[LastIndex]);
   if (St.TradingDayDate != TradingDay)
   {
     St.TradingDayDate    = TradingDay;
@@ -462,9 +466,13 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
         Slot.EntryBarIndex = LastIndex;
 
         if (DoLog)
-          sc.AddMessageToLog(sc.FormatString("LCN slot %d: ENTRY %s qty %d @ %.5f",
-                             s, Slot.Direction == DIR_LONG ? "LONG" : "SHORT",
-                             Slot.Quantity, Slot.EntryPrice).GetChars(), 0);
+        {
+          SCString Message;
+          Message.Format("LCN slot %d: ENTRY %s qty %d @ %.5f",
+                         s, Slot.Direction == DIR_LONG ? "LONG" : "SHORT",
+                         Slot.Quantity, Slot.EntryPrice);
+          sc.AddMessageToLog(Message, 0);
+        }
       }
       else if (LcnIsTerminal(Order.OrderStatusCode))
       {
@@ -533,9 +541,12 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
       St.RealizedToday += PnL;
 
       if (DoLog)
-        sc.AddMessageToLog(sc.FormatString(
-          "LCN slot %d: EXIT %s @ %.5f | P/L %.2f | realized today %.2f",
-          s, ExitReason, ExitPrice, PnL, St.RealizedToday).GetChars(), 0);
+      {
+        SCString Message;
+        Message.Format("LCN slot %d: EXIT %s @ %.5f | P/L %.2f | realized today %.2f",
+                       s, ExitReason, ExitPrice, PnL, St.RealizedToday);
+        sc.AddMessageToLog(Message, 0);
+      }
 
       const int ClosedDir = Slot.Direction;
       LcnResetSlot(sc, Slot, s);
@@ -569,9 +580,12 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   {
     St.KillLatched = 1;
     if (DoLog)
-      sc.AddMessageToLog(sc.FormatString(
-        "LCN KILL SWITCH: denni loss limit %.2f dosazen (P/L %.2f)",
-        DailyLossLimit, TotalPnLToday).GetChars(), 1);
+    {
+      SCString Message;
+      Message.Format("LCN KILL SWITCH: denni loss limit %.2f dosazen (P/L %.2f)",
+                     DailyLossLimit, TotalPnLToday);
+      sc.AddMessageToLog(Message, 1);
+    }
   }
 
   const int KillInput = Input_KillSwitch.GetYesNo();
@@ -652,8 +666,11 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
         {
           Slot.StopPrice = Desired;
           if (DoLog)
-            sc.AddMessageToLog(sc.FormatString("LCN slot %d: trail stop -> %.5f",
-                               s, Desired).GetChars(), 0);
+          {
+            SCString Message;
+            Message.Format("LCN slot %d: trail stop -> %.5f", s, Desired);
+            sc.AddMessageToLog(Message, 0);
+          }
         }
       }
     }
@@ -709,8 +726,11 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
             }
 
             if (DoLog)
-              sc.AddMessageToLog(sc.FormatString("LCN GROUP trail stop -> %.5f",
-                                 Desired).GetChars(), 0);
+            {
+              SCString Message;
+              Message.Format("LCN GROUP trail stop -> %.5f", Desired);
+              sc.AddMessageToLog(Message, 0);
+            }
           }
         }
       }
@@ -722,7 +742,16 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   // ==========================================================================
   int Signal = DIR_NONE;
 
-  if (UseManual)
+  // "Open initial position now" - rucni odpal prvni pozice. Ve Full auto se
+  // pak obchod po kazdem uzavreni otevira znovu sam (viz nize).
+  // Smer: podle inputu 02 Mode; pri "Both" se otevira LONG.
+  if (Input_OpenInitialNow.GetYesNo() != 0)
+  {
+    Input_OpenInitialNow.SetYesNo(0);                   // auto-reset
+    Signal = (ModeIndex == 1) ? DIR_SHORT : DIR_LONG;
+  }
+
+  if (Signal == DIR_NONE && UseManual)
   {
     const int ManualIndex = Input_ManualTrigger.GetIndex();   // 0 off, 1 buy, 2 sell
     if (ManualIndex == 1)
@@ -871,16 +900,20 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
         OpenSlots++;
 
         if (DoLog)
-          sc.AddMessageToLog(sc.FormatString(
+        {
+          SCString Message;
+          Message.Format(
             "LCN slot %d: submit %s qty %d | SL %.1f ticks | TP %.1f ticks | trades today %d",
             FreeSlot, Signal == DIR_LONG ? "BUY" : "SELL", Qty,
-            StopOffset / TickSize, TargetOffset / TickSize,
-            St.TradesToday).GetChars(), 0);
+            StopOffset / TickSize, TargetOffset / TickSize, St.TradesToday);
+          sc.AddMessageToLog(Message, 0);
+        }
       }
       else if (DoLog)
       {
-        sc.AddMessageToLog(sc.FormatString(
-          "LCN: order odmitnut, kod %d", Result).GetChars(), 1);
+        SCString Message;
+        Message.Format("LCN: order odmitnut, kod %d", Result);
+        sc.AddMessageToLog(Message, 1);
       }
     }
   }
@@ -904,21 +937,23 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
       if (BeginIndex < 0)
         BeginIndex = 0;
 
-      LcnDrawLevel(sc, LINE_BASE + s * 10 + 0, BeginIndex, Slot.EntryPrice,
-                   RGB(170, 170, 170), 1, LINESTYLE_DOT,
-                   sc.FormatString("ENTRY #%d %s", s,
-                                   Slot.Direction == DIR_LONG ? "L" : "S"));
+      SCString Label;
 
+      Label.Format("ENTRY #%d %s", s, Slot.Direction == DIR_LONG ? "L" : "S");
+      LcnDrawLevel(sc, LINE_BASE + s * 10 + 0, BeginIndex, Slot.EntryPrice,
+                   RGB(170, 170, 170), 1, LINESTYLE_DOT, Label);
+
+      Label.Format("TP #%d", s);
       LcnDrawLevel(sc, LINE_BASE + s * 10 + 1, BeginIndex, Slot.TargetPrice,
-                   RGB(0, 190, 0), 2, LINESTYLE_SOLID,
-                   sc.FormatString("TP #%d", s));
+                   RGB(0, 190, 0), 2, LINESTYLE_SOLID, Label);
 
       const bool IsTrailing = (Slot.InitialStop != 0.0f)
                            && (Slot.StopPrice != Slot.InitialStop);
 
+      Label.Format("%s #%d", IsTrailing ? "TRAIL" : "SL", s);
       LcnDrawLevel(sc, LINE_BASE + s * 10 + 2, BeginIndex, Slot.StopPrice,
                    IsTrailing ? RGB(255, 170, 0) : RGB(220, 0, 0), 2, LINESTYLE_SOLID,
-                   sc.FormatString("%s #%d", IsTrailing ? "TRAIL" : "SL", s));
+                   Label);
     }
 
     // --- statusovy text nad poslednim barem
@@ -926,7 +961,8 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
     if (MaxPerDay > 0)
       DayLimitText.Format("/%d", MaxPerDay);
 
-    const SCString Status = sc.FormatString(
+    SCString Status;
+    Status.Format(
       "LCN | %s | %s | %s | open %d/%d | today %d%s | P/L %.2f | trail: %s%s",
       Input_TradingEnabled.GetYesNo() != 0 ? "ON" : "OFF",
       FullAuto ? "FULL AUTO" : "SEMI AUTO",

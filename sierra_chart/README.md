@@ -58,6 +58,12 @@ Chart drží jednu netto pozici na symbol.
 dokud nenarazí na `17. Max trades per day`, kill switch, nebo dokud nevypneš
 `01. Trading enabled`.
 
+**Start sekvence** — input `29. Open initial position now` = Yes otevře první
+pozici okamžitě a sám se přepne zpátky na No. Ve full auto režimu tím rozjedeš
+celý cyklus: od té chvíle se po každém uzavření otevírá další obchod sám.
+Směr se bere z inputu `02. Mode`; při `Both` se otevírá **long** (pro short
+použij tlačítko `LCN Sell` nebo input `06. Manual trigger`).
+
 ### TP / SL
 
 ```
@@ -136,6 +142,7 @@ Stop se posouvá **jen v příznivém směru** a jen když je posun alespoň
 | 26 | Send orders to trade service | Yes | No = interní simulace study |
 | 27 | Draw entry / TP / SL / trail | Yes | |
 | 28 | Log events to Message Log | Yes | |
+| 29 | Open initial position now | No | ruční odpal první pozice, sám se resetuje |
 
 ---
 
@@ -171,19 +178,21 @@ nezávisle na tomhle — zapíná se v **Chart Settings → Trading**.
 
 ---
 
-## 6. Známá místa, kde si Sierra Chart může stěžovat při buildu
+## 6. Build
 
-ACSIL se mezi verzemi mění. Pokud build selže, bude to skoro jistě jeden
-z těchhle řádků — a oprava je jednoduchá:
+Ověřeno proti remote build serveru Sierra Chart (`build.sierrachart.com`, 64-bit).
 
-| Co | Kde | Oprava |
-|----|-----|--------|
-| `sc.SetCustomStudyControlBarButtonText` | sekce `SetDefaults` | `#define LCN_USE_ACS_BUTTONS 0` na začátku souboru |
-| `SCT_OSC_CANCELED` / `SCT_OSC_ERROR` | funkce `LcnIsTerminal` | zkontroluj názvy v `scconstants.h` |
-| `sc.ATR(..., Index, ...)` | ATR smyčka | některé verze mají jiný počet parametrů |
-| `NewOrder.AttachedOrderStop1Type` | sekce 5 | lze vynechat, Sierra použije default typy |
+Opravy po prvním buildu:
 
-Pošli mi text chyby z Build okna a opravím to natvrdo.
+| Chyba | Oprava |
+|-------|--------|
+| `MaintainTradeStatsAndTradesData` neexistuje | → `MaintainTradeStatisticsAndTradesData` |
+| `sc.GetTradingDayDate()` vrací `int`, ne `SCDateTime` | zrušeno volání `.GetDate()` |
+| `sc.FormatString()` nejde volat se string literálem | všech 11 výskytů přepsáno na `SCString` + `.Format()` |
+
+Pokud by si build stěžoval na `sc.SetCustomStudyControlBarButtonText`
+(ACS tlačítka), nastav na začátku souboru `#define LCN_USE_ACS_BUTTONS 0`
+a používej input `06. Manual trigger`.
 
 ---
 
