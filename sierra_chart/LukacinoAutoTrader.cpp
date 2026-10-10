@@ -259,7 +259,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
     Input_EntrySource.SetCustomInputStrings("Manual only;Study signal only;Manual + study signal");
     Input_EntrySource.SetCustomInputIndex(0);
 
-    Input_ManualTrigger.Name = "06. Manual trigger (auto-reset)";
+    Input_ManualTrigger.Name = "06. Manual trigger (edge Off -> Buy/Sell)";
     Input_ManualTrigger.SetCustomInputStrings("Off;Buy;Sell");
     Input_ManualTrigger.SetCustomInputIndex(0);
 
