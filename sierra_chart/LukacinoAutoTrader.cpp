@@ -78,6 +78,7 @@ namespace
     int    LastSignalBarIndex;   // edge detekce externiho signalu
     int    PrevOpenInitialNow;   // edge detekce inputu 29 (No -> Yes)
     int    OpenInitialBlockedLogged; // aby se blokace nelogovala na kazdy tick
+    int    ForeignPositionLogged;    // varovani o nesledovane pozici jen jednou
     int    PrevManualTriggerIndex; // edge detekce inputu 06
     int    Initialized;          // prvni volani: nacti stav inputu bez odpalu
     double LastExitTimeDays;     // SCDateTime jako double (dny)
@@ -589,6 +590,47 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   }
 
   // ==========================================================================
+  //  1b) CIZI POZICE
+  // ==========================================================================
+  // Pozice, kterou tato study neotevrela (zbytek z jine study, rucni vstup
+  // z Trade DOM, pozustatek po Replay). Study ji neadoptuje - a protoze
+  // sc.MaximumPositionAllowed = Max concurrent x Position size, Sierra pak
+  // odmitne KAZDY dalsi vstup. Bez tohohle hlaseni to vypada, ze script nedela
+  // vubec nic.
+  {
+    double TrackedQty = 0.0;
+    for (int s = 0; s < MAX_SLOTS; s++)
+      if (St.Slots[s].Active != 0 && St.Slots[s].EntryFilled != 0)
+        TrackedQty += St.Slots[s].Direction * St.Slots[s].Quantity;
+
+    const double NetAbs     = (NetQuantity < 0.0) ? -NetQuantity : NetQuantity;
+    const double TrackedAbs = (TrackedQty  < 0.0) ? -TrackedQty  : TrackedQty;
+
+    if (NetAbs > TrackedAbs + 0.0001)
+    {
+      if (St.ForeignPositionLogged == 0)
+      {
+        if (DoLog)
+        {
+          SCString Message;
+          Message.Format("LCN POZOR: v Trade DOM je pozice %.0f kontraktu, ale tato "
+                         "study sleduje jen %.0f. Cizi pozici neadoptuje a vsechny "
+                         "vstupy budou odmitany, protoze Maximum Position Allowed = "
+                         "%d. Udelej Flatten v Trade DOM (pripadne Trade >> Reset "
+                         "Trade Simulation) a zkus to znovu.",
+                         NetAbs, TrackedAbs, sc.MaximumPositionAllowed);
+          sc.AddMessageToLog(Message, 1);
+        }
+        St.ForeignPositionLogged = 1;
+      }
+    }
+    else
+    {
+      St.ForeignPositionLogged = 0;
+    }
+  }
+
+  // ==========================================================================
   //  2) KILL SWITCH
   // ==========================================================================
   float OpenPnL = 0.0f;
@@ -1008,7 +1050,11 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
       else if (DoLog)
       {
         SCString Message;
-        Message.Format("LCN: order odmitnut, kod %d", Result);
+        Message.Format("LCN: order odmitnut Sierra Chartem, kod %d. Nejcastejsi "
+                       "priciny: v DOM uz visi pozice, kterou study nesleduje; "
+                       "neni zapnuto Trade >> Auto Trading Enabled; nebo "
+                       "Max concurrent x Position size (= %d) je prilis nizke.",
+                       Result, sc.MaximumPositionAllowed);
         sc.AddMessageToLog(Message, 1);
       }
     }
