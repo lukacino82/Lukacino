@@ -55,6 +55,7 @@ namespace
     int   StopOrderID;
     int   EntryFilled;     // vstup fillnuty -> EntryPrice je platna
     int   EntryBarIndex;
+    int   GraceTicks;      // po fillu: pocka nez se brackety objevi v order listu
     float EntryPrice;
     float TargetPrice;
     float StopPrice;       // aktualni stop (i po trailingu)
@@ -75,6 +76,9 @@ namespace
     int    GroupTrailDir;
     int    PendingReentryDir;    // full-auto: smer k znovuotevreni
     int    LastSignalBarIndex;   // edge detekce externiho signalu
+    int    PrevOpenInitialNow;   // edge detekce inputu 29 (No -> Yes)
+    int    PrevManualTriggerIndex; // edge detekce inputu 06
+    int    Initialized;          // prvni volani: nacti stav inputu bez odpalu
     double LastExitTimeDays;     // SCDateTime jako double (dny)
   };
 
@@ -208,6 +212,9 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   SCInputRef Input_ShowLevels      = sc.Input[26];
   SCInputRef Input_DoLog           = sc.Input[27];
   SCInputRef Input_OpenInitialNow  = sc.Input[28];
+  SCInputRef Input_ShowStatusText  = sc.Input[29];
+  SCInputRef Input_StatusTextColor = sc.Input[30];
+  SCInputRef Input_StatusFontSize  = sc.Input[31];
 
   SCSubgraphRef Subgraph_ATR       = sc.Subgraph[0];
 
@@ -329,6 +336,16 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
     Input_OpenInitialNow.Name = "29. Open initial position now";
     Input_OpenInitialNow.SetYesNo(0);
 
+    Input_ShowStatusText.Name = "30. Show status text";
+    Input_ShowStatusText.SetYesNo(1);
+
+    Input_StatusTextColor.Name = "31. Status text color";
+    Input_StatusTextColor.SetColor(240, 240, 240);
+
+    Input_StatusFontSize.Name = "32. Status text font size";
+    Input_StatusFontSize.SetInt(10);
+    Input_StatusFontSize.SetIntLimits(5, 40);
+
 #if LCN_USE_ACS_BUTTONS
     sc.SetCustomStudyControlBarButtonText(LCN_BUTTON_BUY,  "LCN Buy");
     sc.SetCustomStudyControlBarButtonText(LCN_BUTTON_SELL, "LCN Sell");
@@ -406,6 +423,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   const float TrailStep      = LcnToPrice(Input_TrailStep.GetFloat(), Units, TickSize);
   const float DailyLossLimit = Input_DailyLossLimit.GetFloat();
   const bool  ShowLevels     = (Input_ShowLevels.GetYesNo() != 0);
+  const bool  ShowStatusText = (Input_ShowStatusText.GetYesNo() != 0);
   const bool  DoLog          = (Input_DoLog.GetYesNo() != 0);
 
   int ReentryDelay = Input_ReentryDelaySec.GetInt();
@@ -464,6 +482,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
         Slot.EntryPrice    = (float)Order.AvgFillPrice;
         Slot.BestPrice     = Slot.EntryPrice;
         Slot.EntryBarIndex = LastIndex;
+        Slot.GraceTicks    = 10;
 
         if (DoLog)
         {
@@ -486,13 +505,17 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
       }
     }
 
+    if (Slot.GraceTicks > 0)
+      --Slot.GraceTicks;
+
     LcnResolveAttachedOrders(sc, Slot);
 
     // attached ordery jeste nejsou zname
     if (Slot.StopOrderID == 0 || Slot.TargetOrderID == 0)
     {
-      // bezpecnostni ventil: pozice je flat a brackety se nenasly
-      if (NetQuantity == 0.0 && Slot.StopOrderID == 0 && Slot.TargetOrderID == 0)
+      // bezpecnostni ventil: pozice je flat a brackety se nenasly ani po grace
+      if (NetQuantity == 0.0 && Slot.GraceTicks == 0
+          && Slot.StopOrderID == 0 && Slot.TargetOrderID == 0)
       {
         LcnResetSlot(sc, Slot, s);
         continue;
@@ -742,33 +765,72 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   // ==========================================================================
   int Signal = DIR_NONE;
 
-  // "Open initial position now" - rucni odpal prvni pozice. Ve Full auto se
-  // pak obchod po kazdem uzavreni otevira znovu sam (viz nize).
-  // Smer: podle inputu 02 Mode; pri "Both" se otevira LONG.
-  if (Input_OpenInitialNow.GetYesNo() != 0)
+  // Prvni volani po nacteni study: jen si zapamatuj stav prepinacu, neodpaluj.
+  // (Jinak by chart s inputem 29 nechanym na Yes otevrel obchod hned po loadu.)
+  if (St.Initialized == 0)
   {
-    Input_OpenInitialNow.SetYesNo(0);                   // auto-reset
-    Signal = (ModeIndex == 1) ? DIR_SHORT : DIR_LONG;
+    St.PrevOpenInitialNow     = Input_OpenInitialNow.GetYesNo();
+    St.PrevManualTriggerIndex = Input_ManualTrigger.GetIndex();
+    St.Initialized            = 1;
   }
 
-  if (Signal == DIR_NONE && UseManual)
+  // --- "Open initial position now" (input 29)
+  // Stejny pattern jako Pyramiding Pro System: edge detekce prepnuti No -> Yes
+  // proti ulozene predchozi hodnote. Input se NERESETUJE sam - prepnes ho
+  // zpatky na No rucne, stejne jako u Pyramiding Pro.
+  // Odpali jen kdyz neni nic otevreneho; v rezimu Both je blokovan, protoze
+  // neni jednoznacne, kterym smerem (Pyramiding Pro to resi stejne).
+  {
+    const int OpenInitialNow = Input_OpenInitialNow.GetYesNo();
+
+    if (OpenInitialNow == 1 && St.PrevOpenInitialNow == 0)
+    {
+      if (ModeIndex == 2)
+      {
+        if (DoLog)
+          sc.AddMessageToLog("LCN: 'Open initial position now' je v rezimu Both "
+                             "blokovan - nastav Mode na Long only / Short only, "
+                             "nebo pouzij tlacitka LCN Buy / LCN Sell.", 1);
+      }
+      else if (OpenSlots > 0)
+      {
+        if (DoLog)
+          sc.AddMessageToLog("LCN: 'Open initial position now' ignorovan - "
+                             "obchod uz je otevreny.", 0);
+      }
+      else
+      {
+        Signal = (ModeIndex == 1) ? DIR_SHORT : DIR_LONG;
+      }
+    }
+
+    St.PrevOpenInitialNow = OpenInitialNow;
+  }
+
+  // --- manualni trigger (input 06), stejna edge detekce
   {
     const int ManualIndex = Input_ManualTrigger.GetIndex();   // 0 off, 1 buy, 2 sell
-    if (ManualIndex == 1)
-      Signal = DIR_LONG;
-    else if (ManualIndex == 2)
-      Signal = DIR_SHORT;
 
-    if (ManualIndex != 0)
-      Input_ManualTrigger.SetCustomInputIndex(0);             // auto-reset
+    if (Signal == DIR_NONE && UseManual && ManualIndex != St.PrevManualTriggerIndex)
+    {
+      if (ManualIndex == 1)
+        Signal = DIR_LONG;
+      else if (ManualIndex == 2)
+        Signal = DIR_SHORT;
+    }
+
+    St.PrevManualTriggerIndex = ManualIndex;
+  }
 
 #if LCN_USE_ACS_BUTTONS
+  if (Signal == DIR_NONE && UseManual)
+  {
     if (sc.MenuEventID == LCN_BUTTON_BUY)
       Signal = DIR_LONG;
     else if (sc.MenuEventID == LCN_BUTTON_SELL)
       Signal = DIR_SHORT;
-#endif
   }
+#endif
 
   if (Signal == DIR_NONE && UseStudy)
   {
@@ -921,7 +983,12 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   // ==========================================================================
   //  6) VYKRESLENI UROVNI + STATUS
   // ==========================================================================
-  if (ShowLevels)
+  if (!ShowLevels)
+  {
+    for (int s = 0; s < MAX_SLOTS; s++)
+      LcnClearSlotDrawings(sc, s);
+  }
+  else
   {
     for (int s = 0; s < MAX_SLOTS; s++)
     {
@@ -955,8 +1022,15 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
                    IsTrailing ? RGB(255, 170, 0) : RGB(220, 0, 0), 2, LINESTYLE_SOLID,
                    Label);
     }
+  }
 
-    // --- statusovy text nad poslednim barem
+  // --- statusovy text nad poslednim barem (input 30 / 31 / 32)
+  if (!ShowStatusText)
+  {
+    sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, LINE_STATUS);
+  }
+  else
+  {
     SCString DayLimitText;
     if (MaxPerDay > 0)
       DayLimitText.Format("/%d", MaxPerDay);
@@ -980,8 +1054,10 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
     Tool.LineNumber  = LINE_STATUS;
     Tool.BeginIndex  = LastIndex;
     Tool.BeginValue  = sc.High[LastIndex] + 10.0f * TickSize;
-    Tool.Color       = KillActive ? RGB(255, 60, 60) : RGB(240, 240, 240);
-    Tool.FontSize    = 10;
+    // pri aktivnim kill switchi vzdy cervene, jinak barva z inputu 31
+    Tool.Color       = KillActive ? RGB(255, 60, 60)
+                                  : Input_StatusTextColor.GetColor();
+    Tool.FontSize    = Input_StatusFontSize.GetInt();
     Tool.FontBold    = 1;
     Tool.Text        = Status;
     Tool.TextAlignment = DT_RIGHT | DT_BOTTOM;

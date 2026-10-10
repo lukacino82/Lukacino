@@ -59,10 +59,20 @@ dokud nenarazí na `17. Max trades per day`, kill switch, nebo dokud nevypneš
 `01. Trading enabled`.
 
 **Start sekvence** — input `29. Open initial position now` = Yes otevře první
-pozici okamžitě a sám se přepne zpátky na No. Ve full auto režimu tím rozjedeš
-celý cyklus: od té chvíle se po každém uzavření otevírá další obchod sám.
-Směr se bere z inputu `02. Mode`; při `Both` se otevírá **long** (pro short
-použij tlačítko `LCN Sell` nebo input `06. Manual trigger`).
+pozici okamžitě. Ve full auto režimu tím rozjedeš celý cyklus: od té chvíle se
+po každém uzavření otevírá další obchod sám.
+
+Funguje stejně jako v Pyramiding Pro System — **edge detekce přepnutí No → Yes**
+proti uložené předchozí hodnotě. Input se sám neresetuje, přepneš ho zpátky na
+No ručně. Odpálí jen když není nic otevřeného; v režimu `Both` je **blokovaný**
+(není jednoznačné, kterým směrem) a zapíše se to do Message Logu — pro short
+použij `02. Mode = Short only`, tlačítko `LCN Sell` nebo input
+`06. Manual trigger`.
+
+Stejnou edge detekci používá i input `06. Manual trigger` — po vstupu zůstane
+na `Buy` / `Sell`, pro další manuální vstup ho přepni zpátky na `Off`.
+Po načtení study si script nejdřív jen zapamatuje stav přepínačů a neodpálí nic
+— chart s inputem 29 nechaným na Yes tedy po reloadu sám neobchoduje.
 
 ### TP / SL
 
@@ -142,7 +152,10 @@ Stop se posouvá **jen v příznivém směru** a jen když je posun alespoň
 | 26 | Send orders to trade service | Yes | No = interní simulace study |
 | 27 | Draw entry / TP / SL / trail | Yes | |
 | 28 | Log events to Message Log | Yes | |
-| 29 | Open initial position now | No | ruční odpal první pozice, sám se resetuje |
+| 29 | Open initial position now | No | ruční odpal první pozice, **přepni zpátky na No ručně** |
+| 30 | Show status text | Yes | vypnutí statusového textu na chartu |
+| 31 | Status text color | světle šedá | barva statusového textu (např. černá na bílý chart) |
+| 32 | Status text font size | 10 | 5–40 |
 
 ---
 
@@ -155,6 +168,8 @@ Stop se posouvá **jen v příznivém směru** a jen když je posun alespoň
   (stejná linka, mění barvu a posouvá se)
 - **Statusový text** nad posledním barem:
   `LCN | ON | FULL AUTO | BOTH | open 2/3 | today 4/10 | P/L -125.00 | trail: PER-POSITION`
+  Vypíná se inputem `30`, barva a velikost jdou nastavit inputy `31` a `32`.
+  Při aktivním kill switchi se text vždy přepne na červenou, bez ohledu na input 31.
 
 Nativní order lines Sierra Chart (fill markery, pending ordery) zůstávají zapnuté
 nezávisle na tomhle — zapíná se v **Chart Settings → Trading**.
@@ -189,6 +204,10 @@ Opravy po prvním buildu:
 | `MaintainTradeStatsAndTradesData` neexistuje | → `MaintainTradeStatisticsAndTradesData` |
 | `sc.GetTradingDayDate()` vrací `int`, ne `SCDateTime` | zrušeno volání `.GetDate()` |
 | `sc.FormatString()` nejde volat se string literálem | všech 11 výskytů přepsáno na `SCString` + `.Format()` |
+
+Po prvním buildu navíc převzato z `PyramidSystem.cpp` / `CascadePyramidSystem.cpp`:
+edge detekce triggerů místo zápisu do inputu, a grace counter po fillu vstupu
+(10 updatů), než se bracket ordery objeví v order listu.
 
 Pokud by si build stěžoval na `sc.SetCustomStudyControlBarButtonText`
 (ACS tlačítka), nastav na začátku souboru `#define LCN_USE_ACS_BUTTONS 0`
