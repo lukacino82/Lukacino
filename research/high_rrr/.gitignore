@@ -1,0 +1,4 @@
+__pycache__/
+*.pkl
+out/search_*.parquet
+*.log

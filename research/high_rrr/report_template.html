@@ -1,0 +1,348 @@
+<title>ES Loss Streak Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES mini futures · 1min data 2008–2026 · systémy s vysokým RRR</div>
+  <h1>ES Loss Streak Lab</h1>
+  <p class="lede">Odkud se berou dlouhé série ztrát u systémů s RRR 3–20:1 a dají se odfiltrovat? Pro každý vstup se spočítal výsledek pro 10 stopů v bodech × 9 RRR × 2 horizonty. K tomu kontext v okamžiku vstupu: režim trhu, kompozitní value area, ploché VWAPy, překoupenost na dni, týdnu a měsíci a počet předchozích testů low/high. Celá data ES od roku 2008.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="eyebrow">Hlavní zjištění</div>
+  <h2>Proč přicházejí série ztrát</h2>
+  <div class="callout"><p id="mainText"></p></div>
+  <div class="grid3" id="findCards"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Četnosti sérií za 18 let</div>
+  <h2>Kolik sérií ztrát přišlo a kolik by dala náhoda</h2>
+  <p class="sub">Vstup long každých 30 min RTH, vždy jen jedna otevřená pozice. Sloupce = skutečný počet sérií o délce alespoň k ztrát. Čára = kolik by jich vzniklo, kdyby výsledky byly nezávislé při stejném win rate.</p>
+  <div class="filters" role="group" aria-label="Konfigurace" id="sfButtons"></div>
+  <div class="panel"><div class="legend" id="lgSF"></div><div class="chart" id="chSF"></div></div>
+  <div class="tablewrap"><table id="tSF"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Kde dlouhé série vznikají</div>
+  <h2>Stop v bodech vs. volatilita</h2>
+  <div class="grid2">
+    <div class="panel"><h3>Pravděpodobnost stopu podle SL / ATR</h3><p class="small">Všechny stopy 5–50 bodů, RRR 10, horizont 5 dní. Stop menší než 0,35 ATR se trefí v 75–90 % případů.</p><div class="chart" id="chATR"></div></div>
+    <div class="panel"><h3>Podíl obchodů uvnitř série ≥ 10 ztrát podle roku</h3><p class="small">Pevný stop v bodech se ve volatilních letech (2008, 2018, 2020, 2022, 2025–26) stává relativně malým.</p><div class="legend" id="lgYears"></div><div class="chart" id="chYears"></div></div>
+  </div>
+  <div class="tablewrap"><table id="tSC"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Kontext</div>
+  <h2>Které situace zvyšují win rate a které expectancy</h2>
+  <p class="sub">Průměrná změna proti stejnému typu vstupu bez filtru, přes všechny kombinace SL × RRR × horizont. Δwin = podíl ziskových obchodů v procentních bodech, Δexp = očekávaná hodnota v R. Uvedené jen tam, kde je změna stejným směrem ve všech třech obdobích (2008–16 · 2017–21 · 2022–26).</p>
+  <div class="filters" role="group" aria-label="Strana" id="veButtons">
+    <button type="button" id="ve-long" aria-pressed="true" data-s="long">Long</button>
+    <button type="button" id="ve-short" aria-pressed="false" data-s="short">Short</button>
+  </div>
+  <div class="tablewrap"><table id="tVE"></table></div>
+  <div class="callout"><p id="veText"></p></div>
+</section>
+
+<section>
+  <div class="eyebrow">Opakované testy low a high</div>
+  <h2>Vybere trh stopy 3–4×, než se rozjede?</h2>
+  <p class="sub">Vstup při návratu k low (long) nebo high (short) posledních 6,5 h, 1 dne a 5 dní. TEST = cena se vrátí do zóny, SWEEP = projede ji o ≥ 2 ticky a zavře zpět. Rozděleno podle toho, kolikrát byla zóna předtím testována. Průměr přes všechny kombinace SL × RRR × horizont.</p>
+  <div class="tablewrap"><table id="tTT"></table></div>
+  <div class="callout"><p>Kdyby trh systematicky „vybíral“ low 3–4× a pak šel správným směrem, expectancy by s počtem testů rostla a od 3.–4. testu by byla kladná ve všech obdobích. Data ukazují malé, nekonzistentní rozdíly. Long po 2. a 4. sweepu je o něco lepší, ale znaménko mezi obdobími skáče. Diskreční zkušenost „vybere mě a pak jde“ je reálná, jenže stejně často platí „vybere mě a jde dál“. V průměru se to vyruší.</p></div>
+</section>
+
+<section>
+  <div class="eyebrow">Kombinace filtrů</div>
+  <h2>486 tisíc kombinací vs. náhoda</h2>
+  <p class="sub">22 typů vstupů × horizont × SL × RRR × každý jednotlivý filtr a dvojice filtrů. Stejné hledání proběhlo i s náhodně promíchaným kontextem (stejné velikosti filtrů, žádná informace). Tabulka ukazuje, kolik unikátních filtrů projde při různé přísnosti.</p>
+  <div class="grid2">
+    <div class="tablewrap" style="align-self:start"><table id="tThr"></table></div>
+    <div class="card"><h3>Co to znamená</h3><p class="why" id="thrText"></p></div>
+  </div>
+  <h3>Nejlepší kombinace (t ≥ 2 v objevu, t ≥ 1 v obou dalších obdobích, lepší než bez filtru)</h3>
+  <div class="tablewrap"><table id="tTop"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Trailing, breakeven a pauzy</div>
+  <h2>Pomohou varianty exitu nebo pauza po sérii?</h2>
+  <div class="tablewrap"><table id="tEx"></table></div>
+  <div class="callout"><p id="exText"></p></div>
+  <div class="tablewrap"><table id="tPR"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Plán</div>
+  <h2>Jak postavit robustní high-RRR systém</h2>
+  <ol class="steps">
+    <li><p><b>Stop vždy v násobcích ATR, ne v bodech.</b> Pevných 10–20 bodů v roce 2022 nebo 2025 znamená 0,15–0,3 ATR a série 20–50 ztrát. Když je poměr SL/ATR stálý (do 0,6 ATR), četnost sérií odpovídá náhodě při daném win rate a dá se dopředu spočítat.</p></li>
+    <li><p><b>Nevstupovat long do rozjeté korekce</b>: 5denní rozsah &gt; 4 ATR, cena pod týdenním VWAP −2σ, čerstvý drawdown 3–7 %. Právě tam vznikají zbylé dlouhé série i u širokých stopů. Filtr zkrátil nejdelší sérii v 94 % konfigurací a snížil četnost sérií ≥ 10 na 1 000 obchodů v 78–89 % (tabulka níže). Vznikl ale z pohledu na celou historii, takže ho musí potvrdit forward test.</p></li>
+    <li><p><b>Velikost pozice podle volatility</b>: konstantní riziko v dolarech na obchod = počet kontraktů × stop v ATR. Série pak stojí stejně v klidném i divokém roce.</p></li>
+    <li><p><b>Kontext jako filtr strany, ne jako „zázračný“ filtr</b>: longy nad týdenním a měsíčním VWAPem mají vyšší win rate, longy po výprodeji v klesajícím režimu vyšší expectancy. Shorty jen při týdenní překoupenosti, nikdy v klesajícím režimu po denním výprodeji. Silný trend (5denní rozsah &gt; 4 ATR) zhoršuje obojí.</p></li>
+    <li><p><b>Fixní target nebo volný běh, ne těsný trailing</b>: breakeven a trailing snižují expectancy téměř ve všech testovaných konfiguracích. Těsný trailing sice zkrátí série, ale vezme i edge.</p></li>
+    <li><p><b>Pauzu po sérii jen jako ochranu kapitálu</b>, ne jako zdroj edge. A počítat s tím, že 10R+ target se během 5 dní trefí jen ve 0–5 % obchodů. Skutečných 10–20R vyžaduje držení týdny, tedy swing nebo trend.</p></li>
+  </ol>
+  <h3>Filtr „bez longů v rozjeté korekci“</h3>
+  <p class="small">Průměr přes SL 10/20/30 × RRR 3/5/10 × horizont. Série ≥ 10 přepočtené na 1 000 obchodů, aby se odečetl vliv menšího počtu obchodů.</p>
+  <div class="tablewrap"><table id="tCorr"></table></div>
+  <h3>Další způsoby, jak data otestovat</h3>
+  <ul class="why">
+    <li>Zopakovat celý grid se stopem v ATR (0,25 / 0,5 / 0,75 / 1 / 1,5 / 2 ATR) a targetem v R. Engine to umí bez úprav logiky.</li>
+    <li>Delší horizonty 10, 20 a 60 dní pro opravdové 10–20R obchody a výstup na signálu (návrat nad VWAP nebo POC) místo pevného targetu.</li>
+    <li>Meta-labeling: model, který u každého signálu odhadne pravděpodobnost ztráty a obchod pustí jen nad prahem. Walk-forward, stejný protokol jako tady.</li>
+    <li>Monte Carlo sizing: z naměřené distribuce sérií určit riziko na obchod tak, aby nejhorší očekávaná série za 5 let stála max. X % účtu.</li>
+    <li>Market profile z tickových nebo VAP dat Sierry (přesné VAL/VAH/POC a single prints) místo aproximace z 5min barů.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">Metodika</div>
+  <h2>Jak se testovalo</h2>
+  <div class="grid2">
+    <div class="card"><ul class="why">
+      <li><b>Data</b>: ES2008, 1min back-adjusted, květen 2008 – září 2026, 6,4 mil. barů.</li>
+      <li><b>Vstup</b> na open 1min baru po signálu (signál na uzavřeném 5min baru).</li>
+      <li><b>Výsledek</b> jedním průchodem pro všechny SL (5, 8, 10, 12, 15, 20, 25, 30, 40, 50 bodů) × RRR (1, 2, 3, 5, 8, 10, 12, 15, 20). Když se SL i target trefí v jedné minutě, počítá se ztráta. Bez zásahu targetu nebo stopu exit na close horizontu (RTH close téhož dne, nebo 5. obchodního dne).</li>
+      <li><b>Náklady</b> 0,5 bodu na obchod, odečtené v R.</li>
+    </ul></div>
+    <div class="card"><ul class="why">
+      <li><b>Jedna pozice</b>: další signál se bere až po uzavření předchozího obchodu, aby série odpovídaly tomu, co zažiješ na účtu.</li>
+      <li><b>Ztráta</b> = obchod s P&amp;L &lt; 0 včetně nákladů. Série = po sobě jdoucí ztráty.</li>
+      <li><b>Náhodná série</b>: počet sérií délky ≥ k při nezávislých výsledcích = n·(1 − p)·p<sup>k</sup>, kde p = podíl ztrát.</li>
+      <li><b>Kombinace</b>: objev 2008–16, potvrzení 2017–21 a 2022–26, srovnání s během s promíchaným kontextem.</li>
+    </ul></div>
+  </div>
+</section>
+
+<footer>Kód: <span class="mono">research/high_rrr/</span> (engine.py, context.py, search.py, trail.py, extra.py, streaks_where.py, out/*.csv) ve větvi <span class="mono">claude/alpha-brainstorm-trading-zttwoc</span>. Historický backtest, ne záruka budoucích výnosů.</footer>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 2) => v == null || v === "" ? "–" : Number(v).toLocaleString("cs-CZ", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+const pct = (v, d = 0) => v == null ? "–" : fmt(v * 100, d) + " %";
+const cls = v => v == null ? "" : v < 0 ? "neg" : "";
+const FONT = 'font-size="11" font-family="IBM Plex Mono,monospace"';
+const legend = (el, ss) => el.innerHTML = ss.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+const pill = (cl, t) => `<span class="pill ${cl}">${t}</span>`;
+function niceStep(r) { const p = Math.pow(10, Math.floor(Math.log10(r))), f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+const K = DATA.kpi;
+
+$("#kpis").innerHTML = [
+  [fmt(K.entries, 0), "vstupů z 22 typů (každých 30 min, VWAP, kompozit, testy low/high, sweepy)"],
+  [fmt(K.sims / 1e6, 1) + " mil.", "simulovaných obchodů (10 SL × 9 RRR × 2 horizonty)"],
+  [fmt(K.combos, 0), "kombinací vstup × SL × RRR × filtr"],
+  [fmt(K.null, 0), "stejných kombinací s promíchaným kontextem (kontrola náhody)"],
+].map(([b, s]) => `<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+$("#mainText").innerHTML = `Krátké série 3–5 ztrát jsou čistá statistika: přicházejí přesně tak často, jak to odpovídá win rate. Pravděpodobnost ztráty po ztrátě je jen o 0–9 % vyšší než pravděpodobnost ztráty obecně. Jinak je to u <b>dlouhých sérií</b> (10, 15, 20+ ztrát). Ty přicházejí 2–10× častěji, než by dala náhoda, a mají dva konkrétní zdroje. <b>Za prvé</b> pevný stop v bodech: v klidném roce je to 0,8 ATR, ve volatilním 0,15 ATR, a pak se trefí v 80–90 % obchodů. <b>Za druhé</b> rozjetá korekce: silný pohyb (5denní rozsah &gt; 4 ATR), cena pod týdenním VWAP −2σ a čerstvý drawdown 3–7 %. Kontextové filtry win rate mírně posouvají. Silnou „anti-sériovou“ edge z kombinací 486 tisíc filtrů ale dostat nejde: po přísném testu neprošlo nic.`;
+$("#findCards").innerHTML = [
+  ["Série jsou hlavně win rate", "no", "U 10R a SL 20 bodů prohraje ~70 % obchodů. Při 2 231 obchodech pak náhoda sama dá kolem 23 sérií ≥ 10 ztrát. Méně sérií = vyšší win rate, nic jiného."],
+  ["Stop musí dýchat s volatilitou", "go", "P(stop) při 10R: SL < 0,2 ATR ~ 80–90 %, SL ≥ 1 ATR ~ 20–45 %. Dlouhé série se soustředí do let, kdy byl pevný stop vůči ATR malý."],
+  ["Rozjetá korekce = zakázaná zóna pro long", "watch", "Bez longů při 5denním rozsahu &gt; 4 ATR, pod týdenním VWAP −2σ nebo v drawdownu 3–7 % se nejdelší série zkrátila v 94 % konfigurací."],
+].map(([h, v, t]) => `<div class="card"><div class="head"><h3>${h}</h3>${pill(v === "go" ? "go" : v === "watch" ? "watch" : "no", v === "go" ? "Stavět" : v === "watch" ? "Ověřit dopředu" : "Matematika")}</div><p class="why">${t}</p></div>`).join("");
+
+/* streak frequencies */
+const SF = DATA.sf, KS = [3, 5, 8, 10, 15, 20, 25, 30];
+const sfKey = r => `${r.hz} · SL ${r.sl} · ${r.rr}R`;
+const SEL = ["EOD · SL 10 · 5R", "EOD · SL 20 · 10R", "5D · SL 10 · 10R", "5D · SL 20 · 10R", "5D · SL 30 · 10R", "5D · SL 20 · 20R"];
+let sfSel = "5D · SL 20 · 10R";
+$("#sfButtons").innerHTML = SEL.map(k => `<button type="button" id="sf-${k.replace(/[^a-z0-9]/gi, "")}" aria-pressed="${k === sfSel}" data-k="${k}">${k}</button>`).join("");
+function drawSF() {
+  const r = SF.find(x => sfKey(x) === sfKey({hz: sfSel.split(" · ")[0], sl: +sfSel.split(" · ")[1].slice(3), rr: +sfSel.split(" · ")[2].replace("R", "")}));
+  const W = 1000, H = 280, m = {l: 50, r: 12, t: 14, b: 34}, n = KS.length, bw = (W - m.l - m.r) / n;
+  const act = KS.map(k => r[`>=${k}`]), iid = KS.map(k => r[`iid>=${k}`]);
+  const mx = Math.max(...act, ...iid) * 1.1 || 1, Y = v => m.t + (1 - v / mx) * (H - m.t - m.b), mut = css("--muted");
+  let g = "";
+  for (let v = 0; v <= mx; v += niceStep(mx / 4)) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v, 0)}</text>`;
+  KS.forEach((k, i) => { const x = m.l + i * bw, y = Y(act[i]);
+    g += `<rect x="${x + bw * .2}" y="${y}" width="${bw * .6}" height="${H - m.b - y}" rx="3" fill="${act[i] > iid[i] * 1.5 + 1 ? css("--s2") : css("--s1")}"><title>≥ ${k} ztrát: ${act[i]} sérií (náhoda ${fmt(iid[i], 1)})</title></rect>`;
+    g += `<text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" fill="${css("--ink2")}" ${FONT}>${act[i]}</text><text x="${x + bw / 2}" y="${H - 12}" text-anchor="middle" fill="${mut}" ${FONT}>≥ ${k}</text>`; });
+  g += `<polyline points="${iid.map((v, i) => `${(m.l + (i + .5) * bw).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")}" fill="none" stroke="${css("--ink")}" stroke-width="2"/>`;
+  g += iid.map((v, i) => `<circle cx="${m.l + (i + .5) * bw}" cy="${Y(v)}" r="4" fill="${css("--ink")}" stroke="${css("--surface")}" stroke-width="2"/>`).join("");
+  $("#chSF").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Četnost sérií ztrát">${g}</svg>`;
+  legend($("#lgSF"), [{name: "Skutečný počet sérií", color: css("--s1")}, {name: "Výrazně nad náhodou", color: css("--s2")}, {name: "Očekávání při náhodě", color: css("--ink")}]);
+  $("#tSF").innerHTML = `<thead><tr><th>Konfigurace</th><th>Obchodů</th><th>Ztrát</th><th>Nejdelší</th>${KS.map(k => `<th>≥ ${k}</th>`).join("")}</tr></thead><tbody>` +
+    SF.map(x => `<tr${sfKey(x) === sfKey(r) ? ' style="background:var(--band)"' : ""}><td class="name" style="font-family:inherit">${x.hz === "5D" ? "5 dní" : "do close"} · SL ${x.sl} b. · ${x.rr}R</td><td class="num">${fmt(x.n, 0)}</td><td class="num">${pct(x.loss_rate)}</td><td class="num">${x.longest}</td>${KS.map(k => `<td class="num${x[`>=${k}`] > x[`iid>=${k}`] * 1.5 + 1 ? " neg" : ""}">${x[`>=${k}`]} <span class="small">/ ${fmt(x[`iid>=${k}`], 1)}</span></td>`).join("")}</tr>`).join("") + "</tbody>";
+}
+document.querySelectorAll("#sfButtons button").forEach(b => b.addEventListener("click", () => { sfSel = b.dataset.k;
+  document.querySelectorAll("#sfButtons button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawSF(); }));
+
+/* ATR + years */
+function drawATR() {
+  const A = DATA.sa_agg, W = 600, H = 300, m = {l: 48, r: 10, t: 14, b: 34}, bw = (W - m.l - m.r) / A.length, Y = v => m.t + (1 - v) * (H - m.t - m.b), mut = css("--muted");
+  let g = "";
+  for (const v of [0, .25, .5, .75, 1]) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v * 100, 0)} %</text>`;
+  A.forEach(([k, v], i) => { const x = m.l + i * bw, y = Y(v);
+    g += `<rect x="${x + bw * .18}" y="${y}" width="${bw * .64}" height="${H - m.b - y}" rx="3" fill="${css("--s1")}"><title>SL/ATR ${k}: stop v ${pct(v, 1)}</title></rect><text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" fill="${css("--ink2")}" ${FONT}>${pct(v)}</text><text x="${x + bw / 2}" y="${H - 14}" text-anchor="middle" fill="${mut}" ${FONT}>${k.replace("-", "–").replace("–9", "+")}</text>`; });
+  g += `<text x="${(W + m.l) / 2}" y="${H - 1}" text-anchor="middle" fill="${mut}" ${FONT}>SL / ATR20</text>`;
+  $("#chATR").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pravděpodobnost stopu">${g}</svg>`;
+  const Yr = DATA.years, cols = ["EOD SL10 5R", "5D SL20 10R"], col = [css("--s1"), css("--s2")];
+  const yrs = Yr.index, bw2 = (W - m.l - m.r) / yrs.length, mx = Math.max(...cols.flatMap(c => Yr.share[c])) * 1.1, Y2 = v => m.t + (1 - v / mx) * (H - m.t - m.b);
+  let h = "";
+  for (let v = 0; v <= mx; v += niceStep(mx / 4)) h += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y2(v)}" y2="${Y2(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y2(v) + 4}" text-anchor="end" fill="${mut}" ${FONT}>${fmt(v * 100, 0)} %</text>`;
+  yrs.forEach((y, i) => { const x = m.l + i * bw2;
+    cols.forEach((c, k) => { const v = Yr.share[c][i] || 0, yy = Y2(v); h += `<rect x="${x + bw2 * (.1 + k * .42)}" y="${yy}" width="${bw2 * .38}" height="${H - m.b - yy}" rx="2" fill="${col[k]}"><title>${y} ${c}: ${pct(v, 1)} obchodů v sérii ≥ 10</title></rect>`; });
+    if (i % 2 === 0) h += `<text x="${x + bw2 / 2}" y="${H - 14}" text-anchor="middle" fill="${mut}" ${FONT}>${String(y).slice(2)}</text>`; });
+  $("#chYears").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Série podle roku">${h}</svg>`;
+  legend($("#lgYears"), [{name: "Do close, SL 10 b., 5R", color: col[0]}, {name: "5 dní, SL 20 b., 10R", color: col[1]}]);
+  const SC = DATA.sc.filter(r => String(r.config).includes("SL/ATR"));
+  $("#tSC").innerHTML = `<thead><tr><th>Konfigurace · pásmo SL/ATR</th><th>Obchodů</th><th>Ztrát</th><th>Exp R</th><th>Nejdelší</th><th>Série ≥ 10 / náhoda</th><th>Série ≥ 15 / náhoda</th></tr></thead><tbody>` +
+    SC.map(r => `<tr><td class="name" style="font-family:inherit">${r.config.replace("EOD", "Do close").replace("5D", "5 dní")}</td><td class="num">${fmt(r.trades, 0)}</td><td class="num">${pct(r.loss_rate)}</td><td class="num ${cls(r.exp)}">${sgn(r.exp, 3)}</td><td class="num">${r.longest}</td><td class="num${r.ge10 > r.iid_ge10 * 1.5 + 1 ? " neg" : ""}">${r.ge10} / ${fmt(r.iid_ge10, 1)}</td><td class="num${r.ge15 > r.iid_ge15 * 1.5 + 1 ? " neg" : ""}">${r.ge15} / ${fmt(r.iid_ge15, 1)}</td></tr>`).join("") + "</tbody>";
+}
+
+/* context effects */
+const VL = {regime: "Režim", dd: "Drawdown od 252d high", rsiD: "RSI(14) den", rsiW: "RSI(14) týden", rsiM: "RSI(14) měsíc", rsi2: "RSI(2) den", bal: "5denní rozsah / ATR", flatD: "Denní VWAP", flatW: "Týdenní VWAP", flatM: "Měsíční VWAP", locD: "Cena vs RTH VWAP", locW: "Cena vs týdenní VWAP", locM: "Cena vs měsíční VWAP", va5: "5denní kompozit VA", tod: "Čas dne", tests: "Počet testů"};
+const VV = {up: "uptrend", corr: "korekce nad MA200", down: "downtrend", mixed: "smíšený", os: "přeprodané", ob: "překoupené", mid: "střed", balance: "rovnováha < 2,5 ATR", normal: "normál", trend: "trend > 4 ATR", flat: "plochý", slope: "ve sklonu", below: "pod", above: "nad", "<-2sd": "pod −2σ", ">+2sd": "nad +2σ", inside: "uvnitř VA", ny_am: "NY dopoledne", ny_pm: "NY odpoledne", asia: "Asie", europe: "Evropa"};
+const lab = f => { const [v, u] = f.split("="); return `${VL[v] || v}: ${VV[u] || u}`; };
+let veSide = "long";
+function drawVE() {
+  const rows = DATA.ve.filter(r => r.side === veSide).sort((a, b) => (b.dexp_TEST + b.dexp_VAL + b.dexp_DISC) - (a.dexp_TEST + a.dexp_VAL + a.dexp_DISC));
+  $("#tVE").innerHTML = `<thead><tr><th>Situace</th><th>Δwin 08–16</th><th>17–21</th><th>22–26</th><th>Δexp R 08–16</th><th>17–21</th><th>22–26</th><th>Konzistentní</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td class="name" style="font-family:inherit">${lab(r.filt)}</td>${["dwin_DISC", "dwin_VAL", "dwin_TEST"].map(k => `<td class="num ${cls(r[k])}">${sgn(r[k] * 100, 1)}</td>`).join("")}${["dexp_DISC", "dexp_VAL", "dexp_TEST"].map(k => `<td class="num ${cls(r[k])}">${sgn(r[k], 3)}</td>`).join("")}<td>${r.win_consistent === true || r.win_consistent === "True" ? pill("watch", "win") : ""} ${r.exp_consistent === true || r.exp_consistent === "True" ? pill("go", "exp") : ""}</td></tr>`).join("") + "</tbody>";
+  $("#veText").innerHTML = veSide === "long"
+    ? "U longů jdou win rate a expectancy často proti sobě. Klidný trh (uptrend, nad týdenním a měsíčním VWAPem, plochý denní VWAP) zvedá win rate o 1–4 p. b., protože pevný stop je relativně široký. Expectancy ale zvedá jen nepatrně (0 až +0,05 R). Naopak downtrend a týdenní přeprodanost win rate snižují, ale expectancy zvedají (+0,04 až +0,5 R): odrazy v medvědím trhu jsou velké. Silný trend (5denní rozsah > 4 ATR) zhoršuje obojí ve všech obdobích."
+    : "Shorty mají smysl jen při týdenní nebo měsíční překoupenosti (win rate +2–7 p. b., expectancy kladně ve všech obdobích). V downtrendu a po denním výprodeji (RSI den přeprodané) jsou shorty nejhorší: win rate −4 až −9 p. b. Shortuje se pozdě, do odrazu.";
+}
+document.querySelectorAll("#veButtons button").forEach(b => b.addEventListener("click", () => { veSide = b.dataset.s;
+  document.querySelectorAll("#veButtons button").forEach(x => x.setAttribute("aria-pressed", x === b)); drawVE(); }));
+
+function drawTT() {
+  $("#tTT").innerHTML = `<thead><tr><th>Typ</th><th>Strana</th><th>Předchozích testů</th><th>Win %</th><th>Win bez filtru</th><th>Exp R</th><th>Exp bez filtru</th><th>Exp 08–16</th><th>17–21</th><th>22–26</th></tr></thead><tbody>` +
+    DATA.tt.map(r => `<tr><td>${r.fam}</td><td>${r.side}</td><td class="num">${r.n_tests === 5 ? "5+" : r.n_tests}</td><td class="num">${pct(r.win, 1)}</td><td class="num">${pct(r.base_win, 1)}</td><td class="num ${cls(r.exp)}">${sgn(r.exp, 3)}</td><td class="num ${cls(r.base_exp)}">${sgn(r.base_exp, 3)}</td><td class="num ${cls(r.exp_DISC)}">${sgn(r.exp_DISC, 3)}</td><td class="num ${cls(r.exp_VAL)}">${sgn(r.exp_VAL, 3)}</td><td class="num ${cls(r.exp_TEST)}">${sgn(r.exp_TEST, 3)}</td></tr>`).join("") + "</tbody>";
+}
+
+function drawThr() {
+  $("#tThr").innerHTML = `<thead><tr><th>t objev ≥</th><th>t potvrzení ≥</th><th>Reálná data</th><th>Promíchaný kontext</th></tr></thead><tbody>` +
+    DATA.thr.map(r => `<tr><td class="num">${fmt(r.td, 1)}</td><td class="num">${fmt(r.tl, 1)}</td><td class="num">${r.real}</td><td class="num">${r.null}</td></tr>`).join("") + "</tbody>";
+  const a = DATA.thr.find(r => r.td === 2 && r.tl === 1), b = DATA.thr.find(r => r.td === 3 && r.tl === 1);
+  $("#thrText").innerHTML = `Při středním prahu (t ≥ 2 v objevu, t ≥ 1 v obou dalších obdobích) najde hledání ${a.real} filtrů, náhoda ${a.null}. V kontextu tedy nějaká informace je, zhruba trojnásobek náhody. Při přísném prahu (t ≥ 3) zbude ${b.real} proti ${b.null} u náhody. Žádná kombinace se od náhody spolehlivě neodliší. Nejlepší filtry se točí kolem stejných dvou témat: long po výprodeji v downtrendu a long na VAL nebo pod VWAPem v rovnováze. Jsou to kandidáti, ne hotové systémy.`;
+  $("#tTop").innerHTML = `<thead><tr><th>Vstup</th><th>Filtr</th><th>Horizont</th><th>SL</th><th>RRR</th><th>Obch. 08–16 · 17–21 · 22–26</th><th>Exp R 08–16 · 17–21 · 22–26</th><th>Win / bez filtru</th><th>Nejdelší série</th></tr></thead><tbody>` +
+    DATA.top.map(r => `<tr><td class="small" style="text-align:left">${r.entry}</td><td class="name" style="font-family:inherit;white-space:normal;min-width:200px">${r.filt.split(" & ").map(lab).join(" + ")}</td><td>${r.hz === "5D" ? "5 dní" : "close"}</td><td class="num">${r.sl}</td><td class="num">${r.rr}</td><td class="num">${r.n_DISC} · ${r.n_VAL} · ${r.n_TEST}</td><td class="num">${[r.exp_DISC, r.exp_VAL, r.exp_TEST].map(v => sgn(v, 2)).join(" · ")}</td><td class="num">${pct(r.win_ALL)} / ${pct(r.base_win_ALL)}</td><td class="num">${r.longest_ALL}</td></tr>`).join("") + "</tbody>";
+}
+
+function drawEx() {
+  const EX = DATA.ex.filter(r => r.n > 0);
+  $("#tEx").innerHTML = `<thead><tr><th>Konfigurace</th><th>Exit</th><th>Obchodů</th><th>Exp R</th><th>Target</th><th>Stop ve ztrátě</th><th>Stop na BE/zisku</th><th>Čas</th><th>Nejdelší série</th><th>Exp 08–16 · 17–21 · 22–26</th></tr></thead><tbody>` +
+    EX.map(r => `<tr${r.exit === "FIX" ? ' style="font-weight:600"' : ""}><td class="small" style="text-align:left;white-space:normal;min-width:180px">${r.exit === "FIX" ? r.config : ""}</td><td>${r.exit}</td><td class="num">${fmt(r.n, 0)}</td><td class="num ${cls(r.exp)}">${sgn(r.exp, 3)}</td><td class="num">${pct(r.tp, 1)}</td><td class="num">${pct(r.stop_loss)}</td><td class="num">${pct(r.stop_flat)}</td><td class="num">${pct(r.timeout)}</td><td class="num">${r.longest}</td><td class="num">${[r.exp_DISC, r.exp_VAL, r.exp_TEST].map(v => sgn(v, 2)).join(" · ")}</td></tr>`).join("") + "</tbody>";
+  $("#exText").innerHTML = "Breakeven a trailing mění ztráty na nuly, takže stop ve ztrátě klesne např. z 69 % na 48 %. Zároveň ale useknou obchody, které by po návratu došly do zisku. Expectancy je téměř všude nižší (výjimky jsou o pár setin R a nekonzistentní mezi obdobími). Těsný trailing (1R za 2R) zkrátí nejdelší sérii z 37 na 15, ale expectancy spadne skoro na nulu. Breakeven sérii naopak prodlouží, protože po nákladech je i BE obchod mírná ztráta. Nejlepší je pevný target nebo volný běh s trailingem 5R až od 8R. Target 10R+ se za 5 dní trefí jen ve 0–5 % obchodů, zisk dělají hlavně časové exity.";
+  const PR = DATA.pr.filter(r => r.n > 0);
+  $("#tPR").innerHTML = `<thead><tr><th>Konfigurace</th><th>Pravidlo pauzy</th><th>Obchodů</th><th>Exp R</th><th>Součet R</th><th>Nejdelší série</th></tr></thead><tbody>` +
+    PR.map(r => `<tr${r.rule === "bez pauzy" ? ' style="font-weight:600"' : ""}><td class="small" style="text-align:left;white-space:normal;min-width:180px">${r.rule === "bez pauzy" ? r.config : ""}</td><td style="text-align:left">${r.rule}</td><td class="num">${fmt(r.n, 0)}</td><td class="num ${cls(r.exp)}">${sgn(r.exp, 3)}</td><td class="num ${cls(r.sumR)}">${sgn(r.sumR, 0)}</td><td class="num">${r.longest}</td></tr>`).join("") + "</tbody>";
+}
+
+function drawCorr() {
+  $("#tCorr").innerHTML = `<thead><tr><th>Typ vstupu</th><th>Ztrát bez / s filtrem</th><th>Nejdelší série bez / s</th><th>Série ≥ 10 na 1 000 obch. bez / s</th><th>Exp R bez / s</th><th>Kratší série</th><th>Méně sérií ≥ 10</th><th>Exp lepší ve všech obdobích</th></tr></thead><tbody>` +
+    DATA.corr.map(r => `<tr><td class="name" style="font-family:inherit">${r.entry}</td><td class="num">${pct(r.loss_a, 1)} / ${pct(r.loss_b, 1)}</td><td class="num">${fmt(r.longest_a, 1)} / ${fmt(r.longest_b, 1)}</td><td class="num">${fmt(r.k_a, 1)} / ${fmt(r.k_b, 1)}</td><td class="num">${sgn(r.exp_a, 3)} / ${sgn(r.exp_b, 3)}</td><td class="num">${pct(r.short)}</td><td class="num">${pct(r.fewer)}</td><td class="num">${pct(r.better)}</td></tr>`).join("") + "</tbody>";
+}
+
+function drawAll() { drawSF(); drawATR(); drawVE(); drawTT(); drawThr(); drawEx(); drawCorr(); }
+drawAll();
+new MutationObserver(drawAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+</script>

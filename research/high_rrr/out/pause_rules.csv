@@ -1,0 +1,51 @@
+config,rule,n,exp,sumR,longest
+"Kontrola: GRID long, SL 20, 10R, 5 dní",bez pauzy,2231,0.07938706,177.11253,37
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 3 ztrátách pauza do stínové výhry,1267,0.008524072,10.799999,20
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 3 ztrátách vynechat 5 obchodů,1231,-0.016084474,-19.799986,28
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 3 ztrátách vynechat 20 obchodů,573,0.06854276,39.275,15
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 5 ztrátách pauza do stínové výhry,1593,0.06689423,106.562515,32
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 5 ztrátách vynechat 5 obchodů,1662,0.03558214,59.13752,33
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 5 ztrátách vynechat 20 obchodů,1027,0.057108093,58.650013,18
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 8 ztrátách pauza do stínové výhry,1845,0.07846208,144.76254,29
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 8 ztrátách vynechat 5 obchodů,1931,0.13059299,252.17505,30
+"Kontrola: GRID long, SL 20, 10R, 5 dní",po 8 ztrátách vynechat 20 obchodů,1431,0.058577925,83.82501,27
+"GRID long v klesajícím režimu, SL 20, 10R",bez pauzy,386,0.37422287,144.45003,17
+"GRID long v klesajícím režimu, SL 20, 10R",po 3 ztrátách pauza do stínové výhry,210,0.16428575,34.500008,15
+"GRID long v klesajícím režimu, SL 20, 10R",po 3 ztrátách vynechat 5 obchodů,201,0.22624385,45.475014,20
+"GRID long v klesajícím režimu, SL 20, 10R",po 3 ztrátách vynechat 20 obchodů,86,0.40566862,34.8875,14
+"GRID long v klesajícím režimu, SL 20, 10R",po 5 ztrátách pauza do stínové výhry,276,0.39886776,110.0875,15
+"GRID long v klesajícím režimu, SL 20, 10R",po 5 ztrátách vynechat 5 obchodů,286,0.24191436,69.18751,19
+"GRID long v klesajícím režimu, SL 20, 10R",po 5 ztrátách vynechat 20 obchodů,157,0.42810506,67.212494,15
+"GRID long v klesajícím režimu, SL 20, 10R",po 8 ztrátách pauza do stínové výhry,319,0.38981193,124.350006,24
+"GRID long v klesajícím režimu, SL 20, 10R",po 8 ztrátách vynechat 5 obchodů,336,0.43802088,147.17502,12
+"GRID long v klesajícím režimu, SL 20, 10R",po 8 ztrátách vynechat 20 obchodů,266,0.3616542,96.20001,14
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",bez pauzy,325,0.36703846,119.2875,20
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 3 ztrátách pauza do stínové výhry,222,0.31402025,69.712494,13
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 3 ztrátách vynechat 5 obchodů,200,0.41700006,83.40001,11
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 3 ztrátách vynechat 20 obchodů,105,0.42119047,44.225,8
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 5 ztrátách pauza do stínové výhry,267,0.30500937,81.4375,16
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 5 ztrátách vynechat 5 obchodů,250,0.32384998,80.962494,16
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 5 ztrátách vynechat 20 obchodů,145,0.062327616,9.037504,15
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 8 ztrátách pauza do stínové výhry,296,0.33357266,98.7375,17
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 8 ztrátách vynechat 5 obchodů,300,0.26141664,78.424995,19
+"5d VAL long, rovnováha & RSI(M) střed, SL 20, 15R",po 8 ztrátách vynechat 20 obchodů,266,0.36893797,98.1375,9
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",bez pauzy,448,0.19045763,85.32502,17
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 3 ztrátách pauza do stínové výhry,344,0.127907,44.000008,15
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 3 ztrátách vynechat 5 obchodů,278,0.14127699,39.275,10
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 3 ztrátách vynechat 20 obchodů,148,0.10281533,15.216669,10
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 5 ztrátách pauza do stínové výhry,403,0.12754345,51.40001,25
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 5 ztrátách vynechat 5 obchodů,378,0.10335099,39.066673,14
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 5 ztrátách vynechat 20 obchodů,288,0.22960073,66.12501,11
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 8 ztrátách pauza do stínové výhry,431,0.17246717,74.33335,22
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 8 ztrátách vynechat 5 obchodů,433,0.17336416,75.06668,15
+"Týdenní VWAP long, pod RTH VWAP & RSI(M) střed, SL 30, 10R",po 8 ztrátách vynechat 20 obchodů,393,0.19711623,77.466675,17
+"Test 5denního low, long, SL 30, 10R",bez pauzy,664,0.096059285,63.783363,17
+"Test 5denního low, long, SL 30, 10R",po 3 ztrátách pauza do stínové výhry,443,0.11788942,52.225014,13
+"Test 5denního low, long, SL 30, 10R",po 3 ztrátách vynechat 5 obchodů,404,0.08415844,34.00001,13
+"Test 5denního low, long, SL 30, 10R",po 3 ztrátách vynechat 20 obchodů,204,0.090972245,18.558338,14
+"Test 5denního low, long, SL 30, 10R",po 5 ztrátách pauza do stínové výhry,538,0.08258988,44.433357,19
+"Test 5denního low, long, SL 30, 10R",po 5 ztrátách vynechat 5 obchodů,514,0.1389916,71.44168,19
+"Test 5denního low, long, SL 30, 10R",po 5 ztrátách vynechat 20 obchodů,339,0.066494636,22.541681,12
+"Test 5denního low, long, SL 30, 10R",po 8 ztrátách pauza do stínové výhry,617,0.09296329,57.358353,17
+"Test 5denního low, long, SL 30, 10R",po 8 ztrátách vynechat 5 obchodů,604,0.10989241,66.375015,14
+"Test 5denního low, long, SL 30, 10R",po 8 ztrátách vynechat 20 obchodů,484,0.110967666,53.70835,18
