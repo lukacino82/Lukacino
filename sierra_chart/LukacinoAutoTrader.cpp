@@ -77,6 +77,7 @@ namespace
     int    PendingReentryDir;    // full-auto: smer k znovuotevreni
     int    LastSignalBarIndex;   // edge detekce externiho signalu
     int    PrevOpenInitialNow;   // edge detekce inputu 29 (No -> Yes)
+    int    OpenInitialBlockedLogged; // aby se blokace nelogovala na kazdy tick
     int    PrevManualTriggerIndex; // edge detekce inputu 06
     int    Initialized;          // prvni volani: nacti stav inputu bez odpalu
     double LastExitTimeDays;     // SCDateTime jako double (dny)
@@ -577,7 +578,9 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
       if (FullAuto)
       {
         St.PendingReentryDir = ClosedDir;
-        St.LastExitTimeDays  = sc.CurrentSystemDateTime.GetAsDouble();
+        // cas chartu, ne systemovy - jinak pri Replay 240X odpovida
+        // 5 sekund prodlevy zhruba 20 minutam trhu
+        St.LastExitTimeDays  = sc.BaseDateTimeIn[LastIndex].GetAsDouble();
       }
       continue;
     }
@@ -783,28 +786,44 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   {
     const int OpenInitialNow = Input_OpenInitialNow.GetYesNo();
 
-    if (OpenInitialNow == 1 && St.PrevOpenInitialNow == 0)
+    if (OpenInitialNow == 0)
+    {
+      // prepinac zpatky na No -> znovu nabito
+      St.PrevOpenInitialNow         = 0;
+      St.OpenInitialBlockedLogged   = 0;
+    }
+    else if (St.PrevOpenInitialNow == 0)
     {
       if (ModeIndex == 2)
       {
-        if (DoLog)
+        // Rezim Both: konfiguracni problem, ktery uzivatel za chvili opravi.
+        // Hranu NESPOTREBOVAVAME - jakmile prepne Mode na Long/Short only,
+        // vstup se odpali sam, bez nutnosti preklikavat input 29.
+        if (DoLog && St.OpenInitialBlockedLogged == 0)
+        {
           sc.AddMessageToLog("LCN: 'Open initial position now' je v rezimu Both "
-                             "blokovan - nastav Mode na Long only / Short only, "
-                             "nebo pouzij tlacitka LCN Buy / LCN Sell.", 1);
+                             "blokovan. Prepni Mode na Long only / Short only a "
+                             "vstup se odpali sam (input 29 muze zustat na Yes).", 1);
+          St.OpenInitialBlockedLogged = 1;
+        }
       }
       else if (OpenSlots > 0)
       {
+        // Tady hranu spotrebujeme zamerne: jinak by input 29 nechany na Yes
+        // fungoval jako opakovac a otevrel novy obchod hned po kazdem uzavreni.
         if (DoLog)
-          sc.AddMessageToLog("LCN: 'Open initial position now' ignorovan - "
-                             "obchod uz je otevreny.", 0);
+          sc.AddMessageToLog("LCN: 'Open initial position now' ignorovan - obchod "
+                             "uz je otevreny. Pro dalsi vstup prepni input 29 na "
+                             "No a zpatky na Yes.", 0);
+        St.PrevOpenInitialNow = 1;
       }
       else
       {
         Signal = (ModeIndex == 1) ? DIR_SHORT : DIR_LONG;
+        St.PrevOpenInitialNow       = 1;
+        St.OpenInitialBlockedLogged = 0;
       }
     }
-
-    St.PrevOpenInitialNow = OpenInitialNow;
   }
 
   // --- manualni trigger (input 06), stejna edge detekce
@@ -857,7 +876,7 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   if (Signal == DIR_NONE && FullAuto && St.PendingReentryDir != DIR_NONE)
   {
     const double ElapsedSeconds =
-      (sc.CurrentSystemDateTime.GetAsDouble() - St.LastExitTimeDays) * 86400.0;
+      (sc.BaseDateTimeIn[LastIndex].GetAsDouble() - St.LastExitTimeDays) * 86400.0;
 
     if (ElapsedSeconds >= (double)ReentryDelay)
     {
@@ -867,31 +886,46 @@ SCSFExport scsf_LukacinoAutoTrader(SCStudyInterfaceRef sc)
   }
 
   // ---- filtry ------------------------------------------------------------
+  // Kazde zahozeni signalu se loguje i s duvodem - jinak script jen tise mlci
+  // a neni poznat, proc se obchod neotevrel.
   if (Signal != DIR_NONE)
   {
-    if (KillActive)
-      Signal = DIR_NONE;
-    else if (Input_TradingEnabled.GetYesNo() == 0)
-      Signal = DIR_NONE;
-    else if (ModeIndex == 0 && Signal != DIR_LONG)
-      Signal = DIR_NONE;
-    else if (ModeIndex == 1 && Signal != DIR_SHORT)
-      Signal = DIR_NONE;
-    else if (OpenSlots >= MaxConcurrent)
-      Signal = DIR_NONE;
-    else if (MaxPerDay > 0 && St.TradesToday >= MaxPerDay)
-      Signal = DIR_NONE;
-  }
+    const char* BlockReason = NULL;
 
-  // smer proti otevrenym obchodum nedovolime (zadne reversals)
-  if (Signal != DIR_NONE)
-  {
-    for (int s = 0; s < MAX_SLOTS; s++)
+    if (KillActive)
+      BlockReason = "kill switch je aktivni";
+    else if (Input_TradingEnabled.GetYesNo() == 0)
+      BlockReason = "input 01 Trading enabled = No";
+    else if (ModeIndex == 0 && Signal != DIR_LONG)
+      BlockReason = "input 02 Mode = Long only, signal byl SHORT";
+    else if (ModeIndex == 1 && Signal != DIR_SHORT)
+      BlockReason = "input 02 Mode = Short only, signal byl LONG";
+    else if (OpenSlots >= MaxConcurrent)
+      BlockReason = "dosazen input 16 Max concurrent trades";
+    else if (MaxPerDay > 0 && St.TradesToday >= MaxPerDay)
+      BlockReason = "dosazen input 17 Max trades per day";
+
+    // smer proti otevrenym obchodum nedovolime (zadne reversals)
+    if (BlockReason == NULL)
     {
-      if (St.Slots[s].Active != 0 && St.Slots[s].Direction != Signal)
+      for (int s = 0; s < MAX_SLOTS; s++)
       {
-        Signal = DIR_NONE;
-        break;
+        if (St.Slots[s].Active != 0 && St.Slots[s].Direction != Signal)
+        {
+          BlockReason = "uz je otevreny obchod v opacnem smeru";
+          break;
+        }
+      }
+    }
+
+    if (BlockReason != NULL)
+    {
+      Signal = DIR_NONE;
+      if (DoLog)
+      {
+        SCString Message;
+        Message.Format("LCN: vstup zablokovan - %s", BlockReason);
+        sc.AddMessageToLog(Message, 1);
       }
     }
   }
