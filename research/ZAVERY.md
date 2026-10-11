@@ -1,0 +1,72 @@
+# Závěry výzkumu ES (stav k 11. 10. 2026)
+
+Data: ES 1min back-adjusted, květen 2008 – září 2026 (6,4 mil. barů). Všechny testy po nákladech,
+s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s náhodou a buy & hold.
+
+## 1. Alpha Audit (`alpha_test/`)
+- 29 strategií z „alpha brainstorm“ (ChatGPT Phase 1–4) přepočteno na surových datech. Žádná neprošla všemi 7 testy robustnosti.
+- Čísla z ChatGPT se nereplikují (např. +9,75 b./obchod → −2,27 b.).
+- Open ± X jako fade systém nefunguje. Breakout long s ATR škálováním je na hraně (t ≈ 1,6).
+- 3 kandidáti na paper trading: Deep Gap + VWAP + delta divergence, DD2 PDL sweep, Bull 10–12 delta divergence.
+
+## 2. ES Alpha Map – Mattia + 13 rodin (`mattia/`)
+- Vault Break a VWAP Pullback: po nákladech nula nebo ztráta. Overnight Bias funguje jen long a jen od roku 2018.
+- Prop-firm challenge: kombinace strategií selže častěji, než projde. Výhoda je v „geometrii“ pravidel prop firmy, ne v edge.
+- Hodinová sezónnost vybraná dopředu (bez overfittingu) nedrží.
+- Robustní je řízení expozice: vol-managed ES + nekorelované vrstvy dají Sharpe ~0,9 a DD −19 %.
+  B&H se stejnou volatilitou má Sharpe 0,62 a DD −36 %.
+
+## 3. Edge Factory (`edge_factory/`)
+- 3 157 hypotéz: kalendář, hodiny, dny v týdnu, VWAP retesty, delta divergence (minuty až měsíce), absorpce, stop-hunty. Rozdělení výsledků odpovídá náhodě.
+- Drží jen 3 malé efekty:
+  - RSI(2) přeprodanost → long na další den;
+  - po novém 52týdenním maximu pomalejší růst (nepřidávat páku na ATH);
+  - absorpce mimo RTH, ale jen 1–3 bp, což sotva pokryje náklady.
+- ML (LightGBM, walk-forward): intraday ≈ nula, denní horizont IC ~0,10.
+- Money management edge nevytvoří, jen ji zesílí nebo zničí. Kelly při nulové edge = 0.
+
+## 4. Loss Streak Lab – vysoké RRR (`high_rrr/`)
+- Krátké série 3–5 ztrát jsou čistá statistika win rate.
+- Dlouhé série (10–20+) přicházejí 2–10× častěji než náhoda. Mají dva zdroje:
+  - (a) pevný stop malý vůči volatilitě: pod 0,2 ATR se trefí v 80–90 % obchodů;
+  - (b) rozjetá korekce: 5denní rozsah > 4 ATR, cena pod týdenním VWAP −2σ, drawdown 3–7 %.
+- 486 tisíc kombinací filtrů: nic neprošlo přísným testem.
+- Breakeven a trailing téměř všude snižují expectancy. Pauza po sérii nepomáhá.
+
+## 5. Swing Alpha SW01–SW05 (`swing_alpha/`)
+- Pokračovací logika (migrace POC/VA, zarovnání VWAP D/W/M, breakout z kompozitu, Bull/Bear režim) má po odečtení driftu nulový až záporný nadvýnos. Na 1–20 dní ES vrací k průměru.
+- Funguje opak, long po bearish extrému:
+  - „jádro fade“ = close pod low kompozitu, retest prolomené hrany, plně bear zarovnání VWAP;
+  - 10 dní: +0,66 ATR/obchod vs +0,35 ATR „long každý den“, v trhu jen 52 % času;
+  - drží 2009–18 i 2019–22, v letech 2023–26 na 10 dní ne.
+- Short: záporný ve všech variantách (drift).
+- Režimy jsou perzistentní (Bull ~4,8 dne, P(pokračuje) 0,68 → 0,90), ale nadvýnos nenesou.
+- SL: 0,5 ATR je záporný u všeho (série 14–29 ztrát). 2 ATR + RRR 1:3–1:5 je nejlepší (série ~8).
+  Časový exit 10–20 dní ≥ „chytré“ exity.
+- Výběr jedné nejlepší konfigurace ve walk-forward = nula. Spolehnout se dá jen na rodinu pravidel.
+
+## 6. Realita výnosů a tvůj NQ test
+- Výnos ≈ edge (R) × počet obchodů × riziko na obchod.
+  Stovky % ročně spolehlivě jen při edge ≥ 0,2 R, stovkách obchodů a riziku 1–2 % (horní ~1 % traderů).
+  Bez edge to je loterie s 90% šancí na půlení účtu.
+- Literatura: ziskových day traderů < 1 % (Tchaj-wan); 97 % ztrátových (Brazílie, futures).
+- NQ sim (42 obchodů, SL 50 b. / TP 500 b.):
+  - 4 výhry, t = 0,38, 28 ztrát v řadě, DD −28,6 tis. USD;
+  - buy & hold 1 kontraktu ve stejném období +39 tis. USD;
+  - zisk stojí na jednom obchodu se 2 kontrakty;
+  - stop 50 b. byl ~0,2 ATR;
+  - výhry trvaly 4–14 dní, takže je to swing, ne intraday.
+
+## 7. Co platí do budoucna
+1. Stop vždy z denního ATR (Sierra: denní graf + ATR 14 Simple).
+   NQ dnes ATR ~440 b. (odhad 2023–26: 0,95–2,7 % ceny, medián ~1,3–1,5 %).
+   Intraday ≥ 0,5 ATR, swing 1,5–2 ATR.
+2. Velikost = riziko v USD / (SL v bodech × hodnota bodu). MNQ pro menší účet. Riziko 0,5–1 % na obchod.
+3. Stavět long-only reverzní swing (koupě po výprodeji, držení 5–20 dní, SL 2 ATR), ne intradenní pattern trading.
+4. Každý systém měřit proti buy & hold a „vstupu každý den“ se stejným exitem.
+5. Edge prokázat čísly: 200–800 obchodů podle velikosti edge, deník se štítkem setupu.
+
+## Další kroky
+- Export denních + 1min dat NQ ze Sierra Chart → přepočet ATR, swing systému a tvého 1:10 systému na NQ.
+- Spojit RSI(2), jádro fade a denní ML skóre do jednoho skóre přeprodanosti.
+- Paper trading se zamčenými pravidly 3–6 měsíců.
