@@ -1,0 +1,380 @@
+<title>ES Regime Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<style>
+.bandkey{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--ink2)}
+.bandkey i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.yr td{text-align:left;white-space:normal;vertical-align:top}
+.yr td.num{text-align:right;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font:500 11px/1.6 "IBM Plex Mono",monospace;padding:0 6px;border-radius:3px;color:#fff;white-space:nowrap}
+select{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink);padding:6px 10px;border-radius:6px}
+.play td{text-align:left;white-space:normal;vertical-align:top}
+.fam h3{margin-bottom:2px}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES mini futures · denní data 2009–2026 · všechny strategie z výzkumu na jedné ose</div>
+  <h1>ES Regime Atlas</h1>
+  <p class="lede">Kdy která strategie porážela buy &amp; hold, v jakých podmínkách trhu a proč. Všechny dosud testované přístupy (trend, volatilita, reverze, VWAP a profil, kalendář, intradenní systémy Mattia a alpha brainstormu) jsou převedené na denní výnos na 1× ES, rozpadnuté po rocích, čtvrtletích a tržních režimech a porovnané s ES.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="eyebrow">Hlavní odpověď</div>
+  <h2>Porazit ES je hlavně otázka režimu, ne vzorce</h2>
+  <div class="callout"><p id="mainText"></p></div>
+  <div class="grid3" id="findCards"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Co se na ES dělo</div>
+  <h2>Časová osa trhu 2009–2026</h2>
+  <p class="sub">Equity ES (1×, back-adjusted) a pod ní barevné pásy: každé čtvrtletí je označené podle toho, jak skutečně proběhlo (výnos, maximální propad, volatilita, přímost pohybu).</p>
+  <div class="panel"><div class="bandkey" id="bandKey"></div><div class="chart" id="cTime"></div></div>
+  <div class="tablewrap"><table class="yr" id="tYears"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Rok po roku</div>
+  <h2>Kdo porazil ES v kterém roce</h2>
+  <p class="sub">Rozdíl ročního výnosu strategie a ES v procentních bodech. Modrá = lepší než ES, červená = horší. Pozor: strategie s malou expozicí „vyhrávají“ téměř jen v letech, kdy ES padá (2015, 2018, 2022). To není edge, ale menší expozice. Proto je vedle i alfa očištěná o expozici.</p>
+  <div class="filters" id="famBtns"></div>
+  <div class="tablewrap"><table class="heat" id="tYX"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Podmínky trhu</div>
+  <h2>Ve kterém režimu která strategie vydělává navíc</h2>
+  <p class="sub">Roční alfa (výnos nad rámec expozice v ES) ve dnech daného režimu. Režim dne se počítá jen z dat dostupných ten den (propad od maxima, 63denní trend, 20denní volatilita), takže jde použít i živě.</p>
+  <div class="filters" id="dimBtns"></div>
+  <div class="tablewrap"><table class="heat" id="tReg"></table></div>
+  <p class="small" id="regNote"></p>
+</section>
+
+<section>
+  <div class="eyebrow">Typ čtvrtletí</div>
+  <h2>Průměrný náskok před ES podle toho, jak čtvrtletí proběhlo</h2>
+  <div class="filters" id="qBtns"></div>
+  <div class="tablewrap"><table class="heat" id="tLab"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Životní cyklus edge</div>
+  <h2>Kdy edge vznikla a kdy zmizela</h2>
+  <p class="sub">Klouzavá dvouletá alfa (roční, po odečtení expozice v ES). Nad nulou = strategie v posledních dvou letech přidávala hodnotu navíc k držení ES.</p>
+  <div class="filters"><select id="selA" aria-label="Strategie 1"></select><select id="selB" aria-label="Strategie 2"></select><select id="selC" aria-label="Strategie 3"></select></div>
+  <div class="panel"><div class="legend" id="lgRoll"></div><div class="chart" id="cRoll"></div></div>
+</section>
+
+<section>
+  <div class="eyebrow">Příčiny a důsledky</div>
+  <h2>Proč která rodina vyhrávala a proč přestala</h2>
+  <div class="grid2" id="famCards"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Playbook</div>
+  <h2>Které „cinklé kostky“ fungují v kterém trhu</h2>
+  <div class="tablewrap"><table class="play" id="tPlay"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Všechny strategie</div>
+  <h2>Souhrn 2009–2026</h2>
+  <div class="tablewrap"><table id="tSum"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Jak dál</div>
+  <h2>Postup: Equilibre + Hála + Mattia v jednom rámci</h2>
+  <ol class="steps" id="steps"></ol>
+</section>
+
+<section>
+  <div class="eyebrow">Metodika</div>
+  <h2>Jak se počítalo</h2>
+  <div class="grid2">
+    <div class="card"><ul class="why">
+      <li><b>Data</b>: ES2008, 1min back-adjusted, denní agregace 2009–2026 (intradenní kandidáti z alpha brainstormu až od 7/2018). Rok 2008 je vynechaný, protože trendové indikátory (MA200, 12M momentum) se teprve rozbíhají.</li>
+      <li><b>Výnos</b>: denní výnos na 1× nominál ES. Denní pravidla rozhodují na close dne a drží přes další seanci, náklady 0,5 bodu na změnu pozice. Intradenní systémy převzaté z ES Alpha Map a Alpha Audit (body → % předchozího close).</li>
+      <li><b>Back-adjustment</b> zmenšuje procentní výnosy v prvních letech. Srovnání strategií je ale na stejné řadě, takže je férové.</li>
+    </ul></div>
+    <div class="card"><ul class="why">
+      <li><b>Náskok</b> = výnos strategie − výnos ES (co ukáže účet). <b>Alfa</b> = výnos strategie − β × výnos ES (β z celé historie), tedy výnos, který nevzniká jen větší nebo menší expozicí.</li>
+      <li><b>Typ čtvrtletí</b> je určen zpětně z celého čtvrtletí (popis, co se stalo). <b>Režim dne</b> jen z dat do daného dne (dá se obchodovat).</li>
+      <li><b>t-statistika alfy</b> ze denních dat; |t| ≥ 2 ≈ málo pravděpodobné náhodou. Testováno je 32 strategií, takže 1–2 „významné“ mohou vzniknout náhodou.</li>
+    </ul></div>
+  </div>
+</section>
+
+<footer>Kód: <span class="mono">research/regime_atlas/</span> (strategies.py, analysis.py, out/*.csv) ve větvi <span class="mono">claude/alpha-brainstorm-trading-zttwoc</span>. Historický backtest, ne záruka budoucích výnosů.</footer>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 1) => v == null || v === "" || Number.isNaN(v) ? "–" : Number(v).toLocaleString("cs-CZ", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 1) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+const pct = (v, d = 0) => v == null ? "–" : fmt(v * 100, d) + " %";
+const pp = (v, d = 1) => v == null ? "–" : sgn(v * 100, d);
+const cls = v => v == null ? "" : v < 0 ? "neg" : "";
+const FONT = 'font-size="11" font-family="IBM Plex Mono,monospace"';
+const legend = (el, ss) => el.innerHTML = ss.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+const pill = (cl, t) => `<span class="pill ${cl}">${t}</span>`;
+function niceStep(r) { const p = Math.pow(10, Math.floor(Math.log10(r))), f = r / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+function mix(a, b, t) { const h = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = h(a), B = h(b); return "rgb(" + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",") + ")"; }
+function hcol(v, lim) { if (v == null) return css("--surface"); const t = Math.min(1, Math.abs(v) / lim); return mix(css("--mid"), v > 0 ? css("--pos") : css("--neg"), t * 0.85); }
+function hink(v, lim) { return v != null && Math.abs(v) / lim > 0.55 ? "#fff" : css("--ink"); }
+const SM = Object.fromEntries(DATA.summary.map(r => [r.strategy, r]));
+const FAMS = [...new Set(DATA.summary.map(r => r.family))];
+const LABC = {"Strmý trend nahoru": "#1a7f3c", "Trend nahoru": "#5fae74", "Stranový pohyb": "#9aa0a4", "Korekce s návratem (V)": "#eda100", "Korekce": "#e07b00", "Pokles": "#c8423f", "Krach / panika": "#7d1f1e"};
+const K = DATA.kpi;
+
+$("#kpis").innerHTML = [
+  [K.n, "strategií ze všech dosavadních výzkumů na jedné ose"],
+  [K.quarters, "čtvrtletí ES, každé popsané režimem"],
+  [`${K.down_years} z ${K.years}`, "let, kdy ES skončil v minusu (jen tehdy ho porazí skoro všechno)"],
+  [`${K.sig} / ${K.neg}`, "strategií s významně kladnou / zápornou alfou (|t| ≥ 2)"],
+].map(([b, s]) => `<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join("");
+
+const ca = SM["Crisis allocator"], vt = SM["Vol target 15 %"], jf = SM["Jádro fade 10D"], ma = SM["MA200 long/flat"];
+$("#mainText").innerHTML = `ES za 18 let skončil v minusu jen ve ${K.down_years} letech (2015 nula, 2018, 2022). Skoro všechny strategie s menší expozicí „porazily trh“ právě jen v těchto letech. To není edge, ale menší expozice ve špatném roce, a v ostatních letech za ni zaplatí. Po očištění o expozici zbývá jen pár přístupů se skutečnou alfou, a ty mají společné jedno: <b>vydělávají na chování ostatních v extrémních režimech</b>. Nakupují paniku, ze které jiní utíkají (crisis allocator ${pct(ca.cagr, 1)} ročně proti ${pct(ca.bh_cagr, 1)} u ES, porazil ES v ${pct(ca.y_beat)} let), přidávají páku v klidu a ubírají ve stresu (vol target ${pct(vt.cagr, 1)}), nebo fadeují bearish extrémy (jádro fade ${pct(jf.cagr, 1)} při nižší volatilitě než ES). Pokračovací vzorce (VWAP zarovnání, breakouty, Bull režim) a intradenní systémy bez mechanismu mají alfu nulovou až zápornou ve všech režimech. Trendový filtr MA200 chrání jen v dlouhém medvědím trhu. Po roce 2009 byly propady krátké a ve tvaru V, takže filtr prodal dole a koupil draze (−13, −9 a −14 p. b. v letech 2019, 2020 a 2023).`;
+$("#findCards").innerHTML = [
+  ["Panika = nejlepší kostky", "go", `Crisis allocator: alfa ${pp(ca.alpha)} % ročně, t = ${fmt(ca.t_alpha, 1)}. Při krizové volatilitě (> 30 %) +62 % ročně navíc. Nejlepší roky 2020 (+32 p. b.), 2024 (+24), 2021 (+21), 2019 (+19). Prodělal v roce 2018, kdy po nákupu poklesy pokračovaly.`],
+  ["Volatilita řídí páku", "go", `Vol target / vol-managed: porazil ES v ${pct(vt.y_beat)} let. Vyhrává v klidném trendu (2013 +12, 2017 +16 p. b.), kdy jede na páce až 2×. Ztrácí ve dnech krizové volatility (−36 % ročně), protože je podvážený, když přijde odraz.`],
+  ["Vzorce bez mechanismu ne", "no", "VWAP D/W/M zarovnání (t = −1,8), breakout z kompozitu (t = −1,5), Bull režim a intradenní VWAP pullback (t = −8,7) ztrácejí v každém režimu. Reverze RSI(2) vydělává v mírném poklesu (+14 % ročně), ale v krachu přichází o 35–44 % ročně."],
+].map(([h, v, t]) => `<div class="card"><div class="head"><h3>${h}</h3>${pill(v, v === "go" ? "Funguje" : v === "watch" ? "Podmíněně" : "Nefunguje")}</div><p class="why">${t}</p></div>`).join("");
+
+/* timeline */
+$("#bandKey").innerHTML = Object.entries(LABC).map(([k, c]) => `<span><i style="background:${c}"></i>${k}</span>`).join("");
+function drawTime() {
+  const W = 1000, H = 300, m = {l: 50, r: 10, t: 10, b: 52};
+  const P = DATA.bheq, t0 = new Date(P[0][0]).getTime(), t1 = new Date(P[P.length - 1][0]).getTime();
+  const X = d => m.l + (new Date(d).getTime() - t0) / (t1 - t0) * (W - m.l - m.r);
+  const lo = Math.log(Math.min(...P.map(p => p[1]))), hi = Math.log(Math.max(...P.map(p => p[1])));
+  const Y = v => m.t + (1 - (Math.log(v) - lo) / (hi - lo)) * (H - m.t - m.b - 22);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  [1, 1.5, 2, 3, 4, 5].forEach(v => { if (Math.log(v) >= lo && Math.log(v) <= hi) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" ${FONT}>${fmt(v, 1)}×</text>`; });
+  DATA.quarters.forEach(q => {
+    const y = +q.q.slice(0, 4), k = +q.q.slice(5), a = new Date(y, (k - 1) * 3, 1), b = new Date(y, k * 3, 1);
+    const xa = Math.max(m.l, X(a)), xb = Math.min(W - m.r, X(b));
+    s += `<rect x="${xa}" y="${H - m.b - 14}" width="${Math.max(0, xb - xa - 1)}" height="14" fill="${LABC[q.label]}"><title>${q.q}: ${q.label} · výnos ${pp(q.ret)} % · max. propad ${pp(q.mdd)} % · vol ${pct(q.vol)}</title></rect>`;
+  });
+  s += `<polyline fill="none" stroke="${css("--ink")}" stroke-width="1.6" points="${P.map(p => X(p[0]).toFixed(1) + "," + Y(p[1]).toFixed(1)).join(" ")}"/>`;
+  for (let y = 2009; y <= 2026; y++) s += `<text x="${X(new Date(y, 6, 1))}" y="${H - m.b + 18}" text-anchor="middle" fill="${css("--muted")}" ${FONT}>${String(y).slice(2)}</text>`;
+  s += `<text x="${m.l}" y="${H - 8}" fill="${css("--muted")}" ${FONT}>pás = typ čtvrtletí · osa x = rok (20xx)</text>`;
+  $("#cTime").innerHTML = s + "</svg>";
+}
+$("#tYears").innerHTML = `<thead><tr><th>Rok</th><th>ES</th><th>Max. propad</th><th>Vol</th><th>Čtvrtletí</th><th>Co se dělo</th><th>Nejvíc nad ES</th></tr></thead><tbody>` +
+  DATA.years.map(y => `<tr><td class="num">${y.year}</td><td class="num ${cls(y.ret)}">${pp(y.ret)} %</td><td class="num neg">${pp(y.mdd)} %</td><td class="num">${pct(y.vol)}</td><td><div class="chips">${y.labels.map(l => `<span class="chip" style="background:${LABC[l]}" title="${l}">${l.split(" ")[0]}</span>`).join("")}</div></td><td>${y.event}</td><td class="small">${y.best.join(", ")}<br>${y.beat} z ${K.n} strategií nad ES</td></tr>`).join("") + "</tbody>";
+
+/* year heatmap */
+let fam = "Vše";
+$("#famBtns").innerHTML = ["Vše", ...FAMS].map(f => `<button type="button" aria-pressed="${f === fam}" data-k="${f}">${f}</button>`).join("");
+$("#famBtns").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; fam = b.dataset.k; [...$("#famBtns").children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawYX(); drawReg(); drawLab(); });
+const inFam = s => fam === "Vše" || SM[s].family === fam;
+function drawYX() {
+  const yb = Object.fromEntries(DATA.years.map(y => [y.year, y.ret]));
+  const rows = DATA.order.filter(inFam);
+  $("#tYX").innerHTML = `<thead><tr><th style="text-align:left">Strategie</th>${DATA.yidx.map(y => `<th>${String(y).slice(2)}</th>`).join("")}<th>Let nad ES</th><th>Alfa t</th></tr>
+    <tr><td class="rowh">ES (výnos roku)</td>${DATA.yidx.map(y => `<td style="background:var(--surface);font-weight:600" class="${cls(yb[y])}">${fmt(yb[y] * 100, 0)}</td>`).join("")}<td></td><td></td></tr></thead><tbody>` +
+    rows.map(s => `<tr><td class="rowh" style="white-space:nowrap">${s}</td>${DATA.yx[s].map(v => `<td style="background:${hcol(v, 0.2)};color:${hink(v, 0.2)}">${v == null ? "" : fmt(v * 100, 0)}</td>`).join("")}<td style="background:var(--surface)">${pct(SM[s].y_beat)}</td><td style="background:var(--surface)" class="${cls(SM[s].t_alpha)}">${fmt(SM[s].t_alpha, 1)}</td></tr>`).join("") + "</tbody>";
+}
+/* regime heatmap */
+const DIMS = [["trend", "Trend (63 dní)", ["Silný růst", "Mírný růst", "Stranově", "Mírný pokles", "Silný pokles"]],
+  ["vol", "Volatilita (20 dní)", ["Nízká vol (< 12 %)", "Normální vol (12–20 %)", "Vysoká vol (20–30 %)", "Krizová vol (> 30 %)"]],
+  ["phase", "Propad od maxima", ["U maxim (DD < 5 %)", "Pullback (DD 5–10 %)", "Korekce (DD 10–20 %)"]]];
+let dim = "trend";
+$("#dimBtns").innerHTML = DIMS.map(([k, n]) => `<button type="button" aria-pressed="${k === dim}" data-k="${k}">${n}</button>`).join("");
+$("#dimBtns").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; dim = b.dataset.k; [...$("#dimBtns").children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawReg(); });
+function drawReg() {
+  const D = DIMS.find(d => d[0] === dim), cols = D[2];
+  const get = (s, c) => DATA.byregime.find(r => r.strategy === s && r.dim === dim && r.regime === c);
+  const days = cols.map(c => (get("MA200 long/flat", c) || {}).days);
+  const bhr = cols.map(c => (get("MA200 long/flat", c) || {}).bh);
+  $("#tReg").innerHTML = `<thead><tr><th style="text-align:left">Strategie</th>${cols.map((c, i) => `<th>${c}<br><span style="text-transform:none">${days[i] || ""} dní</span></th>`).join("")}</tr>
+    <tr><td class="rowh">ES v režimu (roční výnos)</td>${bhr.map(v => `<td style="background:var(--surface);font-weight:600" class="${cls(v)}">${pp(v, 0)} %</td>`).join("")}</tr></thead><tbody>` +
+    DATA.order.filter(inFam).map(s => `<tr><td class="rowh" style="white-space:nowrap">${s}</td>${cols.map(c => { const g = get(s, c); const v = g ? g.alpha : null;
+      return `<td style="background:${hcol(v, 0.3)};color:${hink(v, 0.3)}" title="${s} · ${c}: alfa ${pp(v)} % ročně, náskok před ES ${g ? pp(g.excess) : "–"} %">${v == null ? "" : fmt(v * 100, 0)}</td>`; }).join("")}</tr>`).join("") + "</tbody>";
+  $("#regNote").textContent = "Hodnoty = roční alfa v % ve dnech daného režimu (najetím myši i náskok před ES). Režimy s málo dny (krizová vol 64 dní, silný pokles 206 dní) jsou citlivé na pár událostí: 2011, 2020, 2022, 2025.";
+}
+/* label heatmap */
+const LABS = Object.keys(LABC);
+let lm = "excess";
+$("#qBtns").innerHTML = [["excess", "Náskok před ES"], ["alpha", "Alfa (bez expozice)"], ["beat", "Podíl čtvrtletí nad ES"]].map(([k, n]) => `<button type="button" aria-pressed="${k === lm}" data-k="${k}">${n}</button>`).join("");
+$("#qBtns").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; lm = b.dataset.k; [...$("#qBtns").children].forEach(x => x.setAttribute("aria-pressed", x === b)); drawLab(); });
+function drawLab() {
+  const cnt = Object.fromEntries(LABS.map(l => [l, DATA.quarters.filter(q => q.label === l).length]));
+  const avg = Object.fromEntries(LABS.map(l => { const q = DATA.quarters.filter(x => x.label === l); return [l, q.reduce((a, b) => a + b.ret, 0) / q.length]; }));
+  $("#tLab").innerHTML = `<thead><tr><th style="text-align:left">Strategie</th>${LABS.map(l => `<th><span class="chip" style="background:${LABC[l]}">${l}</span><br>${cnt[l]} čtvrtletí · ES ${pp(avg[l])} %</th>`).join("")}</tr></thead><tbody>` +
+    DATA.order.filter(inFam).map(s => `<tr><td class="rowh" style="white-space:nowrap">${s}</td>${LABS.map(l => { const g = DATA.bylabel.find(r => r.strategy === s && r.label === l); const v = g ? g[lm] : null;
+      if (lm === "beat") return `<td style="background:${hcol(v == null ? null : v - 0.5, 0.5)};color:${hink(v == null ? null : v - 0.5, 0.5)}">${v == null ? "" : fmt(v * 100, 0)}</td>`;
+      return `<td style="background:${hcol(v, 0.08)};color:${hink(v, 0.08)}">${v == null ? "" : fmt(v * 100, 1)}</td>`; }).join("")}</tr>`).join("") + "</tbody>";
+}
+/* rolling alpha */
+const RN = Object.keys(DATA.roll);
+const defs = ["Crisis allocator", "MA200 long/flat", "Jádro fade 10D"];
+["#selA", "#selB", "#selC"].forEach((id, i) => { $(id).innerHTML = RN.map(n => `<option${n === defs[i] ? " selected" : ""}>${n}</option>`).join(""); $(id).addEventListener("change", drawRoll); });
+function drawRoll() {
+  const sel = ["#selA", "#selB", "#selC"].map(id => $(id).value), cols = [css("--s1"), css("--s2"), css("--s3")];
+  const W = 1000, H = 300, m = {l: 50, r: 12, t: 12, b: 28};
+  const t0 = new Date("2010-06-01").getTime(), t1 = new Date("2026-10-01").getTime(), X = d => m.l + (new Date(d + "-15").getTime() - t0) / (t1 - t0) * (W - m.l - m.r);
+  const vals = sel.flatMap(n => DATA.roll[n].map(p => p[1])); const lo = Math.min(-0.05, ...vals), hi = Math.max(0.05, ...vals);
+  const Y = v => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  const st = niceStep((hi - lo) / 5);
+  for (let v = Math.ceil(lo / st) * st; v <= hi; v += st) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${Math.abs(v) < 1e-9 ? css("--ink2") : css("--grid")}"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" fill="${css("--muted")}" ${FONT}>${sgn(v * 100, 0)} %</text>`;
+  for (let y = 2011; y <= 2026; y += 1) s += `<text x="${X(y + "-01")}" y="${H - 8}" text-anchor="middle" fill="${css("--muted")}" ${FONT}>${String(y).slice(2)}</text>`;
+  sel.forEach((n, i) => { const p = DATA.roll[n]; s += `<polyline fill="none" stroke="${cols[i]}" stroke-width="2" points="${p.map(q => X(q[0]).toFixed(1) + "," + Y(q[1]).toFixed(1)).join(" ")}"/>`; });
+  $("#cRoll").innerHTML = s + "</svg>";
+  legend($("#lgRoll"), sel.map((n, i) => ({name: n, color: cols[i]})));
+}
+/* family cards */
+const FC = [
+  ["Volatilita / expozice", "go", "Funguje", "Volatilita se shlukuje a je předvídatelná. Vysoká volatilita má horší poměr výnosu k riziku a v panice existují nucení prodejci (margin cally, vol-targeting fondy, stop-lossy davu).",
+   "V klidném trendu (2013, 2017, 2021) vol target jede na vyšší páce. Crisis allocator nakupuje vrstvy po panickém poklesu a vydělává na rychlých V-návratech (2019, 2020, 2024, 2026).",
+   "Vol target ztrácí ve dnech krizové volatility: je podvážený přesně ve chvíli, kdy přijde odraz. Crisis allocator ztratil v roce 2018: koupil únorový a říjnový pokles, který pokračoval (−4 p. b.)."],
+  ["Reverze", "watch", "Podmíněně", "Krátkodobě přeprodaný trh: kdo poskytne likviditu panickým prodejcům, je odměněn. Funguje jen tehdy, když panika není začátek dlouhého pádu.",
+   "Mírný pokles a korekce 5–20 % (RSI(2), 3 dny dolů, jádro fade +9 až +14 % ročně navíc), rok 2022 s ostrými protipohyby uvnitř medvědího trhu (RSI(2) +20 p. b., 3 dny dolů +26 p. b.).",
+   "Silný pokles a krizová volatilita: chytání padajícího nože, RSI(2) −35 až −44 % ročně. A v klidném trendu (2013, 2017, 2021) s malou expozicí ztrácí na ES 9–16 p. b. ročně. Jádro fade je výjimka: díky 10dennímu držení drží víc expozice."],
+  ["Trend / expozice", "watch", "Jen v dlouhém medvědovi", "Trendy trvají, protože investoři reagují pomalu a CTA fondy mechanicky následují trend. Filtr MA200 tě vyvede z trhu, než přijde hlavní část propadu.",
+   "Silný pokles (+34 % ročně alfa u MA200 long/flat, +66 % u long/short). Ze všech let to ale vyšlo jen v roce 2022, kdy byl medvědí trh pozvolný.",
+   "Každý V-návrat: 2011 (−6), 2019 (−13), 2020 (−9), 2023 (−14 p. b.). Filtr prodá dole a koupí zpět výš. Stranový trh a pullback 5–10 % znamenají pily (−14 až −24 % ročně alfa). Od roku 2009 byly propady krátké, takže filtr spíš škodil."],
+  ["Struktura / VWAP / profil", "no", "Nefunguje", "Myšlenka: zarovnané VWAPy, migrace hodnoty a breakout z kompozitu ukazují pokračování. Data ukazují opak: na horizontu dnů ES vrací k průměru (Swing Alpha).",
+   "Jen migrace POC měla krátké období kladné alfy v letech 2020–21 (rychlý trend po covidu).",
+   "Ve vysoké volatilitě −19 až −22 % ročně (breakout, VWAP zarovnání): koupí silný den, který se otočí. Celkově alfa záporná (t −1,2 až −1,8)."],
+  ["Kalendář / toky", "watch", "Malé, ale skutečné", "Toky, které musí proběhnout: noční riziková prémie, drift před Fedem, toky na přelomu měsíce.",
+   "Pre-FOMC: alfa malá (+0,6 % ročně), ale nejstabilnější (t = 2,0), zesílila po roce 2018. Výnos ES vzniká hlavně přes noc: intradenní držení má alfu −5,9 % ročně (t −3,9).",
+   "Noční držení se po nákladech 0,5 bodu denně nevyplatí. Turn of month nemá žádnou alfu."],
+  ["Intraday systémy", "no", "Bez mechanismu ne", "Mattia a alpha brainstorm: vzorce v minutových datech. Většinou geometrie TP/SL, ne mechanismus.",
+   "Nad ES jen v letech 2018 a 2022, protože mají malou expozici, když ES padal. S3 Overnight Bias a noise-area momentum mají kladnou alfu od roku 2020 ve vysoké volatilitě. Kandidáti z alpha brainstormu mají mírně kladnou alfu 2022–2025.",
+   "V každém býčím roce ztrácejí 15–28 p. b. na ES. VWAP pullback má zápornou alfu ve všech obdobích (t −8,7), protože náklady sežerou malý TP."],
+];
+$("#famCards").innerHTML = FC.map(([f, cl, lab, mech, win, lose]) => `<div class="card fam"><div class="head"><h3>${f}</h3>${pill(cl, lab)}</div>
+  <p class="why"><b>Mechanismus:</b> ${mech}</p><p class="why"><b>Kdy vyhrávala:</b> ${win}</p><p class="why"><b>Kdy a proč selhala:</b> ${lose}</p></div>`).join("");
+/* playbook */
+const PB = [
+  ["Strmý / klidný trend nahoru, vol < 12 %", "2013, 2017, 2021, Q2 2026", "B&H, vol target s pákou až 2×, crisis allocator (je plně investovaný)", "Reverze a intradenní systémy (malá expozice), trendové filtry (nic nepřidají)"],
+  ["Stranový trh", "2011 Q2, 2015, 2019 Q3, 2025 Q4", "Skoro nic výrazně, mírně reverze a noise-area momentum", "Trendové filtry a breakouty: pily, falešné průrazy"],
+  ["Korekce 5–20 % / mírný pokles", "2010, 2012 Q2, 2018 Q1, 2022 Q1/Q3, 2026 Q1", "Reverze (RSI(2), 3 dny dolů, jádro fade), crisis allocator, Pre-FOMC", "MA200 a 12M momentum (prodávají dole), VWAP zarovnání"],
+  ["Krach / silný pokles, vol > 30 %", "2011 Q3, 2018 Q4, 2020 Q1, 2022 Q2, 2025 Q2", "Trendový filtr (chrání), crisis allocator (nakupuje panický dno s potvrzením)", "Reverze bez filtru (nůž), breakouty, noční držení"],
+  ["V-návrat po panice", "2019 Q1, 2020 Q2, 2025 Q2–Q3", "Crisis allocator (už nakoupil), B&H", "Trendové filtry a vol target (jsou mimo trh nebo podvážení)"],
+];
+$("#tPlay").innerHTML = `<thead><tr><th>Režim</th><th>Příklady</th><th>Co v datech fungovalo</th><th>Co selhalo</th></tr></thead><tbody>` + PB.map(r => `<tr>${r.map((c, i) => `<td${i === 0 ? ' style="font-weight:600"' : ""}>${c}</td>`).join("")}</tr>`).join("") + "</tbody>";
+/* summary */
+$("#tSum").innerHTML = `<thead><tr><th>Strategie</th><th>Rodina</th><th>CAGR</th><th>ES</th><th>ES při stejné vol</th><th>Sharpe</th><th>Max DD</th><th>β</th><th>Alfa / rok</th><th>t</th><th>Let nad ES</th><th>Mechanismus</th></tr></thead><tbody>` +
+  DATA.order.map(s => { const r = SM[s]; return `<tr><td style="text-align:left;white-space:nowrap">${s}<br><span class="small">od ${r.start.slice(0, 4)}</span></td><td style="text-align:left" class="small">${r.family}</td><td class="num ${cls(r.cagr)}">${pct(r.cagr, 1)}</td><td class="num">${pct(r.bh_cagr, 1)}</td><td class="num">${pct(r.bh_samevol_cagr, 1)}</td><td class="num">${fmt(r.sharpe, 2)}</td><td class="num neg">${pct(r.mdd)}</td><td class="num">${fmt(r.beta, 2)}</td><td class="num ${cls(r.alpha)}">${pp(r.alpha)} %</td><td class="num ${cls(r.t_alpha)}">${fmt(r.t_alpha, 1)}</td><td class="num">${pct(r.y_beat)}</td><td style="text-align:left;white-space:normal;min-width:260px" class="small">${r.mechanism}</td></tr>`; }).join("") + "</tbody>";
+/* steps */
+$("#steps").innerHTML = [
+  "<b>Mechanismus první (Hála).</b> Každá nová strategie začíná větou „kdo je nucený obchodovat a proč“. Atlas ukazuje, že alfu mají jen ty se silným mechanismem: panika a nucení prodejci, shlukování volatility, toky kolem Fedu.",
+  "<b>Detektor režimu z dat dostupných v reálném čase.</b> Propad od maxima, 63denní trend a 20denní volatilita. Atlas ukazuje, že stejná strategie má v různých režimech opačné znaménko, takže režim je nejdůležitější vstup.",
+  "<b>Portfolio vrstev, které se doplňují (Mattia).</b> Vol target pro klidný trend, crisis allocator a jádro fade pro korekce a paniku, Pre-FOMC jako nezávislá vrstva. Každá vrstva má svůj „dobrý“ režim.",
+  "<b>Adaptivní alokátor (Equilibre: minimalizace lítosti).</b> Váhy vrstev se mění podle toho, jak si vedly a v jakém režimu jsme. Test walk-forward: alokátor nikdy nevidí budoucnost.",
+  "<b>Aréna pro nové nápady.</b> Pravidla vstupu a výstupu vymyšlená v syntetickém trhu s nucenými hráči. Historie ES slouží jen jako jediná závěrečná zkouška, NQ a živý trh jako replikace.",
+].map(t => `<li><span>${t}</span></li>`).join("");
+
+function drawAll() { drawTime(); drawYX(); drawReg(); drawLab(); drawRoll(); }
+drawAll();
+new MutationObserver(drawAll).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+</script>
