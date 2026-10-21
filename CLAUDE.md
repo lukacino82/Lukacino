@@ -14,7 +14,8 @@ Po dokončení každého nového výzkumu nebo důležité diskuze ulož výstup
 - Nahraj:
   - Google Doc se závěry výzkumu: markdown přes `text/markdown`, česky, s čísly.
   - Hlavní tabulky výsledků jako Google Sheets: CSV přes `text/csv`, čísla s desetinnou tečkou, zaokrouhlená.
-- Aktualizuj dokument „00 Přehled – ES výzkum“ (odkaz na nový interaktivní report a PDF na GitHubu).
-- Aktualizuj dokument „01 Závěry všech výzkumů ES“.
-- Názvy souborů číslovat pokračováním řady (05, 06, …).
+- Uživatel dal trvalý souhlas ukládat do této složky vše (výzkumy, rešerše, diskuze) bez ptaní.
+- Konektor neumí měnit obsah existujících dokumentů, proto každý nový výstup = nový číslovaný dokument
+  (pokračovat řadou 07, 08, …) s odkazem na interaktivní report a PDF na GitHubu.
+- Existující dokumenty: 00 Přehled, 01 Závěry, 02 Diskuze, 03–04 Regime Atlas tabulky, 05 MASTER mapa, 06 Knihovna zdrojů.
 - PDF a HTML reporty zůstávají na GitHubu (jsou příliš velké pro nahrání přes konektor), na Drive dávej odkazy.
