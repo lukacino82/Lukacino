@@ -70,3 +70,13 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Export denních + 1min dat NQ ze Sierra Chart → přepočet ATR, swing systému a tvého 1:10 systému na NQ.
 - Spojit RSI(2), jádro fade a denní ML skóre do jednoho skóre přeprodanosti.
 - Paper trading se zamčenými pravidly 3–6 měsíců.
+
+## 9. Rešerše zdrojů a mechanismy z literatury (`ZDROJE.md`, `mechanisms/`)
+- Rešerše (Drive 06): laťka pro nový objev je t ≈ 3 (Harvey–Liu–Zhu). Po publikaci anomálie klesne výnos o 26–58 % (McLean–Pontiff). Pro footprint jsme nenašli žádný nezávislý důkaz edge.
+- Testy na ES2008 (Drive 07): tři tokové edge fungovaly do 2020 a v letech 2021–26 jsou nulové:
+  - okno 02–03 ET (t 4,5 → 0,4);
+  - intradenní momentum;
+  - poslední 4 dny měsíce po slabém měsíci (+0,95 / +1,27 % → −0,07 %).
+- Okno 02–03 nebylo na 1 ES nikdy obchodovatelné (0,21 b. hrubě < 0,5 b. náklad).
+- Zpětné nákupy po vrcholu vol: směr kladný, jen 12 signálů. Falešná zotavení: 7 ze 14, bez spolehlivého filtru z ES dat.
+- Závěr: edge založené na kalendáři a známých tocích stárnou. Každý systém potřebuje průběžný monitoring a kill kritérium.
