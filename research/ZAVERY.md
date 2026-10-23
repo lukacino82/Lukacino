@@ -126,6 +126,6 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Mřížka z grafu: červené levely ×1,38944 (2908 · 4041 · 5615 · 7801), cyklus dělený na čtvrtiny. Test na 1min ES převedeném na cash 2018–2026, proti 200 náhodně posunutým mřížkám.
 - Jemné intradenní levely (rozestup 34–270 bodů, 21 000 doteků): žádný efekt.
 - Velké levely z grafu: odraz o 0,5 rozestupu 59,6 % vs 51,2 % (p 0,01). Červené 65 %, poloviny 63 %, platí v obou obdobích. Fade 0,5/0,5 dává +0,21 R.
-- Je to ale jen 89 doteků a efekt chybí při 0,25 a 1 rozestupu. Ze 160 konfigurací 8 s p < 0,05, což odpovídá náhodě.
+- Je to ale jen 89 doteků a efekt chybí při 0,25 a 1 rozestupu. Počet významných konfigurací (8 z 80 na hladině 10 %) odpovídá náhodě.
 - Dokončování cyklů je stejné jako u náhodných mřížek, je to drift.
 - Nejzajímavější náznak zatím, ale neprokázaný. Rozhodne test na historii 2000–2018 (export z MT4).

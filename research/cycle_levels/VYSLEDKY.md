@@ -56,7 +56,7 @@ Výsledky jsou v `out/`.
 | 1/4 a 3/4 | 44 | 55 % | 51 % | 0,26 |
 
 ### Všechny konfigurace dohromady
-Ze 160 konfigurací (5 hustot × 32 TP/SL) má p < 0,05 osm. To přesně odpovídá náhodě (8 z 160).
+Fade a breakout jsou zrcadla, nezávislých kombinací je tedy 80 (5 hustot × 16 TP/SL). Z nich je 8 na hladině 10 %, což přesně odpovídá náhodě.
 - Breakout varianty jsou na m = 4 spíš horší než nulový model.
 - Na jemných mřížkách je všechno v šumu.
 
@@ -72,7 +72,7 @@ Test: cena dosáhne 3/4, vrátí se na 1/2 – dokončí cyklus?
 - **Prokázané to není:**
   1. Jen 89 doteků (62 nezávislých) za 8 let.
   2. Efekt je jen u jedné vzdálenosti (0,5). Při 0,25 a 1 rozestupu zmizí.
-  3. Celkově 8 z 160 konfigurací p < 0,05, což je hladina náhody.
+  3. Celkový počet významných konfigurací (8 z 80 na hladině 10 %) odpovídá náhodě.
   4. Mřížka byla nakreslená až po pohledu na graf; ukotvení mohlo být zvolené podle historických otoček.
 - **Dokončování cyklů** se od náhody neliší.
 - **Další krok:** test na delší historii, která je pro tuto mřížku mimo vzorek. Stačí export US500Cash D1/H1 z MT4 (od roku 2000) a případně stejné indikátory na jiných trzích. Pokud efekt na 2000–2018 vydrží, má smysl z toho stavět systém (fade na červených a polovičních levelech, TP/SL podle levelů).
