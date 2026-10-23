@@ -1,0 +1,2 @@
+rows,sessions,targets_atr,cost,selection
+6439575,4589,"0.10,0.15,0.20,0.25,0.33,0.50,0.75",0.5,DISC + adjacent SL plateau
