@@ -1,0 +1,44 @@
+name: ChatGPT ES2008 Conditional Edge Factory
+on:
+  push:
+    branches: [chatgpt-es2008-research]
+permissions:
+  contents: write
+jobs:
+  conditional:
+    if: contains(github.event.head_commit.message, 'Run ChatGPT conditional edge factory')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt-es2008-research
+          fetch-depth: 0
+      - name: Extract ES2008
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full
+          mkdir -p extracted
+          7z x ES2008.zip -oextracted -y
+      - name: Install
+        run: python -m pip install --quiet pandas numpy
+      - name: Run
+        env:
+          ES2008_PATH: extracted/ES2008.txt
+        run: python research/conditional_edge_factory/analysis.py
+      - name: Commit outputs
+        run: |
+          git config user.name "ChatGPT Research"
+          git config user.email "actions@users.noreply.github.com"
+          git add research/conditional_edge_factory/out
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "ES2008 conditional edge factory results"
+            git push origin HEAD:chatgpt-es2008-research
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: es2008-conditional-edge-results
+          path: research/conditional_edge_factory/out/**
+          retention-days: 7
