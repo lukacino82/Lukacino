@@ -31,8 +31,8 @@ def load_raw(path: Path):
         raise FileNotFoundError(path)
     first = path.open("r", errors="ignore").readline()
     sep = "\t" if "\t" in first and first.count("\t") > first.count(",") else ","
-    hdr = [x.strip().strip("<>") for x in first.rstrip("\n\r").split(sep)]
-    nh = [norm(x) for x in hdr]
+    raw_hdr = [x.strip() for x in first.rstrip("\n\r").split(sep)]
+    nh = [norm(x.strip("<>")) for x in raw_hdr]
     aliases = {
         "date": {"date"}, "time": {"time"},
         "open": {"open"}, "high": {"high"}, "low": {"low"},
