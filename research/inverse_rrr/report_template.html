@@ -1,0 +1,302 @@
+<title>ES Obrácené RRR</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#f4f5f2; --surface:#fcfcfb; --ink:#14181a; --ink2:#4d5559; --muted:#7a8286; --rule:#d8dcd6; --grid:#e6e8e3;
+  --accent:#1c5cab;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --bh:#8d9296;
+  --good:#1a7f3c; --good-bg:#e3f2e7; --warn:#a26a00; --warn-bg:#fbf0d6; --bad:#b93a39; --bad-bg:#f8e3e2;
+  --pos:#256abf; --neg:#c8423f; --mid:#f0efec;
+  --band:rgba(28,92,171,.05);
+  --shadow:0 1px 0 rgba(20,24,26,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+    --accent:#6da7ec;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+    --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+    --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#121415; --surface:#1a1c1d; --ink:#eef0ee; --ink2:#b9bfbf; --muted:#8a9192; --rule:#33383a; --grid:#262a2c;
+  --accent:#6da7ec;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --bh:#8a9192;
+  --good:#5cc27f; --good-bg:#17301f; --warn:#e0a93a; --warn-bg:#352a12; --bad:#ec7a79; --bad-bg:#3a1b1b;
+  --pos:#5598e7; --neg:#e66767; --mid:#383835; --band:rgba(109,167,236,.07);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1120px;margin:0 auto;padding-block:40px 80px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:700;letter-spacing:-.01em}
+h2{font-size:26px;font-weight:600;margin-bottom:6px}
+h3{font-size:18px;font-weight:600}
+p{margin:0;max-width:68ch}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.eyebrow{font:500 12px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:14px;padding-bottom:28px;border-bottom:1px solid var(--rule)}
+.lede{font-size:18px;color:var(--ink2);max-width:72ch}
+section{padding-block:40px 8px;display:grid;gap:18px}
+section>*,.grid2>*,.grid3>*,.panel>*{min-width:0}
+.sub{color:var(--ink2);max-width:72ch}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:26px}
+.kpi{background:var(--surface);padding:16px 18px;display:grid;gap:4px}
+.kpi b{font:600 28px/1.1 "IBM Plex Sans Condensed",sans-serif}
+.kpi span{color:var(--ink2);font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--rule);padding:18px;box-shadow:var(--shadow)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2);margin-bottom:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--rule);padding:8px 10px;font-size:12px;line-height:1.45;
+  box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:150px;z-index:5;color:var(--ink)}
+.tip .d{color:var(--muted);font-family:"IBM Plex Mono",monospace;margin-bottom:2px}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.tip .row i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.axis text{fill:var(--muted);font:11px "IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font:500 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td:first-child,th:first-child{text-align:left}
+td.name{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+td.name small{display:block;font-family:"IBM Plex Sans",sans-serif;color:var(--muted);white-space:normal;min-width:260px;max-width:340px}
+.neg{color:var(--neg)} .posv{color:var(--pos)}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;letter-spacing:.03em}
+.pill.go{background:var(--good-bg);color:var(--good)} .pill.watch{background:var(--warn-bg);color:var(--warn)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.gates{display:inline-flex;gap:3px}
+.gates span{width:10px;height:10px;border-radius:2px;background:var(--grid);border:1px solid var(--rule)}
+.gates span.on{background:var(--good);border-color:var(--good)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--rule);background:var(--surface);color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px;display:grid;gap:10px;align-content:start}
+.card .head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card dl{display:grid;grid-template-columns:1fr auto;gap:4px 14px;margin:0;font-size:13px}
+.card dt{color:var(--muted)} .card dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace}
+.why{font-size:14px;color:var(--ink2)}
+.why li{margin-bottom:4px}
+ul{margin:0;padding-left:20px}
+.heat td{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:7px 6px;border:2px solid var(--surface)}
+.heat th{text-align:center}
+.heat td.rowh{text-align:left;color:var(--muted);background:var(--surface)}
+.callout{border-left:3px solid var(--accent);padding:12px 16px;background:var(--surface);max-width:none}
+.callout p{max-width:80ch}
+.steps{counter-reset:s;display:grid;gap:12px;padding:0;list-style:none}
+.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 15px/28px "IBM Plex Mono",monospace;width:28px;height:28px;text-align:center;border:1px solid var(--rule);border-radius:50%;color:var(--accent)}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+@media (max-width:560px){ .kpi b{font-size:24px} .panel{padding:12px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style>
+.heat td{min-width:52px}
+.seg{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.verdict td:first-child{white-space:normal;min-width:240px}
+.rules li{margin-bottom:6px}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">ES 1min · květen 2008 – září 2026 · 204 601 vstupů · 798 784 kombinací pravidel</div>
+  <h1>Obrácené RRR a hodiny na ES</h1>
+  <p class="lede">Nejdřív pravidla, pak data. Každých 30 minut od 18:00 do 15:30 ET otevřeme long i short, prohneme 8 hodnot TP × 14 hodnot SL (od 1:1 po 1:37), pět vstupních podmínek (pohyb předchozí hodiny, gap, býčí trh) a dva horizonty (do close RTH a 5 dní). Výběr se dělá jen na letech 2008–17, roky 2018–21 a 2022–26 slouží jako zkouška. Náklad 0,5 b. na obchod.</p>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<section>
+  <div class="eyebrow">Hlavní odpověď</div>
+  <h2>Obrácené RRR edge nevytvoří, jen ji přebalí</h2>
+  <div class="callout"><p>U náhodného vstupu se win rate drží přesně na hodnotě náhodné procházky SL/(TP+SL). TP 10 se SL 100 vyhraje v 91 % případů, ale 9 % ztrát po 100 bodech sebere všechno. Očekávaná hodnota je proto stejná jako u 1:1: drift minus náklad. Poctivý výběr nejlepších long kombinací s obráceným RRR na letech 2008–17 v OOS 2022–26 selhal: kladnou edge mělo jen 10 % z top 20, méně než při náhodném výběru (44 %). V klidném býčím vzorku nepřišla žádná černá labuť, v roce 2022 ano.</p></div>
+  <div class="grid3" id="findCards"></div>
+</section>
+
+<section>
+  <div class="eyebrow">Matematika TP × SL</div>
+  <h2>Náhodný long v 09:30, drženo nejdéle do close</h2>
+  <p class="sub">Barva je průměr bodů na obchod po nákladech. Čísla v buňce jsou win rate a pod ním rozdíl proti náhodné procházce. Obchody, které nedojdou na TP ani SL, se zavřou na close RTH.</p>
+  <div class="seg filters" id="heatPer"></div>
+  <div class="tablewrap"><table class="heat" id="tHeat"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Poctivý výběr</div>
+  <h2>Co se vybralo na 2008–17 a jak to dopadlo potom</h2>
+  <p class="sub">Každá kombinace dostala do vzorku jednu plnou ztrátu SL navíc („černá labuť“), takže 100% win rate už nemá nekonečné t. Seřazeno podle t na 2008–17, minimálně 100 obchodů. Edge = výsledek pravidla minus náhodný vstup ve stejném čase se stejným TP/SL.</p>
+  <div class="tablewrap"><table id="tSel"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Hodiny</div>
+  <h2>Kdy je největší šance vzít +15 bodů do close</h2>
+  <p class="sub">Pravděpodobnost, že long otevřený v daném čase dosáhne +TP (plná čára) nebo −TP (čárkovaně) do 16:00 ET. Obě čáry leží téměř na sobě: hodina sama o sobě směr nedává, dává jen čas, který zbývá do close.</p>
+  <div class="seg filters" id="hourTp"></div>
+  <div class="panel"><div class="legend" id="hourLeg"></div><div class="chart" id="cHour"></div></div>
+  <div class="grid2">
+    <div class="card"><h3>Rozhoduje volatilita roku, ne hodina</h3><p class="why">P(+15 b. do close) podle roku. V roce 2017 při ATR 14 b. dosáhl vstup v 09:30 na +15 jen v 7 % dní, v roce 2022 při ATR 80 v 71 %. Pevný cíl v bodech proto znamená každý rok jinou strategii. TP a SL se musí odvozovat z ATR.</p><div class="tablewrap"><table id="tYear15"></table></div></div>
+    <div class="card"><h3>Typická korekce před ziskem +15</h3><p class="why">U obchodů, které nakonec došly na +15, jsme změřili, jak hluboko šly předtím proti nám. Ve 25 % případů to bylo 10–12 b. a víc, v 10 % 20–25 b. Stop 4 b. zabije 58 % budoucích vítězů.</p><div class="tablewrap"><table id="tMae"></table></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Pevně zadaní kandidáti</div>
+  <h2>Deset pravidel, 1 obchod denně, body na 1 ES</h2>
+  <p class="sub">Horizont do close, takže se obchody nepřekrývají. „Let nad B&amp;H“ znamená roky, kdy pravidlo vydělalo víc bodů než držení 1 ES celý rok.</p>
+  <div class="tablewrap"><table class="verdict" id="tCand"></table></div>
+  <div class="panel"><div class="legend" id="eqLeg"></div><div class="chart" id="cEq"></div></div>
+  <div class="tablewrap"><table id="tYearly"></table></div>
+  <div class="tablewrap"><table id="tDow"></table></div>
+</section>
+
+<section>
+  <div class="eyebrow">Co přežilo</div>
+  <h2>Dva signály, které stojí za paper trading</h2>
+  <p class="sub">Oba testované na okolí parametrů (práh pohybu, čas, TP, SL). Skutečný efekt má tvar plató: většina sousedů funguje. Náhoda vypadá jako jeden osamělý bod.</p>
+  <div class="grid2" id="pickCards"></div>
+  <div class="panel"><div class="legend" id="pkLeg"></div><div class="chart" id="cPick"></div></div>
+  <div class="grid2">
+    <div class="card"><h3>Plató B: long 09:00 po poklesu 08:00–09:00</h3><p class="why">Průměr bodů na obchod v OOS 2022–26 podle prahu poklesu a TP/SL. Funguje jen čas 09:00 (pokles kolem dat v 8:30). V 08:00, 08:30 a 09:30 ne.</p><div class="tablewrap"><table class="heat" id="tPlB"></table></div></div>
+    <div class="card"><h3>Plató A: short 10:00 po propadu první hodiny</h3><p class="why">Průměr bodů v OOS podle prahu (v jednotkách ATR/50) a TP=SL. Zrcadlový long po růstu funguje v OOS podobně. Jde tedy o intradenní momentum po otevření, ne o speciální short efekt.</p><div class="tablewrap"><table class="heat" id="tPlA"></table></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Pravidla pro další práci</div>
+  <h2>Co si z toho vzít do obchodování</h2>
+  <ol class="steps rules">
+    <li><div><b>Win rate neposuzuj samotný.</b> Porovnej ho s SL/(TP+SL). U 1:10 je 91 % náhoda, ne dovednost.</div></li>
+    <li><div><b>Obrácené RRR obchoduj jen s ověřenou podmínkou</b> a počítej s ní jako s prodejem opce. Plyne malý stálý příjem, ale jednou za rok či dva přijde ztráta 10–25 výher. Velikost nastav podle té ztráty, ne podle win rate.</div></li>
+    <li><div><b>TP a SL v ATR, ne v bodech.</b> 15 bodů je v roce 2017 celý den, v roce 2025 pětina dne.</div></li>
+    <li><div><b>SL pod typickou korekcí nedávej.</b> Pro cíl 0,3 ATR se cena v 25 % vítězných obchodů nejdřív vrátí o 0,2 ATR.</div></li>
+    <li><div><b>Hodina sama edge nemá.</b> Rozhoduje situace: pokles kolem dat v 8:30, směr první hodiny RTH. Kalendář bez situace je šum.</div></li>
+    <li><div><b>Kandidáty A a B paper tradovat 3–6 měsíců</b> se zamčenými pravidly. Kill kritérium: 3 měsíce pod nulou nebo 2 SL v řadě nad historické maximum.</div></li>
+  </ol>
+</section>
+<footer>Kód: <span class="mono">research/inverse_rrr/</span> (irr_engine.py, build.py, irr_analysis.py, summarize.py, playbook.py, deep.py). Tabulky v <span class="mono">out/*.csv</span>. Back-adjusted data: body před rokem 2010 nejsou srovnatelné s dneškem.</footer>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+<script>
+const D=/*__DATA__*/null;
+const $=s=>document.querySelector(s);
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const f=(x,d=1)=>x==null||isNaN(x)?'–':(+x).toLocaleString('cs-CZ',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pc=(x,d=0)=>x==null||isNaN(x)?'–':f(100*x,d)+' %';
+const sg=(x,d=2)=>x==null||isNaN(x)?'–':`<span class="${x<0?'neg':'posv'}">${x>0?'+':''}${f(x,d)}</span>`;
+const PER={DISC:'2008–17',VAL:'2018–21',OOS:'2022–26',ALL:'vše'};
+
+// KPIs
+const c0=D.cand;
+$('#kpis').innerHTML=[
+ ['91 %','win rate náhodného longu 10/100 b. Náhodná procházka dává 91 %.'],
+ [pc(D.selection.find(r=>r.skupina.startsWith('long eod, obrácené')&&r.top==20).podil_OOS_edge_kladne),'top 20 long obrácených RRR (vybraných na 2008–17) s kladnou edge v OOS'],
+ ['7 → 71 %','P(+15 b. do close) při vstupu 09:30 v roce 2017 a 2022'],
+ ['2','signály, které přežily test okolí parametrů (A, B)']
+].map(([b,s])=>`<div class="kpi"><b class="num">${b}</b><span>${s}</span></div>`).join('');
+
+$('#findCards').innerHTML=[
+ ['Náhodný vstup','Long v 09:30 s 1:1, 1:3 i 1:10 ztrácí 0,27–0,44 b. na obchod ve všech obdobích. Ziskových bylo 4–8 z 19 let. Zisky z driftu zůstávají v držení přes noc, ne v intradenním obchodu.'],
+ ['Short po poklesu','Jediná skupina, kde výběr z 2008–17 obstál i později: short v 10:00 po propadu první hodiny. Top 20: OOS +2,3 b./obchod, edge kladná ve 100 %. Zrcadlový long po růstu funguje taky, jde tedy o momentum.'],
+ ['Long 09:00 po datech','Pokles ≥10 b. mezi 08:00 a 09:00, malý TP (6–12 b.), široký SL (30–50 b.). Kladný ve všech 17 letech se signálem, OOS t 2,2. V 89 % okolních nastavení OOS kladný. Fungoval jen čas 09:00.']
+].map(([h,t])=>`<div class="card"><h3>${h}</h3><p class="why">${t}</p></div>`).join('');
+
+// heatmap
+function color(v,max){const a=Math.min(1,Math.abs(v)/max);return v>=0?`color-mix(in srgb, var(--pos) ${Math.round(a*70)}%, var(--surface))`:`color-mix(in srgb, var(--neg) ${Math.round(a*70)}%, var(--surface))`}
+function filt(el,opts,cur,cb){el.innerHTML=opts.map(([k,l])=>`<button type="button" data-k="${k}" aria-pressed="${k==cur}">${l}</button>`).join('');
+ el.onclick=e=>{const b=e.target.closest('button');if(!b)return;el.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x==b));cb(b.dataset.k)};cb(cur)}
+filt($('#heatPer'),Object.entries(PER),'ALL',p=>{
+ const R=D.heat930.filter(r=>r.per==p);const tps=[...new Set(R.map(r=>r.tp))],sls=[...new Set(R.map(r=>r.sl))];
+ let h='<tr><th>TP \\ SL</th>'+sls.map(s=>`<th>${s}</th>`).join('')+'</tr>';
+ for(const t of tps){h+=`<tr><td class="rowh">TP ${t}</td>`+sls.map(s=>{const r=R.find(x=>x.tp==t&&x.sl==s);
+  return `<td style="background:${color(r.exp,3)}" title="exp ${f(r.exp,2)} b., win ${pc(r.win)}, SL zasaženo ${pc(r.sl_hit)}">${f(r.exp,1)}<br><small>${pc(r.win)} · ${r.win_minus_rw>0?'+':''}${f(100*r.win_minus_rw,0)}</small></td>`}).join('')+'</tr>'}
+ $('#tHeat').innerHTML=h});
+
+// selection
+$('#tSel').innerHTML='<tr><th>Skupina</th><th>Top</th><th>Kombinací</th><th>t 2008–17</th><th>b./obchod 08–17</th><th>18–21</th><th>22–26</th><th>Edge 22–26</th><th>OOS edge > 0</th></tr>'+
+ D.selection.filter(r=>r.top==20).map(r=>`<tr><td>${r.skupina}</td><td>${r.top}</td><td class="num">${r.kombinaci.toLocaleString('cs-CZ')}</td><td class="num">${f(r.t_DISC_median,1)}</td><td class="num">${sg(r.exp_DISC)}</td><td class="num">${sg(r.exp_VAL)}</td><td class="num">${sg(r.exp_OOS)}</td><td class="num">${sg(r.edge_OOS)}</td><td class="num">${pc(r.podil_OOS_edge_kladne)}</td></tr>`).join('')+
+ `<tr><td colspan="8" class="small">Náhodný výběr kombinace: kladná OOS edge u ${pc(D.ref.vse_OOS_edge_kladne)} všech, u ${pc(D.ref.long_eod_OOS_edge_kladne)} long eod.</td><td></td></tr>`;
+
+// generic line chart
+function line(el,series,o){
+ const W=el.clientWidth||900,H=o.h||300,m={l:52,r:14,t:10,b:28};
+ const xs=series.flatMap(s=>s.x),ys=series.flatMap(s=>s.y).filter(v=>v!=null);
+ const x0=Math.min(...xs),x1=Math.max(...xs);let y0=o.y0??Math.min(0,...ys),y1=o.y1??Math.max(...ys);
+ const X=v=>m.l+(v-x0)/(x1-x0)*(W-m.l-m.r),Y=v=>H-m.b-(v-y0)/(y1-y0)*(H-m.t-m.b);
+ const ticks=o.yt||(()=>{const st=Math.pow(10,Math.floor(Math.log10((y1-y0)/4)));const s=[1,2,5,10].map(k=>k*st).find(k=>(y1-y0)/k<=6);const a=[];for(let v=Math.ceil(y0/s)*s;v<=y1+1e-9;v+=s)a.push(v);return a})();
+ let g=`<svg viewBox="0 0 ${W} ${H}" role="img"><g class="axis">`;
+ ticks.forEach(v=>g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css('--grid')}"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${o.yf?o.yf(v):v}</text>`);
+ (o.xt||[]).forEach(([v,l])=>g+=`<text x="${X(v)}" y="${H-8}" text-anchor="middle">${l}</text>`);
+ g+='</g>';
+ series.forEach(s=>{let p='';s.x.forEach((x,i)=>{if(s.y[i]==null)return;p+=(p?'L':'M')+X(x).toFixed(1)+','+Y(s.y[i]).toFixed(1)});
+  g+=`<path d="${p}" fill="none" stroke="${css(s.c)}" stroke-width="${s.w||2}" ${s.dash?'stroke-dasharray="5 4"':''}/>`});
+ el.innerHTML=g+'</svg>';
+ if(o.tip){el.onmousemove=e=>{const r=el.getBoundingClientRect();const xv=x0+(e.clientX-r.left)/r.width*W>m.l?x0+((e.clientX-r.left)/r.width*W-m.l)/(W-m.l-m.r)*(x1-x0):x0;
+   const t=$('#tip');t.hidden=false;t.innerHTML=o.tip(xv);t.style.left=Math.min(e.clientX-r.left+14,r.width-180)+'px';t.style.top=(e.clientY-r.top+el.offsetTop+10)+'px';el.parentNode.appendChild(t)};
+  el.onmouseleave=()=>$('#tip').hidden=true}
+}
+const legend=(el,s)=>el.innerHTML=s.map(x=>`<span><i style="background:var(${x.c})"></i>${x.n}</span>`).join('');
+
+// hour chart
+const lab=m=>{const t=18*60+m;return String(Math.floor(t/60)%24).padStart(2,'0')+':'+String(t%60).padStart(2,'0')};
+const pcol={DISC:'--s1',VAL:'--s4',OOS:'--s2'};
+filt($('#hourTp'),[10,12,15,20,25].map(t=>[t,'TP '+t+' b.']),15,tp=>{
+ const S=[];for(const p of ['DISC','VAL','OOS']){const R=D.hour.filter(r=>r.tp==tp&&r.per==p).sort((a,b)=>a.slot-b.slot);
+  S.push({c:pcol[p],x:R.map(r=>r.slot),y:R.map(r=>r.p_up),n:PER[p]+' +'+tp});S.push({c:pcol[p],x:R.map(r=>r.slot),y:R.map(r=>r.p_dn),dash:1,w:1.3})}
+ legend($('#hourLeg'),S.filter(s=>s.n).map(s=>({c:s.c,n:s.n})).concat([{c:'--muted',n:'čárkovaně: −'+tp+' do close'}]));
+ line($('#cHour'),S,{y0:0,y1:1,yt:[0,.2,.4,.6,.8,1],yf:v=>Math.round(v*100)+' %',xt:[0,180,360,540,720,900,930,1080,1260].map(v=>[v,v==930?'':lab(v)]),
+  tip:xv=>{const sl=Math.round(xv/30)*30;const rr=['DISC','VAL','OOS'].map(p=>D.hour.find(r=>r.tp==tp&&r.per==p&&r.slot==sl)).filter(Boolean);
+   return `<div class="d">${lab(sl)} · TP ${tp}</div>`+rr.map(r=>`<div class="row"><span>${PER[r.per]}</span><span>+${pc(r.p_up)} / −${pc(r.p_dn)}</span></div>`).join('')}})});
+
+// year table
+const ycols=['03:00','09:30','12:00','14:00'];
+$('#tYear15').innerHTML='<tr><th>Rok</th><th>ATR</th>'+ycols.map(c=>`<th>${c}</th>`).join('')+'</tr>'+D.p15_year.map(r=>`<tr><td>${r.year}</td><td class="num">${f(r.ATR_median,0)}</td>${ycols.map(c=>`<td class="num">${pc(r[c])}</td>`).join('')}</tr>`).join('');
+$('#tMae').innerHTML='<tr><th>Vstup</th><th>Vítězů</th><th>Medián</th><th>75 %</th><th>90 %</th><th>Korekce ≥10 b.</th></tr>'+D.mae.filter(r=>['18:00','22:00','02:00','04:00','08:00','09:00','09:30','10:30','12:00','14:00'].includes(r.time)).map(r=>`<tr><td>${r.time}</td><td class="num">${r.n}</td><td class="num">${f(r.q50,0)}</td><td class="num">${f(r.q75,0)}</td><td class="num">${f(r.q90,0)}</td><td class="num">${pc(r.p_mae_ge_10)}</td></tr>`).join('');
+
+// candidates
+const pill=r=>{const ok=r.exp_DISC>0&&r.exp_VAL>0&&r.exp_OOS>0;const tiny=r.n_DISC<50;return ok&&!tiny?'<span class="pill go">drží</span>':ok?'<span class="pill watch">malý vzorek</span>':'<span class="pill no">neprošlo</span>'};
+$('#tCand').innerHTML='<tr><th>Pravidlo (long, do close)</th><th></th><th>Obchodů</th><th>Win</th><th>Náhoda</th><th>SL zásahů</th><th>b./obchod</th><th>08–17</th><th>18–21</th><th>22–26</th><th>Suma b.</th><th>Max DD</th><th>Let ziskových</th><th>Let nad B&amp;H</th></tr>'+
+ c0.map(r=>`<tr><td>${r.strategie}</td><td>${pill(r)}</td><td class="num">${r.obchodu}</td><td class="num">${pc(r.win)}</td><td class="num">${pc(r.rw_win)}</td><td class="num">${r.sl_zasahu}</td><td class="num">${sg(r.exp)}</td><td class="num">${sg(r.exp_DISC)}<br><small class="small">n ${r.n_DISC}</small></td><td class="num">${sg(r.exp_VAL)}</td><td class="num">${sg(r.exp_OOS)}</td><td class="num">${sg(r.suma,0)}</td><td class="num neg">${f(r.max_dd,0)}</td><td class="num">${r.let_ziskovych}/${r.let}</td><td class="num">${r.let_nad_bh}/${r.let}</td></tr>`).join('');
+const ts=d=>new Date(d).getTime();
+const yrT=[];for(let y=2009;y<=2026;y+=3)yrT.push([ts(y+'-01-01'),y]);
+const eqc=['--s1','--s2','--s3','--s4','--bh','--accent','--good','--warn','--bad','--ink2'];
+const names=Object.keys(D.curves);
+const eqS=names.map((n,i)=>({n,c:eqc[i],x:D.curves[n].d.map(ts),y:D.curves[n].e,w:1.6}));
+legend($('#eqLeg'),eqS);
+line($('#cEq'),eqS,{h:340,xt:yrT,yf:v=>v.toLocaleString('cs-CZ')});
+const yk=names;
+$('#tYearly').innerHTML='<tr><th>Rok</th><th>B&amp;H body</th>'+yk.map((k,i)=>`<th title="${k}">#${i+1}</th>`).join('')+'</tr>'+D.yearly.map(r=>`<tr><td>${r.year}</td><td class="num">${sg(r['B&H body'],0)}</td>${yk.map(k=>`<td class="num">${r[k]==null?'–':sg(r[k],0)}</td>`).join('')}</tr>`).join('')+
+ `<tr><td colspan="${yk.length+2}" class="small">Sloupce #1–#10 odpovídají pořadí pravidel v tabulce výše. Body na 1 ES za rok.</td></tr>`;
+$('#tDow').innerHTML='<tr><th>Den</th>'+yk.map((k,i)=>`<th title="${k}">#${i+1}</th>`).join('')+'</tr>'+D.dow.map(r=>`<tr><td>${r.index}</td>${yk.map(k=>`<td class="num">${sg(r[k],1)}</td>`).join('')}</tr>`).join('')+
+ `<tr><td colspan="${yk.length+1}" class="small">Průměr bodů na obchod podle dne v týdnu. Rozdíly mezi dny jsou u vzorků pod 100 obchodů šum.</td></tr>`;
+
+// picks
+const pk=Object.entries(D.picks);
+$('#pickCards').innerHTML=pk.map(([n,p],i)=>{const tot=p.yearly.reduce((a,r)=>a+r.body,0),pos=p.yearly.filter(r=>r.body>0).length;
+ return `<div class="card"><div class="head"><h3>${n}</h3><span class="pill ${i?'watch':'go'}">${i?'kandidát':'kandidát'}</span></div>
+ <dl><dt>Obchodů / SL zásahů</dt><dd>${p.n} / ${p.sl_hits}</dd><dt>Win rate</dt><dd>${pc(p.win)}</dd>
+ <dt>b./obchod 2008–17 · 18–21 · 22–26</dt><dd>${f(p.exp.DISC,2)} · ${f(p.exp.VAL,2)} · ${f(p.exp.OOS,2)}</dd>
+ <dt>Počet obchodů v obdobích</dt><dd>${p.nper.DISC} · ${p.nper.VAL} · ${p.nper.OOS}</dd>
+ <dt>Celkem bodů / max DD</dt><dd>${f(tot,0)} / ${f(p.maxdd,0)}</dd><dt>Ziskových let</dt><dd>${pos}/${p.yearly.length}</dd></dl>
+ <p class="why">${i?'Pokles hlavně kolem makro dat v 8:30. Před rokem 2020 jen 1–10 signálů ročně, protože 10 bodů bylo při ceně 1000–2000 hodně. Vstup v 09:00, TP 6 b. se většinou vybere ještě před otevřením RTH. Opatrně: pravidlo bylo nalezeno na celém vzorku.':'Vybráno jen na 2008–17, další roky jsou čistý test. Nejsilnější v medvědích a volatilních letech (2008 +110, 2022 +223 b.), takže doplňuje long držení. Slabé v klidných letech 2012, 2013, 2017 a 2023.'}</p></div>`}).join('');
+const pS=pk.map(([n,p],i)=>({n,c:i?'--s3':'--s2',x:p.d.map(ts),y:p.e,w:2}));
+legend($('#pkLeg'),pS);line($('#cPick'),pS,{h:280,xt:yrT});
+
+// plateau tables
+function plat(el,R,rowk,colk,rowl,coll){const rows=[...new Set(R.map(r=>r[rowk]))],cols=[...new Set(R.map(r=>colk(r)))];
+ let h=`<tr><th>${rowl}</th>`+cols.map(c=>`<th>${c}</th>`).join('')+'</tr>';
+ rows.forEach(rv=>{h+=`<tr><td class="rowh">${rv}</td>`+cols.map(c=>{const r=R.find(x=>x[rowk]==rv&&colk(x)==c);return r?`<td style="background:${color(r.exp_OOS,5)}" title="n OOS ${r.n_OOS}, t ${f(r.t_OOS,1)}">${f(r.exp_OOS,1)}</td>`:'<td>–</td>'}).join('')+'</tr>'});
+ el.innerHTML=h}
+plat($('#tPlB'),D.plateauB.filter(r=>r.time=='09:00'),'x',r=>r.tp+'/'+r.sl,'pokles ≥ b.');
+plat($('#tPlA'),D.plateauA.filter(r=>r.time=='10:00'&&r.tp==r.sl),'x',r=>r.tp+'/'+r.sl,'propad ≥ ATR/50');
+let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{document.querySelectorAll('.filters button[aria-pressed="true"]').forEach(b=>b.click());line($('#cEq'),eqS,{h:340,xt:yrT,yf:v=>v.toLocaleString('cs-CZ')});line($('#cPick'),pS,{h:280,xt:yrT})},200)});
+</script>

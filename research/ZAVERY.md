@@ -80,3 +80,11 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Okno 02–03 nebylo na 1 ES nikdy obchodovatelné (0,21 b. hrubě < 0,5 b. náklad).
 - Zpětné nákupy po vrcholu vol: směr kladný, jen 12 signálů. Falešná zotavení: 7 ze 14, bez spolehlivého filtru z ES dat.
 - Závěr: edge založené na kalendáři a známých tocích stárnou. Každý systém potřebuje průběžný monitoring a kill kritérium.
+
+## 10. Obrácené RRR a hodiny (`inverse_rrr/`, Drive 08)
+- 798 784 kombinací (čas × TP × SL × podmínka × horizont). Win rate náhodného vstupu = SL/(TP+SL) přesně jako náhodná procházka. 1:10 vyhraje 91 %, ale expectancy je stále drift − náklad (−0,3 až −0,4 b. intradenně v 09:30).
+- Long obrácené RRR vybrané na 2008–17 v OOS 2022–26 selhaly (−1,5 b./obchod, kladná edge jen u 10 %). Klidný vzorek bez černé labutě vybírá právě pravidla, která pak zničí rok jako 2022.
+- Hodina sama směr nedává. P(+15 b. do close) závisí hlavně na ATR roku (09:30: 7 % v roce 2017, 71 % v roce 2022), proto TP/SL v ATR. Před ziskem +15 jde cena v 25 % případů 12 b. proti.
+- Přežily dva kandidáti na paper trading:
+  - (A) intradenní momentum po první hodině RTH: short v 10:00 po propadu ≥ 0,3 ATR, OOS +5,3 b., vybráno jen na 2008–17;
+  - (B) long v 09:00 po poklesu ≥ 10 b. kolem dat v 8:30, TP 6 / SL 30, 17/17 ziskových let, OOS t 2,2, jen čas 09:00.
