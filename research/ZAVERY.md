@@ -129,3 +129,12 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Je to ale jen 89 doteků a efekt chybí při 0,25 a 1 rozestupu. Počet významných konfigurací (8 z 80 na hladině 10 %) odpovídá náhodě.
 - Dokončování cyklů je stejné jako u náhodných mřížek, je to drift.
 - Nejzajímavější náznak zatím, ale neprokázaný. Rozhodne test na historii 2000–2018 (export z MT4).
+
+## 15. BCL – logika čar Forex Rebel a test 2008–2026 (`bcl/`, Drive 25)
+- Logika z excelu kurzu: cyklus = 0,7 × cena / páka, tedy pohyb k margin callu plně zapákovaného účtu.
+  - Konstanta 70 → 2,8028 % (D1), 700 → 28,028 % (W1).
+  - Červené čáry geometrické, mezičáry lineární čtvrtiny. Sedí na grafy ±0,03 bodu.
+- Data: US500Cash ekvivalent. 2018–26 přesně podle brokera; 2008–18 rekonstrukce z ES2008 (±2–4 body).
+- D1 čáry: 16 000 doteků, 392 variant TP/SL, celkové p = 0,65, výsledek jako u náhodných čar.
+- W1 čáry: 196 doteků, celkové p = 0,49. Předem stanovená hypotéza (odraz 1/8 cyklu na červených a polovičních) mimo vzorek 2008–18 neprošla (R +0,01, p 0,61). Samotné červené kladné v obou obdobích, ale n = 26, p 0,14.
+- Čáry samy edge nemají. Neplatí ani to, že „čáry určují TP/SL“.
