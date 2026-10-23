@@ -43,9 +43,9 @@ def load_raw(path: Path):
     for k, aset in aliases.items():
         for i,n in enumerate(nh):
             if n in aset:
-                col[k] = hdr[i]; break
+                col[k] = raw_hdr[i]; break
     if not all(k in col for k in ("date","time","open","high","low","close")):
-        raise RuntimeError(f"Unrecognized header: {hdr}")
+        raise RuntimeError(f"Unrecognized header: {raw_hdr}")
     use = [col[k] for k in ("date","time","open","high","low","close")]
     if "volume" in col: use.append(col["volume"])
     pieces=[]
