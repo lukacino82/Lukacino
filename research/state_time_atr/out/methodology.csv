@@ -1,0 +1,2 @@
+rows,sessions,min_disc_n,cost,selection
+6439575,4589,150,0.5,scale-invariant state x fixed time x ATR payoff; DISC + adjacent SL plateau
