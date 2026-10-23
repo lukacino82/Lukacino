@@ -49,7 +49,7 @@ Doporučené pořadí pro naše účely (trading, poker, systematické strategie
 | Joel Watson | *Strategy: An Introduction to Game Theory* | 2002 (3. vyd. 2013) | Důraz na smlouvy a vyjednávání. | [Google Books](https://www.google.com/search?tbm=bks&q=Strategy%3A+An+Introduction+to+Game+Theory+Joel+Watson) |
 | Ken Binmore | *Playing for Real* | 2007 | Učebnice s filozofickým přesahem. | [Google Books](https://www.google.com/search?tbm=bks&q=Playing+for+Real+Ken+Binmore) |
 | Anna Karlin, Yuval Peres | *Game Theory, Alive* | 2017 | Matematicky čistá, kombinatorické hry, aukce (AMS). | [Google Books](https://www.google.com/search?tbm=bks&q=Game+Theory%2C+Alive+Anna+Karlin) |
-| Thomas S. Ferguson | *A Course in Game Theory* | 2020 | Matematický úvod (UCLA, World Scientific). | [zdarma](https://www.economics.utoronto.ca/osborne/cgt) |
+| Thomas S. Ferguson | *A Course in Game Theory* | 2020 | Matematický úvod (UCLA, World Scientific). | [Google Books](https://www.google.com/search?tbm=bks&q=A+Course+in+Game+Theory+Thomas+S.+Ferguson) |
 | Guillermo Owen | *Game Theory* | 1968 (4. vyd. 2013) | Klasická matematická učebnice. | [Google Books](https://www.google.com/search?tbm=bks&q=Game+Theory+Guillermo+Owen) |
 
 ## 4. Pokročilé / magisterské a PhD
