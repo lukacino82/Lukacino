@@ -103,3 +103,11 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Výběr rodin pravidel: v letech 2018–26 také ≈ 0. Korelace s ES 0,03, v letech 2022–26 jako doplněk B&H zvedá Sharpe 0,52 → 0,78.
 - Jediný konzistentní vzor je momentum v medvědím režimu: ES pod MA200, pohyb ±1 ATR od otevření session → obchod ve směru do close. +0,06 ATR/obchod, kladné ve všech obdobích, ale t 1,45 a jen ~10 obchodů ročně.
 - Obrácené RRR samo edge nevytvoří. Automatizace s ATR je triviální, problém je v očekávané hodnotě, ne v technice.
+
+## 12. Livermore: pivotal points, pyramidování, Market Key (`livermore/`, Drive 21)
+- 42 variant pravidel (průraz 20/55/252D, pyramida 20/20/20/40 %, stop 2 ATR nebo 10 %, časový stop, výstup na reakci, Market Key 2–4 ATR).
+- Žádná varianta nemá prokazatelnou alfu: nejlepší t = 1,58, Sharpe 0,80 vs B&H 0,74, CAGR 7,6 vs 9,4 %.
+- Pyramidování na ES ve všech dvojicích zhoršilo výsledek proti plné pozici.
+- Náhodné vstupy se stejnými výstupy byly lepší než průraz 55D (p = 0,92).
+- Profil odpovídá Livermorovi (payoff 2–11×, top 10 % obchodů = 35–56 % zisku), ale B&H to nepřekoná.
+- Trendový princip má smysl jen jako trend-following přes mnoho trhů. Na samotném ES jsou z Livermora užitečné jen pravidla řízení rizika.
