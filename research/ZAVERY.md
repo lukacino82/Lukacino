@@ -111,3 +111,4 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Náhodné vstupy se stejnými výstupy byly lepší než průraz 55D (p = 0,92).
 - Profil odpovídá Livermorovi (payoff 2–11×, top 10 % obchodů = 35–56 % zisku), ale B&H to nepřekoná.
 - Trendový princip má smysl jen jako trend-following přes mnoho trhů. Na samotném ES jsou z Livermora užitečné jen pravidla řízení rizika.
+- One-day reversal (býčí i medvědí, s objemem i bez, po 20denním extrému): excess proti driftu je nevýznamný ve všech 35 kombinacích (|t| ≤ 1,5). Systém long na 5 dní: CAGR 0,5 % vs B&H 9,4 %.

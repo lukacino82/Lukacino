@@ -53,3 +53,33 @@ Zdroje: *How to Trade in Stocks* (1940), *Reminiscences of a Stock Operator* (19
 ## Co z Livermora použít
 - **Řízení rizika a psychologie platí:** malá sonda, nepřidávat do ztráty, rychle řezat ztráty, nechat zisky běžet.
 - **Trendovou logiku nepoužívat na samotném ES.** Má smysl až v portfoliu více trhů (NQ, ZN, CL, GC, měny), tedy trend-following CTA, k čemuž potřebujeme další data.
+
+---
+
+# One-Day Reversal (Livermore) na ES 2009–2026
+
+Kód: `livermore/reversal.py`, výsledky `out/reversal_events.csv` a `out/reversal_system_years.csv`.
+
+## Pravidla (podle zadání)
+| Signál | Podmínky | Obchod |
+|---|---|---|
+| Býčí reverz | close > předchozí close, low < předchozí low, objem > předchozí objem | long |
+| Medvědí reverz (jak je v zadání) | close < předchozí close, low > předchozí low, objem > předchozí objem | short |
+| Medvědí reverz (klasický key reversal) | close < předchozí close, high > předchozí high, objem > předchozí objem | short |
+
+**Varianty:** bez podmínky objemu; „po pohybu“ (býčí: low je 20denní minimum, medvědí: high je 20denní maximum).
+
+**Měření:** vstup na open dalšího dne, výstup na close po 1, 2, 3, 5 a 10 dnech, v ATR, po nákladech.
+
+**Excess:** výsledek minus průměrný den téhož roku na stejné straně, tím se odečte drift ES. Bere se jen nepřekrývající se signály.
+
+## Výsledky
+- Excess je nevýznamný ve všech 35 kombinacích (7 signálů × 5 horizontů). Nejvyšší |t| je 1,5, laťka je 2. Znaménko se mezi obdobími 2009–17, 2018–21 a 2022–26 mění.
+- **Býčí reverz na 10 dní** vypadá dobře (+0,41 ATR, t 2,6, win 63 %). Je to ale jen drift ES: excess proti průměrnému dni je +0,05 ATR (t 0,3).
+- **Medvědí reverzy** prodělávají (t −2 až −3), protože shortují proti driftu. Proti průměrnému dni jsou kolem nuly.
+- **Varianta „po pohybu“** (reverz z 20denního low/high): málo signálů (37–149) a bez konzistence.
+- **Podmínka vyššího objemu** nic nepřidává. Varianty bez objemu dopadly stejně nebo lépe.
+- **Jednoduchý systém** (býčí reverz, long na 5 dní, stop 1 ATR): CAGR 0,5 %, t 0,53, v trhu 18 % dní. B&H 9,4 %.
+
+## Závěr
+One-day reversal na ES samostatně edge nemá. Podobně jako jiné svíčkové vzory (Edge Factory: 3 157 hypotéz) se chová jako šum. Livermore ho používal jako upozornění v kontextu (vyvrcholení dlouhého trendu u konkrétní akcie), ne jako mechanický vstup.
