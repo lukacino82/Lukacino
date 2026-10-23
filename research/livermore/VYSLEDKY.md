@@ -83,3 +83,81 @@ Kód: `livermore/reversal.py`, výsledky `out/reversal_events.csv` a `out/revers
 
 ## Závěr
 One-day reversal na ES samostatně edge nemá. Podobně jako jiné svíčkové vzory (Edge Factory: 3 157 hypotéz) se chová jako šum. Livermore ho používal jako upozornění v kontextu (vyvrcholení dlouhého trendu u konkrétní akcie), ne jako mechanický vstup.
+
+---
+
+# Hypotézy ze tří knih ve složce na Drive (H1–H13)
+
+Kód: `livermore/books_hypotheses.py`. Výsledky: `out/books_events.csv`, `out/books_round_numbers.csv`, `out/books_systems.csv` a `out/books_market_key_pct.csv`.
+
+**Zdroje** (všechny přečteny celé):
+- Livermore, *How to Trade in Stocks* (1940, HTTIS). Tabulky Market Key v příloze jsou nečitelné skeny, pravidla jsou ale popsaná v textu kapitol 8–9.
+- Wyckoff, *Jesse Livermore's Methods of Trading in Stocks* (WY).
+- Trade Navigator, manuál *Livermore Lines* (LL).
+
+**Převod na ES:** Livermorovy bodové prahy platí pro akcie za 30–100 USD (6 bodů ≈ 6–20 %). Na ES jsou přepočtené na ATR(14) předchozího dne (≈ 1,3 % ceny), u Market Key na %.
+
+**Měření:**
+- Vstup na open dalšího dne, výstup na close po 5/10/20/60 dnech, výsledek v ATR.
+- Excess = výsledek minus průměrný den téhož roku. Tím se odečte drift ES.
+- Bere se jen nepřekrývající se signály. Období 2009–17, 2018–21 a 2022–26.
+
+## Výsledky event study (long po signálu)
+Excess je v ATR. Pro exit signály H5 a H10 Livermore předpovídá záporný excess.
+
+| Hypotéza (zdroj) | n (h=20) | excess 5 d | excess 20 d | excess 60 d | max \|t\| | Verdikt |
+|---|---|---|---|---|---|---|
+| H1 průraz z konsolidace, 20D rozsah ≤ 3 ATR (HTTIS 1, 5) | 13 | −0,22 | −0,88 | −0,51 | 0,9 | ne – na ES vzácné a záporné |
+| H2 první close nad novou stovkou / padesátkou (HTTIS 5) | 28–69 | −0,17 % | −0,29 % | – | **−2,4** | **opak** – po kulatém čísle horší než průměrný den |
+| H3 nové maximum po normální reakci ≥ 1,5 ATR (HTTIS 1) | 103 | +0,03 | −0,24 | −0,65 | 0,8 | ne |
+| H4 kontrola: nákup v reakci (Livermore: „nikdy“) | 100 | +0,12 | +0,14 | −0,15 | 0,7 | stejné nebo lepší než H3 |
+| H5 abnormální reakce po růstu → slabost (HTTIS 2) | 11 | +0,92 | −0,72 | +0,08 | 1,4 | ne – n malé, znaménko opačné |
+| H6 reakce na nízkém objemu (HTTIS 2) | 102 | −0,11 | −0,21 | −0,51 | 1,4 | ne – vysoký objem dopadl lépe |
+| H7 test pivotu, dvojité dno (HTTIS 5) | 17 | −0,17 | +0,24 | +0,85 | 0,9 | ne |
+| H8 po poklesu 20D ≥ 3 ATR (HTTIS: „nekupuj kvůli poklesu“) | 51 | 0,00 | +0,97 | +1,20 | 1,7 | **opak** – nákup po poklesu vydělává |
+| H8 po poklesu 20D ≥ 5 ATR | 18 | +0,78 | +0,65 | +2,29 | 2,1 | opak, ale n = 16–25 |
+| H9 panika: pokles ≥ 5 ATR a objem ≥ 1,5× (WY 8) | 7 | +1,27 | +0,28 | +2,65 | 1,6 | směr ano, n = 7 |
+| H10 překoupenost ≥ 20D průměr + 2,5 ATR → prodat (WY 4) | 78 | −0,01 | 0,00 | −0,31 | 0,6 | ne |
+| Referenční: nové 20D maximum bez podmínek | 144 | −0,09 | −0,16 | −0,38 | 1,1 | – |
+
+**H8 a H9 nejsou nový objev.** Potvrzují dříve zjištěný mean-reversion profil ES: po velkém poklesu je nadprůměrný výnos. H8 ≥ 5 ATR na 60 dní má t 2,1, ale:
+- je to jedna z 52 kombinací;
+- n je 16;
+- v letech 2018–21 je záporná (−1,4 ATR).
+Livermorovo pravidlo „nekupuj kvůli poklesu“ na indexu ES neplatí. Pro jednotlivé akcie platit může (riziko bankrotu, žádný index rebalancing).
+
+## H11 – Wyckoffovy výstupy (stop 1 ATR, cíl 3 ATR, max 10 dní) vs držení 20 dní
+| Vstup | Výstup | Obchodů | R/obchod v ATR | t | Win | V trhu | CAGR | Alfa t |
+|---|---|---|---|---|---|---|---|---|
+| H3 nové max. po reakci | Wyckoff | 138 | +0,36 | 2,9 | 51 % | 22 % | 1,4 % | 0,79 |
+| H3 nové max. po reakci | 20 dní | 100 | +0,77 | 2,5 | 73 % | 43 % | 3,0 % | 0,50 |
+| H7 test pivotu | 20 dní | 17 | +1,04 | 1,8 | 71 % | 7 % | 1,2 % | −0,09 |
+| Referenční 20D max. | Wyckoff | 236 | +0,29 | 2,9 | 47 % | 34 % | 2,6 % | 0,91 |
+| Referenční 20D max. | 20 dní | 135 | +0,92 | 3,4 | 73 % | 58 % | 5,7 % | 1,28 |
+| Buy & hold ES | – | – | – | – | – | 100 % | 9,4 % | – |
+
+**Kladné R/obchod je jen drift ES.** Alfa proti ES je u všech nevýznamná (t ≤ 1,3). Livermorovské filtry (H3, H7) dopadly hůř než prosté nové 20denní maximum. Wyckoffův poměr cíl/stop 3:1 s časovým stopem drží zisk na obchod nízko a nepřidává nic.
+
+## H13 – Market Key s procentními prahy (long/flat)
+| Práh | V trhu | CAGR | Sharpe | maxDD | Alfa t |
+|---|---|---|---|---|---|
+| 5 % | 88 % | 6,5 % | 0,61 | −26 % | −0,10 |
+| 8 % | 79 % | 5,0 % | 0,49 | −36 % | −1,13 |
+| 10 % | 97 % | 9,0 % | 0,73 | −28 % | 0,23 |
+| Buy & hold | 100 % | 9,4 % | 0,74 | −28 % | – |
+
+Varianta 10 % je prakticky buy & hold. Nižší prahy jsou horší.
+
+## Netestovatelné na samotném ES
+- **Livermore Lines a Livermore** (trh → odvětví → tandem dvou akcií, HTTIS 3–4), **Key Price** ze dvou akcií téhož odvětví (HTTIS 8) a **vůdci odvětví** (WY): vyžadují desítky akcií a odvětvové indexy.
+- **Divergence žito/pšenice** (HTTIS 3): vyžaduje dvě příbuzné komodity.
+- **H12 pyramidování** (HTTIS 6, WY 6): otestováno dříve v `livermore.py`. Na ES je ve všech dvojicích horší než plná pozice.
+- **Psychologická pravidla** (trpělivost, nepůjčovat, nebrat tipy, vybírat zisk z účtu): neměřitelná.
+
+## Závěr
+Ze 13 hypotéz žádná nemá na ES prokazatelnou edge ve směru, jak ji knihy formulují.
+- Jediné dva významnější výsledky jdou **proti** Livermorovi:
+  - kulatá čísla jsou spíš horší (t −2,4);
+  - nákup po velkém poklesu vydělává (t až 2,1), což je známý mean-reversion indexu.
+- Livermorovy principy byly psané pro jednotlivé akcie 20.–30. let, s jejich trendovostí, manipulací a rozdílnými vůdci odvětví. Na indexovém futures s driftem a mean-reversion po poklesech nefungují jako mechanický systém.
+- Použitelné zůstává řízení rizika: rychlé omezení ztrát, nepřikupovat do ztráty, velikost pozice.

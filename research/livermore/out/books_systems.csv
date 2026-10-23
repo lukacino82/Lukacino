@@ -1,0 +1,12 @@
+vstup,vystup,obchodu,R_obchod,t,win,v_trhu,CAGR,Sharpe,alfa_rok,alfa_t
+H1 průraz z konsolidace (20D rozsah ≤ 3 ATR),"Wyckoff: stop 1 ATR, cíl 3 ATR, max 10 dní",13.0,0.3943,0.9217,0.5385,0.0201,0.0014,0.1266,0.0007,0.2693
+H1 průraz z konsolidace (20D rozsah ≤ 3 ATR),držet 20 dní,13.0,0.3755,0.4055,0.6923,0.0562,0.0004,0.0296,-0.0018,-0.3736
+"H3 nové maximum po normální reakci (≥1,5 ATR)","Wyckoff: stop 1 ATR, cíl 3 ATR, max 10 dní",138.0,0.3638,2.9074,0.5145,0.2163,0.014,0.3863,0.0067,0.7852
+"H3 nové maximum po normální reakci (≥1,5 ATR)",držet 20 dní,100.0,0.767,2.5216,0.73,0.4291,0.0303,0.4767,0.0069,0.5036
+H7 test pivotu (dvojité dno),"Wyckoff: stop 1 ATR, cíl 3 ATR, max 10 dní",18.0,0.0006,0.0016,0.3333,0.0205,-0.004,-0.1441,-0.0072,-1.2193
+H7 test pivotu (dvojité dno),držet 20 dní,17.0,1.0386,1.8435,0.7059,0.0735,0.0118,0.2608,-0.001,-0.0905
+"H9 panika: pokles ≥ 5 ATR + objem ≥ 1,5×","Wyckoff: stop 1 ATR, cíl 3 ATR, max 10 dní",9.0,0.5278,0.8137,0.4444,0.0058,-0.0026,-0.1093,-0.0047,-0.938
+"H9 panika: pokles ≥ 5 ATR + objem ≥ 1,5×",držet 20 dní,7.0,-0.4456,-0.2851,0.4286,0.0303,-0.0045,-0.0405,-0.0241,-1.8422
+Referenční: nové 20D maximum (bez podmínek),"Wyckoff: stop 1 ATR, cíl 3 ATR, max 10 dní",236.0,0.2911,2.9393,0.4661,0.3378,0.0264,0.4998,0.0108,0.9098
+Referenční: nové 20D maximum (bez podmínek),držet 20 dní,135.0,0.9161,3.4211,0.7333,0.5804,0.0567,0.699,0.0197,1.2746
+Buy & hold ES,–,,,,,1.0,0.0941,0.7427,,

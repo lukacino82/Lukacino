@@ -112,3 +112,12 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Profil odpovídá Livermorovi (payoff 2–11×, top 10 % obchodů = 35–56 % zisku), ale B&H to nepřekoná.
 - Trendový princip má smysl jen jako trend-following přes mnoho trhů. Na samotném ES jsou z Livermora užitečné jen pravidla řízení rizika.
 - One-day reversal (býčí i medvědí, s objemem i bez, po 20denním extrému): excess proti driftu je nevýznamný ve všech 35 kombinacích (|t| ≤ 1,5). Systém long na 5 dní: CAGR 0,5 % vs B&H 9,4 %.
+
+## 13. Hypotézy ze tří knih: HTTIS 1940, Wyckoff o Livermorovi, Livermore Lines (`livermore/books_hypotheses.py`, Drive 23)
+- Otestováno 13 hypotéz: pivotal points, kulatá čísla, nákup nového maxima po normální reakci, varovná abnormální reakce, objem v reakcích, test pivotu, „nekupuj kvůli poklesu“, nákup v panice, prodej při překoupenosti, Wyckoffovy výstupy 3:1 s časovým stopem a Market Key v %.
+- Ve směru, jak to tvrdí knihy, nemá žádná prokazatelnou edge (|t| ≤ 1,7).
+- Dva výsledky jdou proti knihám:
+  - první close nad novou stovkou má po 10 dnech excess −0,52 % (t −2,4);
+  - nákup po poklesu 20D ≥ 5 ATR má po 60 dnech excess +2,3 ATR (t 2,1, n 16, v letech 2018–21 záporný). To je známý mean-reversion ES, ne nový signál.
+- Systémy s Wyckoffovými výstupy mají alfu t ≤ 1,3, kladné R/obchod je jen drift. Market Key 5–10 % nepřekonal B&H.
+- Top-down výběr trh/odvětví/tandem (Livermore Lines, Key Price) potřebuje mnoho akcií, na ES netestovatelné.
