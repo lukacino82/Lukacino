@@ -30,27 +30,27 @@ def load_raw(path: Path):
     if not path.exists():
         raise FileNotFoundError(path)
     first = path.open("r", errors="ignore").readline()
-    sep = "\t" if "\t" in first and first.count("\t") > first.count(",") else ","
-    raw_hdr = [x.strip() for x in first.rstrip("\n\r").split(sep)]
-    nh = [norm(x.strip("<>")) for x in raw_hdr]
-    aliases = {
-        "date": {"date"}, "time": {"time"},
-        "open": {"open"}, "high": {"high"}, "low": {"low"},
-        "close": {"last","close"},
-        "volume": {"volume","vol"},
-    }
-    col = {}
-    for k, aset in aliases.items():
-        for i,n in enumerate(nh):
-            if n in aset:
-                col[k] = raw_hdr[i]; break
-    if not all(k in col for k in ("date","time","open","high","low","close")):
-        raise RuntimeError(f"Unrecognized header: {raw_hdr}")
-    use = [col[k] for k in ("date","time","open","high","low","close")]
-    if "volume" in col: use.append(col["volume"])
+    sep = "\\t" if "\\t" in first and first.count("\\t") > first.count(",") else ","
+    wanted = {"date","time","open","high","low","last","close","volume","vol"}
     pieces=[]
-    for ch in pd.read_csv(path, sep=sep, usecols=use, chunksize=700_000, low_memory=False):
-        ch = ch.rename(columns={v:k for k,v in col.items() if v in ch.columns})
+    for ch in pd.read_csv(
+        path, sep=sep, chunksize=700_000, low_memory=False, skipinitialspace=True,
+        usecols=lambda c: norm(str(c).strip().strip("<>")) in wanted
+    ):
+        ren={}
+        for c in ch.columns:
+            n=norm(str(c).strip().strip("<>"))
+            if n=="date": ren[c]="date"
+            elif n=="time": ren[c]="time"
+            elif n=="open": ren[c]="open"
+            elif n=="high": ren[c]="high"
+            elif n=="low": ren[c]="low"
+            elif n in ("last","close"): ren[c]="close"
+            elif n in ("volume","vol"): ren[c]="volume"
+        ch=ch.rename(columns=ren)
+        req={"date","time","open","high","low","close"}
+        if not req.issubset(ch.columns):
+            raise RuntimeError(f"Missing required columns after normalization: {list(ch.columns)}")
         dt = pd.to_datetime(ch["date"].astype(str).str.strip()+" "+ch["time"].astype(str).str.strip(), errors="coerce")
         z = pd.DataFrame({
             "ts":dt,
