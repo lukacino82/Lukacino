@@ -17,5 +17,5 @@ Po dokončení každého nového výzkumu nebo důležité diskuze ulož výstup
 - Uživatel dal trvalý souhlas ukládat do této složky vše (výzkumy, rešerše, diskuze) bez ptaní.
 - Konektor neumí měnit obsah existujících dokumentů, proto každý nový výstup = nový číslovaný dokument
   (pokračovat řadou 09, 10, …) s odkazem na interaktivní report a PDF na GitHubu.
-- Existující dokumenty: 00 Přehled, 01 Závěry, 02 Diskuze, 03–04 Regime Atlas tabulky, 05 MASTER mapa, 06 Knihovna zdrojů, 07 Mechanismy, 08 Obrácené RRR (+ tabulky 08a–c).
+- Existující dokumenty: 00 Přehled, 01 Závěry, 02 Diskuze, 03–04 Regime Atlas tabulky, 05 MASTER mapa, 06 Knihovna zdrojů, 07 Mechanismy, 08 Obrácené RRR (+ tabulky 08a–k).
 - PDF a HTML reporty zůstávají na GitHubu (jsou příliš velké pro nahrání přes konektor), na Drive dávej odkazy.
