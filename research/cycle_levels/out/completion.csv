@@ -1,0 +1,7 @@
+cyklus,smer,n,p_dokonceni,null_p,null_p05,null_p95,p_hodnota,median_dni
+celý cyklus (červená→červená),dolů (1/4 → zpět 1/2 → dokončí?),3,0.0,0.1916,0.0,0.4286,1.0,
+celý cyklus (červená→červená),nahoru (3/4 → zpět 1/2 → dokončí?),3,1.0,0.7813,0.5,1.0,0.37,39.0
+1/4 cyklu,dolů (1/4 → zpět 1/2 → dokončí?),21,0.6667,0.6396,0.5882,0.6957,0.27,6.0
+1/4 cyklu,nahoru (3/4 → zpět 1/2 → dokončí?),22,0.9545,0.9402,0.9045,0.9583,0.165,18.0
+1/16 cyklu,dolů (1/4 → zpět 1/2 → dokončí?),31,0.7742,0.8045,0.72,0.8684,0.77,5.0
+1/16 cyklu,nahoru (3/4 → zpět 1/2 → dokončí?),77,0.987,0.9817,0.9697,0.9881,0.24,4.0

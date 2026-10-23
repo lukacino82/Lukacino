@@ -121,3 +121,11 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
   - nákup po poklesu 20D ≥ 5 ATR má po 60 dnech excess +2,3 ATR (t 2,1, n 16, v letech 2018–21 záporný). To je známý mean-reversion ES, ne nový signál.
 - Systémy s Wyckoffovými výstupy mají alfu t ≤ 1,3, kladné R/obchod je jen drift. Market Key 5–10 % nepřekonal B&H.
 - Top-down výběr trh/odvětví/tandem (Livermore Lines, Key Price) potřebuje mnoho akcií, na ES netestovatelné.
+
+## 14. Cyklové levely (BCL) jako obchodní úrovně (`cycle_levels/`, Drive 24)
+- Mřížka z grafu: červené levely ×1,38944 (2908 · 4041 · 5615 · 7801), cyklus dělený na čtvrtiny. Test na 1min ES převedeném na cash 2018–2026, proti 200 náhodně posunutým mřížkám.
+- Jemné intradenní levely (rozestup 34–270 bodů, 21 000 doteků): žádný efekt.
+- Velké levely z grafu: odraz o 0,5 rozestupu 59,6 % vs 51,2 % (p 0,01). Červené 65 %, poloviny 63 %, platí v obou obdobích. Fade 0,5/0,5 dává +0,21 R.
+- Je to ale jen 89 doteků a efekt chybí při 0,25 a 1 rozestupu. Ze 160 konfigurací 8 s p < 0,05, což odpovídá náhodě.
+- Dokončování cyklů je stejné jako u náhodných mřížek, je to drift.
+- Nejzajímavější náznak zatím, ale neprokázaný. Rozhodne test na historii 2000–2018 (export z MT4).
