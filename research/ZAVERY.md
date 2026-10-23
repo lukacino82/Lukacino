@@ -88,3 +88,18 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Přežily dva kandidáti na paper trading:
   - (A) intradenní momentum po první hodině RTH: short v 10:00 po propadu ≥ 0,3 ATR, OOS +5,3 b., vybráno jen na 2008–17;
   - (B) long v 09:00 po poklesu ≥ 10 b. kolem dat v 8:30, TP 6 / SL 30, 17/17 ziskových let, OOS t 2,2, jen čas 09:00.
+
+## 11. Obrácené RRR s TP/SL v ATR – 116 signálů, 2,2 mil. kombinací (`inverse_rrr/VYSLEDKY_ATR.md`, Drive 17)
+- Výběr na 2008–17, test 2018–26. Top 20 long obrácených RRR mělo v OOS kladnou edge jen ve 25 % (náhodný výběr 55 %).
+- Automatické portfolio 25 signálů (riziko 0,5 %/obchod):
+
+  | Období | CAGR | Sharpe |
+  |---|---|---|
+  | 2009–17 | 15–30 % ročně | 1,44 |
+  | 2018–26 | 1,3 % | 0,19 |
+  | B&H 2018–26 | 9,5 % | 0,65 |
+
+  Zásahy SL se po roce 2018 ztrojnásobily.
+- Výběr rodin pravidel: v letech 2018–26 také ≈ 0. Korelace s ES 0,03, v letech 2022–26 jako doplněk B&H zvedá Sharpe 0,52 → 0,78.
+- Jediný konzistentní vzor je momentum v medvědím režimu: ES pod MA200, pohyb ±1 ATR od otevření session → obchod ve směru do close. +0,06 ATR/obchod, kladné ve všech obdobích, ale t 1,45 a jen ~10 obchodů ročně.
+- Obrácené RRR samo edge nevytvoří. Automatizace s ATR je triviální, problém je v očekávané hodnotě, ne v technice.
