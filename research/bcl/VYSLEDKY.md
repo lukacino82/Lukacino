@@ -88,3 +88,12 @@ Zatím to není důkaz. Dá se to jen sledovat dál.
    - předem stanovená hypotéza mimo vzorek neprošla.
 4. **Na čem je to postavené:** předpoklad, že se na úrovních margin callů retailu „zastaví“ cena, je teoreticky zajímavý. Retail CFD účty ale index nehýbou a úrovně závisí na libovolném ukotvení. Data efekt nepotvrzují.
 5. **Přikupování** z obchodního plánu edge nevytvoří, pokud ji nemá vstup. Viz Livermore: pyramidování bylo horší než plná pozice.
+
+## 6. Dodatek: H1 čáry (konstanta 7)
+- **Parametry:** cyklus 0,28028 % ceny (box 214 = 21,4 bodu při 7630). Červená kotva 7786,72 z uživatelova H1 grafu; sedí ±0,03 bodu.
+- **Data:** jen 2018-07 – 2026-09 (data brokera, 1min). Rekonstrukce 2008–18 není dost přesná pro čáry po 2–5 bodech.
+- **Rozsah:** 337 011 doteků, 392 variant TP/SL, horizont 10 dní, náklad 0,6 bodu.
+- **Celkově:** nejlepší excess +0,016 R proti +0,015 R u nejlepší varianty náhodných mřížek, celkové p = 0,39. Na p < 0,05 je 12 variant ze 392, méně, než dá náhoda (≈ 20).
+- **Fade se stejným TP i SL:** excess od −0,008 do +0,006 R na všech typech čar.
+- **Náklady:** absolutní výsledky jsou záporné (−0,04 až −0,66 R), protože 0,6 bodu je u TP 1/8 cyklu (2,7 bodu) velká část. Před náklady by to byla nula.
+- **Závěr:** H1 čáry se chovají přesně jako náhodné čáry. Po nákladech jsou ztrátové.

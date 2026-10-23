@@ -137,4 +137,5 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Data: US500Cash ekvivalent. 2018–26 přesně podle brokera; 2008–18 rekonstrukce z ES2008 (±2–4 body).
 - D1 čáry: 16 000 doteků, 392 variant TP/SL, celkové p = 0,65, výsledek jako u náhodných čar.
 - W1 čáry: 196 doteků, celkové p = 0,49. Předem stanovená hypotéza (odraz 1/8 cyklu na červených a polovičních) mimo vzorek 2008–18 neprošla (R +0,01, p 0,61). Samotné červené kladné v obou obdobích, ale n = 26, p 0,14.
-- Čáry samy edge nemají. Neplatí ani to, že „čáry určují TP/SL“.
+- H1 čáry (konstanta 7, 2018–26, 337 000 doteků): celkové p = 0,39, excess ±0,01 R, po nákladech ztráta.
+- Čáry samy edge nemají na žádném timeframe (7 / 70 / 700). Neplatí ani to, že „čáry určují TP/SL“.
