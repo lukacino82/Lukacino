@@ -1,0 +1,2 @@
+source,rows_1m,sessions,first,last,rth,cost_points_roundtrip,intrabar_rule,selection,benchmark
+extracted/ES2008.txt,6439575,4589,2008-05-04 18:00:00,2026-09-25 16:59:00,09:30-16:00 ET,0.5,same 1m TP+SL => SL first,DISC 2008-2016 only; VAL 2017-2021 and TEST 2022-2026 fixed,"continuous back-adjusted ES points, not S&P total return"
