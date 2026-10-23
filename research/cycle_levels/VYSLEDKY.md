@@ -32,7 +32,7 @@ Výsledky jsou v `out/`.
 | Mřížka | Doteků | Odraz | Nulový model | p |
 |---|---|---|---|---|
 | m = 4 (graf, rozestup 200–550 b.) | 89 | **59,6 %** | 51,2 % | **0,010** |
-| m = 8 | 274 | ≈ nula | – | n.s. |
+| m = 8 | 341 | 50,4 % | 49,8 % | 0,35 |
 | m = 16 | 1 280 | 49,2 % | 49,3 % | 0,54 |
 | m = 32 | 4 516 | 49,6 % | 49,3 % | 0,32 |
 | m = 64 (≈ 34 b.) | 15 190 | 49,4 % | 49,1 % | 0,18 |
@@ -67,7 +67,7 @@ Test: cena dosáhne 3/4, vrátí se na 1/2 – dokončí cyklus?
 - Dolů je výsledek stejný jako u nulového modelu.
 
 ## Závěr
-- **Intradenní levely** (jemné dělení, desítky bodů) nemají žádný efekt: 21 000 doteků, odraz = náhoda.
+- **Intradenní levely** (jemné dělení m = 8–64, rozestup 34–270 bodů) nemají žádný efekt: 21 300 doteků, odraz = náhoda.
 - **Velké levely z grafu** (červené a poloviny) ukazují zatím nejzajímavější náznak z celého výzkumu: odraz 60–65 % proti 51 % u náhodných mřížek (p 0,01–0,04), v obou obdobích. Fade s TP i SL 0,5 rozestupu (≈ 200–270 bodů) +0,21 R na obchod.
 - **Prokázané to není:**
   1. Jen 89 doteků (62 nezávislých) za 8 let.
