@@ -16,7 +16,7 @@ Po dokončení každého nového výzkumu nebo důležité diskuze ulož výstup
   - Hlavní tabulky výsledků jako Google Sheets: CSV přes `text/csv`, čísla s desetinnou tečkou, zaokrouhlená.
 - Uživatel dal trvalý souhlas ukládat do této složky vše (výzkumy, rešerše, diskuze) bez ptaní.
 - Konektor neumí měnit obsah existujících dokumentů, proto každý nový výstup = nový číslovaný dokument
-  (pokračovat řadou 20, 21, …) s odkazem na interaktivní report a PDF na GitHubu.
-- Existující dokumenty: 00 Přehled, 01 Závěry, 02 Diskuze, 03–04 Regime Atlas tabulky, 05 MASTER mapa, 06 Knihovna zdrojů, 07 Mechanismy (+ 07a), 08 Obrácené RRR (+ tabulky 08a–k), 09 Závěry (aktualizace), 10–15 kompletní texty reportů (Alpha Audit + 10a, Alpha Map, Edge Factory, Loss Streak Lab, Swing Alpha, Regime Atlas), 16 Rozcestník (nahrazuje 00), 17 Obrácené RRR v ATR (+ 17a–c), 18 Knihy o teorii her, 19 Nejlépe hodnocené knihy.
+  (pokračovat řadou 21, 22, …) s odkazem na interaktivní report a PDF na GitHubu.
+- Existující dokumenty: 00 Přehled, 01 Závěry, 02 Diskuze, 03–04 Regime Atlas tabulky, 05 MASTER mapa, 06 Knihovna zdrojů, 07 Mechanismy (+ 07a), 08 Obrácené RRR (+ tabulky 08a–k), 09 Závěry (aktualizace), 10–15 kompletní texty reportů (Alpha Audit + 10a, Alpha Map, Edge Factory, Loss Streak Lab, Swing Alpha, Regime Atlas), 16 Rozcestník (nahrazuje 00), 17 Obrácené RRR v ATR (+ 17a–c), 18 Knihy o teorii her, 19 Nejlépe hodnocené knihy, 20 Teorie her pro ML trading.
 - Při větší změně závěrů nahraj novou verzi závěrů a nový rozcestník (konektor neumí editovat).
 - PDF a HTML reporty zůstávají na GitHubu (jsou příliš velké pro nahrání přes konektor), na Drive dávej odkazy.
