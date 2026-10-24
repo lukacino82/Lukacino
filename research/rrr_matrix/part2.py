@@ -153,11 +153,14 @@ def part_F(d, O, H, L, C, gday_pos, days, g):
         ent, sd, ext, dl = ent[ok], sd[ok], ext[ok], dl[ok]
         end = last_bar[gday_pos[ent]]
         price = O[ent]
-        # null: random RTH minute of the same day (5 draws), same side
+        # null: random RTH minute of the same day after the signal (5 draws), same side
         nul_e, nul_s, nul_p = [], [], []
         for k in range(len(ent)):
             cand = rth_idx_by_day.get(gday_pos[ent[k]])
-            if cand is None or len(cand) == 0:
+            if cand is None:
+                continue
+            cand = cand[cand >= ent[k]]                        # only minutes after the signal (no look-ahead)
+            if len(cand) == 0:
                 continue
             for _ in range(5):
                 j = cand[rng.integers(len(cand))]
