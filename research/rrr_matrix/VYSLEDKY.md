@@ -101,19 +101,23 @@ U 10 obchodů je číslo zaokrouhlené nahoru. Například 1:25 potřebuje 0,4 v
 **Skutečnost:** intradenní 1:10 až 1:25 mají reálnou win rate 0–3 %, tedy pod hranicí. U horizontu 20 dní se hranice dosáhne jen díky růstu indexu.
 
 ## E. Alfa proti buy & hold (výběr 2011–18, test 2019–26, riziko 1 % na obchod)
+Buy & hold je počítaný z cash řady S&P 500 (`bcl/bcl_data.py`, skript `alpha_fix.py`). Back-adjusted ES výnosy v procentech podhodnocuje, protože aditivní posun zvedá staré ceny.
 
 | Výběr | SL | RRR | Obchodů 2019–26 | R/obchod | CAGR | maxDD | Alfa/rok | t |
 |---|---|---|---|---|---|---|---|---|
-| ATR 20D long | 0,25 ATR týdne | 20 | 412 | +0,23 | 9,8 % | −45 % | +9,2 % | 1,09 |
-| ATR 5D long | 2 ATR dne | 1,5 | 471 | +0,06 | 3,6 % | −9 % | +2,1 % | 1,05 |
-| body 5D long | 25 b. | 2 | 3 145 | +0,02 | 5,4 % | −45 % | −7,0 % | −1,1 |
-| body 20D long | 6 b. | 20 | 4 712 | +0,03 | −37 % | −99,5 % | −24 % | −0,7 |
-| body intraday long | 20 b. | 1 | 9 014 | −0,005 | −10 % | −76 % | −24 % | −3,4 |
-| B&H ES | – | – | – | – | 11,3 % | – | – | – |
+| ATR 20D long | 0,25 ATR týdne | 20 | 412 | +0,23 | 9,2 % | −45 % | +8,2 % | 0,98 |
+| ATR 5D long | 2 ATR dne | 1,5 | 471 | +0,06 | 3,6 % | −9 % | +2,0 % | 0,99 |
+| body 5D long | 25 b. | 2 | 3 145 | +0,02 | 5,4 % | −45 % | −8,7 % | −1,4 |
+| body 20D long | 6 b. | 20 | 4 712 | +0,03 | −38 % | −99,5 % | −30 % | −0,8 |
+| body intraday long | 20 b. | 1 | 9 014 | −0,005 | −10 % | −76 % | −26 % | −3,5 |
+| B&H S&P 500 | – | – | – | – | 15,3 % | −34 % | – | – |
 
 **Žádná kombinace nemá alfu ≥ 3 % s t ≥ 2.**
-- Nejlepší (ATR 20D long) má alfu +9 % ročně, ale t = 1,1 a DD −45 %. To je statisticky šum.
+- Nejlepší (ATR 20D long) má alfu +8 % ročně, ale t = 1,0 a DD −45 %. To je statisticky šum.
 - Pevný malý SL s rizikem 1 % účtu na obchod znamená obrovskou páku: SL 6 b. ≈ 6× páka. Účet se zničí, i když je R/obchod kladné.
+
+## Grafy
+Interaktivní dashboard (heatmapy SL × RRR, equity křivky proti B&H, R podle hodiny, série ztrát, stop-hunty, alfa, minimální počty výher): https://claude.ai/artifact/NuYpjkNJXYXpFDTExUFJwm. Data pro něj připravuje `dash_data.py`.
 
 ## F. Stop-hunt hypotéza („algoritmy nejdřív vyberou stopy retailu“)
 - **Signál:** v RTH průraz předchozího denního low (nebo nočního low) o ≥ 1 bod a návrat close nad úroveň do 30 minut, potom long. Zrcadlově short u high.
