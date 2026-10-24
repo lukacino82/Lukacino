@@ -97,3 +97,51 @@ Zatím to není důkaz. Dá se to jen sledovat dál.
 - **Fade se stejným TP i SL:** excess od −0,008 do +0,006 R na všech typech čar.
 - **Náklady:** absolutní výsledky jsou záporné (−0,04 až −0,66 R), protože 0,6 bodu je u TP 1/8 cyklu (2,7 bodu) velká část. Před náklady by to byla nula.
 - **Závěr:** H1 čáry se chovají přesně jako náhodné čáry. Po nákladech jsou ztrátové.
+
+## 7. Dodatek po master dokumentu uživatele (24. 10. 2026): kotvení na dokončeném cyklu a kontext trendu
+Kód: `bcl_anchor.py`. Výsledky: `out/bcl_anchor_trend.csv` a `out/bcl_anchor_familywise.csv`.
+
+### Co dokument potvrdil
+- **Krok čar:** Δ = R × K / 9990 a cyklus = 4Δ. To jsou přesně naše hodnoty 0,28028 / 2,8028 / 28,028 %.
+- **H1:** naše hodnota z popisků je 0,28015 %, dokument uvádí efektivní jmenovatel 10 018. Na výsledky to vliv nemá.
+
+### Co dokument změnil
+- **Síť se přesouvá.** Nová kotva vzniká po dokončeném cyklu a reverzi. Červená 7818,52 z grafu W1 s K = 70 neleží na naší pevné síti D1.
+- **Dopad na dřívější testy:** vyvracejí jen hypotézu, že výhodu dává samotná geometrie čar (pevná síť v libovolné poloze). Nevyvracejí tvoje H5, tedy že výhoda je v kotvení na dokončeném cyklu.
+
+### Testy
+**Kontext trendu (H6):** každý dotek je označený jako „s trendem“, nebo „proti trendu“ (denní close nad/pod SMA200 k předchozímu dni):
+- fade s trendem = long odraz v rostoucím trendu nebo short v klesajícím;
+- breakout s trendem = průraz ve směru trendu.
+
+**Síť ukotvená na pivotu (H5):**
+- Kauzální zigzag na 5min close. Pivot = vrchol nebo dno po pohybu aspoň o 1 cyklus, potvrzený obratem o θ cyklu.
+- Od potvrzení platí síť s červenou čarou na ceně pivotu (R = pivot), do dalšího pivotu.
+- Nulový model: stejné časy pivotů, kotva posunutá o náhodný zlomek cyklu (100×). Tím se testuje, jestli záleží právě na kotvení.
+
+### Výsledky (2008–2026; 3 typy čar × 3 kontexty × 98 variant TP/SL)
+| Test | Pivotů | Variant (n ≥ 30) | Nejlepší excess R | Nejlepší u náhodných kotev (průměr / 95 %) | Celkové p |
+|---|---|---|---|---|---|
+| pevná W1 (K=700) + trend | – | 588 | +0,34 | +0,67 / +1,05 | 0,93 |
+| pevná D1 (K=70) + trend | – | 882 | +0,26 | +0,21 / +0,34 | 0,29 |
+| pivot K=70, potvrzení 0,5 cyklu | 1 086 | 882 | +0,14 | +0,17 / +0,28 | 0,67 |
+| pivot K=70, potvrzení 1 cyklus | 752 | 882 | +0,17 | +0,15 / +0,21 | 0,33 |
+| pivot K=700, potvrzení 0,25 cyklu | 3 | 490 | +0,40 | +0,65 / +0,97 | 0,92 |
+| pivot K=700, potvrzení 0,5 cyklu | 9 | 588 | +0,68 | +0,82 / +1,86 | 0,45 |
+
+- **Pivotová síť K = 70, fade s TP = SL (1/8 – 1 cyklus):**
+  - excess −0,016 až +0,007 R ve všech kontextech;
+  - s trendem i proti trendu stejné jako u náhodně posunutých kotev;
+  - podíl variant s p < 0,05 je 5,6 % a 6,7 %, tedy úroveň náhody.
+- **K = 700:** jen 3–9 dokončených cyklů za 18 let. Nejlepší „p = 0,000“ (breakout proti trendu, n = 67) pochází z doteků 9 sítí, tedy z pár nezávislých epizod. Celkové p je 0,45.
+
+### Závěr dodatku
+1. **Kotvení na dokončeném cyklu (H5)** s R = cena pivotu nepřidává nic proti náhodně posunuté kotvě se stejným časováním.
+2. **Rozlišení s trendem / proti trendu (H6, scénáře korekce v trendu, protitrend a obchod do trendu)** výhodu nevytváří ani u pevné, ani u pivotové sítě.
+3. **K = 700** je na S&P 500 statisticky netestovatelné, protože za 18 let jsou jen 3–9 dokončených cyklů.
+4. **Neověřené zůstávají:**
+   - jiný převod pivotu na R než R = pivot;
+   - „díry“ a „teploměr“ (chybí definice);
+   - souběh K = 7/70/700 (H3).
+
+   Bez přesné definice by každá další varianta jen zvyšovala riziko náhodného nálezu.

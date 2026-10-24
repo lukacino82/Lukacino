@@ -139,3 +139,7 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - W1 čáry: 196 doteků, celkové p = 0,49. Předem stanovená hypotéza (odraz 1/8 cyklu na červených a polovičních) mimo vzorek 2008–18 neprošla (R +0,01, p 0,61). Samotné červené kladné v obou obdobích, ale n = 26, p 0,14.
 - H1 čáry (konstanta 7, 2018–26, 337 000 doteků): celkové p = 0,39, excess ±0,01 R, po nákladech ztráta.
 - Čáry samy edge nemají na žádném timeframe (7 / 70 / 700). Neplatí ani to, že „čáry určují TP/SL“.
+- Dodatek po master dokumentu (Drive 26): vzorec Δ = R·K/9990 je shodný s naším. Síť se přesouvá po dokončeném cyklu.
+  - Otestováno kotvení na kauzálních pivotech (R = pivot, K = 70: 752–1 086 pivotů) a kontext trendu (SMA200) u pevné i pivotové sítě.
+  - Celkové p 0,29–0,93, žádná varianta nepřekonala náhodně posunuté kotvy.
+  - K = 700 má za 18 let jen 3–9 dokončených cyklů, nejde otestovat.
