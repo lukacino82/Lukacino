@@ -5,7 +5,7 @@ F  stop-hunt hypothesis ("algos first push price into retail stops, then the rea
    next bar; mirror for shorts at the prior day's high / overnight high. Variants: cumulative delta during the sweep
    > 0 (buyers absorbing) or <= 0; with / without the daily bias filter (close vs 200-day average).
    SL fixed 6..100 points x RRR 1..25, plus the structural stop (sweep extreme - 1 point). Benchmark: an entry at a
-   random RTH minute of the same day with the same SL/TP (5 draws per event).
+   random RTH minute of the same day after the signal, same SL/TP (5 draws per event).
 G  probe position: hourly entries; the real position is opened only after a probe confirmed the move
    (+q x SL in favour before -SL, stop order) or, the averaging-down variant, after a move of -q x SL (limit order);
    same SL/TP measured from the real entry. Compared with the direct entry at the hour.

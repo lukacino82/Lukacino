@@ -143,3 +143,15 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
   - Otestováno kotvení na kauzálních pivotech (R = pivot, K = 70: 752–1 086 pivotů) a kontext trendu (SMA200) u pevné i pivotové sítě.
   - Celkové p 0,29–0,93, žádná varianta nepřekonala náhodně posunuté kotvy.
   - K = 700 má za 18 let jen 3–9 dokončených cyklů, nejde otestovat.
+
+## 16. RRR matice SL 6–100 b. × RRR 1:1–1:25, časová okna, ATR, stop-hunty, sonda, ML (`rrr_matrix/`, Drive 27)
+- **Rozsah:** 93 666 hodinových vstupů na směr a horizont (intraday / 5 dní / 20 dní), 2011–2026. SL v bodech i v ATR timeframe (H1/D1/W1), náklad 0,5 b.
+- **Win rate = náhodná procházka** (SL/(SL+TP)). RRR samo edge nedává.
+  - Intraday: 1:10–1:25 skoro nikdy nedojde na TP, výsledek 0 až −0,05 R long a až −0,13 R short.
+  - 5–20 dní long kladné jen díky driftu (+0,05 až +0,2 R), short záporný.
+- **Menší timeframe = horší** (náklady, malý SL). Nízké RRR má mnohem kratší série ztrát (max 13–33) než vysoké s pevnými body (stovky až tisíce, protože TP v bodech v klidných letech nedojde).
+- **Optimalizace oken:** drží jen hodina (večerní Globex = noční drift, +0,02 R OOS). Den v týdnu a měsíc OOS nedrží (výběr měsíce −0,27 R).
+- **Alfa proti B&H 2019–26:** nejlepší ATR 20D long +9 %/rok, ale t 1,1 a DD −45 %. Žádná kombinace s alfou ≥ 3 % a t ≥ 2. Pevný malý SL s rizikem 1 % = páka, účet se zničí.
+- **Stop-hunt (PDL/ONL sweep a návrat) ± kumulativní delta ± bias:** stejné jako náhodný vstup po signálu (−0,04 až +0,05 R, t ≤ 1,6).
+- **Sondovací pozice** zhoršuje o 0,01–0,03 R. Vstup níž (průměrování) ≈ přímý vstup.
+- **ML walk-forward (LightGBM, 18 rysů):** AUC 0,6–0,8 předpovídá volatilitu, ne směr. Výběr obchodů nestabilní mezi roky. Self-learning kód je technicky proveditelný, edge ale nevytvoří.
