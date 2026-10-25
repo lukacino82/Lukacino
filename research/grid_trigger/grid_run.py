@@ -61,8 +61,11 @@ def stats(DP, DN, CNT, MO, MS, meta, days, SLpts):
 def run_points(z, alt=False, flatten=True, tag="B_grid_body"):
     days = z["days"]; d0 = int(np.searchsorted(days, np.datetime64(E.START))); nd = len(days) - d0
     nD = len(days); ok = np.ones(len(z["O"]), bool)
-    rows = []
+    parts = []
     for X in (2, 3, 4, 6, 8, 10, 15, 20, 30):
+        part = os.path.join(OUT, "parts", f"{tag}_X{X}.csv")
+        if os.path.exists(part):
+            parts.append(part); continue
         cfg = list(itertools.product((2, 4, 6, 8, 10, 15, 20, 30, 50), RRR, RULES.items(), NMAX))
         cfg = [c for c in cfg if round(c[0] * c[1] * 4) >= 1]
         n = len(cfg)
@@ -76,10 +79,12 @@ def run_points(z, alt=False, flatten=True, tag="B_grid_body"):
                                          ok, ok, rules, nm, flatten, alt, nd, d0)
         meta = [dict(X_body=X, SL_body=s, RRR=r, TP_body=round(s * r * 4) / 4, pravidlo=rn,
                      max_obchodu="neomezeno" if m == 256 else m) for s, r, (rn, _), m in cfg]
-        rows += stats(DP, DN, CNT, MO, MS, meta, days[d0:], np.array([s for s, *_ in cfg], float))
+        pd.DataFrame(stats(DP, DN, CNT, MO, MS, meta, days[d0:], np.array([s for s, *_ in cfg], float))
+                     ).round(4).to_csv(part, index=False)
+        parts.append(part)
         print(tag, "X", X, n, "cfg", round(time.time() - t), "s", flush=True)
-    R = pd.DataFrame(rows)
-    R.round(4).to_csv(os.path.join(OUT, f"{tag}.csv"), index=False)
+    R = pd.concat([pd.read_csv(p) for p in parts])
+    R.to_csv(os.path.join(OUT, f"{tag}.csv"), index=False)
     return R
 
 
@@ -92,8 +97,11 @@ def run_atr(z, which, tag):
               "atr_w": (0.01, 0.02, 0.03, 0.05, 0.08, 0.12)}[which]
     ks_set = {"atr_d": (0.03, 0.05, 0.1, 0.15, 0.25, 0.4), "atr_h": (0.25, 0.5, 1.0, 1.5, 2.5, 4.0),
               "atr_w": (0.01, 0.02, 0.04, 0.06, 0.1, 0.15)}[which]
-    rows = []
+    parts = []
     for kx in kx_set:
+        part = os.path.join(OUT, "parts", f"{tag}_k{kx}.csv")
+        if os.path.exists(part):
+            parts.append(part); continue
         cfg = list(itertools.product(ks_set, RRR, RULES.items(), NMAX))
         n = len(cfg)
         xt = np.maximum(1, np.round(atr * kx * 4)).astype(np.int32)
@@ -108,14 +116,16 @@ def run_atr(z, which, tag):
         slp = np.array([np.nanmean(atr[d0:] * s) for s, *_ in cfg])
         meta = [dict(ATR=which, X_atr=kx, SL_atr=s, RRR=r, pravidlo=rn,
                      max_obchodu="neomezeno" if m == 256 else m) for s, r, (rn, _), m in cfg]
-        rows += stats(DP, DN, CNT, MO, MS, meta, days[d0:], slp)
+        pd.DataFrame(stats(DP, DN, CNT, MO, MS, meta, days[d0:], slp)).round(4).to_csv(part, index=False)
+        parts.append(part)
         print(tag, "kx", kx, n, "cfg", round(time.time() - t), "s", flush=True)
-    R = pd.DataFrame(rows)
-    R.round(4).to_csv(os.path.join(OUT, f"{tag}.csv"), index=False)
+    R = pd.concat([pd.read_csv(p) for p in parts])
+    R.to_csv(os.path.join(OUT, f"{tag}.csv"), index=False)
     return R
 
 
 if __name__ == "__main__":
+    os.makedirs(os.path.join(OUT, "parts"), exist_ok=True)
     z = E.load()
     what = sys.argv[1] if len(sys.argv) > 1 else "points"
     if what == "points":
