@@ -31,7 +31,7 @@ def vwaps(z):
         df = pd.DataFrame({"k": key, "pv": tp * v, "v": v})
         cpv = df.groupby("k").pv.cumsum().to_numpy(); cv = df.groupby("k").v.cumsum().to_numpy()
         vw = np.where(cv > 0, cpv / np.maximum(cv, 1), np.nan)
-        vw = pd.Series(vw).shift(1).to_numpy()                              # known before the bar
+        vw = pd.Series(vw).shift(1).to_numpy().copy()                       # known before the bar
         first = np.r_[True, key[1:] != key[:-1]]
         vw[first] = np.nan
         out[name] = pd.Series(vw).ffill().to_numpy()
