@@ -155,3 +155,17 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - **Stop-hunt (PDL/ONL sweep a návrat) ± kumulativní delta ± bias:** stejné jako náhodný vstup po signálu (−0,04 až +0,05 R, t ≤ 1,6).
 - **Sondovací pozice** zhoršuje o 0,01–0,03 R. Vstup níž (průměrování) ≈ přímý vstup.
 - **ML walk-forward (LightGBM, 18 rysů):** AUC 0,6–0,8 předpovídá volatilitu, ne směr. Výběr obchodů nestabilní mezi roky. Self-learning kód je technicky proveditelný, edge ale nevytvoří.
+
+## 17. Grid systémy spouštěné pohybem ceny o X bodů (`grid_trigger/`, Drive 31)
+- **Rozsah:** obchod při každém pohybu ES o X bodů, kdykoliv v seanci (renko logika). Celkem 75 360 systémů:
+  - pravidla fade / momentum / obě strany / přikupování + průměrování / náhoda;
+  - X a SL v bodech i v ATR (H1 / D1 / W1), RRR 0,25–10;
+  - limit otevřených obchodů 1 / 3 / 10 / neomezeně, filtr přes týdenní a měsíční VWAP;
+  - náklad 0,5 b.
+- **Pokračování pohybu 6–50 b.** = 0,503–0,510, tedy náhodná procházka. ES nemá chop, ze kterého by šlo žít.
+- **Fade vs momentum na obě strany:** hrubě ±0,05 b./obchod. Kalibrace na 5min vs 1min datech ukázala, že zbytek je artefakt pořadí uvnitř baru. Kladný po nákladech nevychází žádný systém mimo čisté longy.
+- **Longy kladné, shorty záporné = drift.**
+  - Přikupování poklesů po gridu má v testu 2019–26 zápornou alfu proti B&H (t −2,3 až −3,3).
+  - Momentum long má alfu nevýznamnou (t ≤ 1,4).
+- **Příklad pokles 10 b. → long, TP 12 / SL 10:** 1 490 obchodů ročně, úspěšnost 42 % (potřeba 47,7 %), −643 b. ročně ≈ −32 tis. USD na kontrakt.
+- **Víc současných obchodů jen násobí náklady.** VWAP filtr ani vyšší RRR nad VWAP nepomůže (max t 1,93).

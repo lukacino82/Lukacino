@@ -150,6 +150,24 @@ def vwap():
     save(fig, "vwap_filtr.png")
 
 
+def path():
+    F = pd.read_csv(os.path.join(SRC, "F_cesta_kalibrace.csv"))
+    cols = ["5min normal", "5min blizsi extrem", "5min obracene", "1min normal", "1min blizsi extrem", "1min obracene"]
+    m = F.groupby("pravidlo")[cols].mean()
+    fig, ax = plt.subplots(figsize=(11, 4.4))
+    w = 0.38
+    labs = ["5min: směr baru", "5min: bližší extrém", "5min: obrácené", "1min: směr baru (použito)",
+            "1min: bližší extrém", "1min: obrácené"]
+    for k, (r, col) in enumerate((("fade oboji", C["fade"]), ("momentum oboji", C["mom"]))):
+        ax.bar(np.arange(len(cols)) + (k - 0.5) * w, m.loc[r, cols].to_numpy(), w, color=col, label=RULE_CZ[r])
+    ax.axhline(0, color=INK, lw=1)
+    ax.set_xticks(range(len(cols))); ax.set_xticklabels(labs, rotation=15)
+    ax.set_ylabel("hrubý zisk b./obchod")
+    ax.set_title("Pořadí high/low uvnitř baru: čím jemnější data, tím blíž nule (1min je pravda pro 5min test)")
+    ax.legend(frameon=False)
+    save(fig, "cesta_v_baru.png")
+
+
 if __name__ == "__main__":
-    for f in (renko, rules_bar, heat, nmax, equity, vwap):
+    for f in (renko, rules_bar, heat, nmax, equity, vwap, path):
         f(); print(f.__name__, flush=True)

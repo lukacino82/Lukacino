@@ -2,7 +2,7 @@
 
 Price path: 1-minute bars of ES (back-adjusted, 2011-01 .. 2026-09) walked tick by tick (0.25 point).
 Inside a bar the path is O -> L -> H -> C for an up bar (C >= O) and O -> H -> L -> C for a down bar
-('alt' order reverses this, used as a robustness check). The step from the previous close to the open is a jump:
+(alt=1 reverses this, alt=2 visits the extreme nearer to the open first; both are robustness checks). The step from the previous close to the open is a jump:
 stops and targets crossed by a jump are filled at the new price.
 
 Trigger: renko logic. The anchor is the price of the last event; price at anchor - X is a 'down' event,
@@ -94,8 +94,13 @@ def simulate(O, H, L, C, di, last, ok, X, SL, TP, allowL, allowS, on_down, on_up
             pts[0] = O[i]; pts[1] = L[i]; pts[2] = H[i]; pts[3] = C[i]
         else:
             pts[0] = O[i]; pts[1] = H[i]; pts[2] = L[i]; pts[3] = C[i]
-        if alt:
+        if alt == 1:
             a1 = pts[1]; pts[1] = pts[2]; pts[2] = a1
+        elif alt == 2:                                   # nearest extreme first
+            if O[i] - L[i] <= H[i] - O[i]:
+                pts[1] = L[i]; pts[2] = H[i]
+            else:
+                pts[1] = H[i]; pts[2] = L[i]
         cur = prev
         for leg in range(4):
             tgt = pts[leg]
