@@ -1,0 +1,25 @@
+test,n,win,nedobeh,win_uzavrene,nahodna_win,tp_body,sl_body,hrube_b,cisty_b,t,cisty_2011_18,cisty_2019_26,setup,smer,kontext
+retest denniho VWAP long | nad W i M VWAP,2075,0.3224,0.026,0.331,0.3333,4.7996,2.3998,0.0553,-0.4447,-2.0503,-0.4059,-0.485,retest denniho VWAP,long,nad W i M VWAP
+retest denniho VWAP long | pod W i M VWAP,741,0.3077,0.0283,0.3167,0.3333,8.7858,4.3929,0.1234,-0.3766,-0.3762,-0.9095,0.2187,retest denniho VWAP,long,pod W i M VWAP
+"retest denniho VWAP long | nad W, pod M",441,0.3447,0.0295,0.3551,0.3333,8.9023,4.4511,0.3835,-0.1165,0.1731,-0.3046,0.0982,retest denniho VWAP,long,"nad W, pod M"
+"retest denniho VWAP long | pod W, nad M",536,0.3284,0.0112,0.3321,0.3333,6.0456,3.0228,-0.0357,-0.5357,-1.251,-0.5467,-0.5268,retest denniho VWAP,long,"pod W, nad M"
+retest denniho VWAP long | M VWAP roste,2530,0.3225,0.0233,0.3302,0.3333,4.9738,2.4869,0.028,-0.472,-2.8033,-0.3992,-0.5429,retest denniho VWAP,long,M VWAP roste
+retest denniho VWAP long | M VWAP klesa,1263,0.3238,0.0277,0.3331,0.3333,8.7506,4.3753,0.226,-0.274,-0.2207,-0.7255,0.241,retest denniho VWAP,long,M VWAP klesa
+retest denniho VWAP short | nad W i M VWAP,1324,0.3165,0.0144,0.3211,0.3333,4.8422,2.4211,-0.1254,-0.6254,-4.3353,-0.5788,-0.6718,retest denniho VWAP,short,nad W i M VWAP
+retest denniho VWAP short | pod W i M VWAP,1153,0.3435,0.0147,0.3486,0.3333,8.6885,4.3443,-0.02,-0.52,-2.4339,-0.2909,-0.7527,retest denniho VWAP,short,pod W i M VWAP
+"retest denniho VWAP short | nad W, pod M",277,0.3538,0.0144,0.359,0.3333,8.5709,4.2855,0.004,-0.496,-0.5258,-0.225,-0.8207,retest denniho VWAP,short,"nad W, pod M"
+"retest denniho VWAP short | pod W, nad M",979,0.3299,0.0184,0.3361,0.3333,5.2211,2.6106,-0.1207,-0.6207,-3.1545,-0.4032,-0.8326,retest denniho VWAP,short,"pod W, nad M"
+retest denniho VWAP short | M VWAP roste,2436,0.3218,0.0152,0.3268,0.3333,5.1028,2.5514,-0.1398,-0.6398,-5.4043,-0.4959,-0.7803,retest denniho VWAP,short,M VWAP roste
+retest denniho VWAP short | M VWAP klesa,1297,0.3485,0.0162,0.3542,0.3333,8.8543,4.4271,0.0265,-0.4735,-2.3453,-0.2726,-0.6895,retest denniho VWAP,short,M VWAP klesa
+fade -2SD long | nad W i M VWAP,546,0.3608,0.0275,0.371,0.351,7.1282,3.7133,0.2308,-0.2692,-1.0022,-0.4559,-0.0712,fade 2SD denniho VWAP,long,nad W i M VWAP
+fade -2SD long | pod W i M VWAP,897,0.3144,0.0557,0.3329,0.339,13.4169,6.7423,0.0411,-0.4589,-1.147,-0.5138,-0.3919,fade 2SD denniho VWAP,long,pod W i M VWAP
+"fade -2SD long | nad W, pod M",108,0.3796,0.0278,0.3905,0.3437,14.1729,7.2326,0.0639,-0.4361,-0.3371,0.8744,-1.6086,fade 2SD denniho VWAP,long,"nad W, pod M"
+"fade -2SD long | pod W, nad M",618,0.3479,0.0485,0.3656,0.3433,8.1776,4.1494,0.2965,-0.2035,-0.7087,-0.0552,-0.3617,fade 2SD denniho VWAP,long,"pod W, nad M"
+fade -2SD long | M VWAP roste,1424,0.3518,0.0386,0.366,0.3449,8.3021,4.2351,0.2494,-0.2506,-1.276,-0.4286,-0.0575,fade 2SD denniho VWAP,long,M VWAP roste
+fade -2SD long | M VWAP klesa,745,0.3141,0.0577,0.3333,0.3407,14.3479,7.235,-0.0028,-0.5028,-1.0685,-0.0914,-0.9876,fade 2SD denniho VWAP,long,M VWAP klesa
+fade +2SD short | nad W i M VWAP,1431,0.2865,0.0901,0.3149,0.3417,8.9539,4.5221,-0.0945,-0.5945,-2.8433,-0.5124,-0.6844,fade 2SD denniho VWAP,short,nad W i M VWAP
+fade +2SD short | pod W i M VWAP,215,0.3349,0.0465,0.3512,0.3407,13.1681,6.675,-0.0825,-0.5825,-0.763,-0.5829,-0.5819,fade 2SD denniho VWAP,short,pod W i M VWAP
+"fade +2SD short | nad W, pod M",279,0.2616,0.0753,0.2829,0.3382,15.328,7.6659,-0.7241,-1.2241,-1.5654,-1.4064,-1.0351,fade 2SD denniho VWAP,short,"nad W, pod M"
+"fade +2SD short | pod W, nad M",148,0.3243,0.0473,0.3404,0.3474,9.9708,5.0506,0.3288,-0.1712,-0.2235,-0.7026,0.3058,fade 2SD denniho VWAP,short,"pod W, nad M"
+fade +2SD short | M VWAP roste,1339,0.2972,0.0792,0.3228,0.3437,8.068,4.096,-0.0875,-0.5875,-3.078,-0.4851,-0.6983,fade 2SD denniho VWAP,short,M VWAP roste
+fade +2SD short | M VWAP klesa,734,0.2793,0.0831,0.3046,0.3376,14.4325,7.2317,-0.2577,-0.7577,-1.6658,-0.9491,-0.5477,fade 2SD denniho VWAP,short,M VWAP klesa

@@ -1,0 +1,16 @@
+skupina,n,prumer,ostatni,t,p,test
+Ct,867,0.0229,0.057,-0.8128,0.4165,vynos dne %
+Pa,849,0.027,0.0558,-0.7049,0.481,vynos dne %
+Po,861,0.0539,0.0492,0.1116,0.9111,vynos dne %
+St,866,0.0716,0.0448,0.6414,0.5213,vynos dne %
+Ut,868,0.0749,0.0439,0.7944,0.4271,vynos dne %
+Ct,867,1.1436,1.0607,2.6978,0.0071,rozpeti dne %
+Pa,849,1.0838,1.0758,0.2724,0.7854,rozpeti dne %
+Po,861,0.9622,1.1061,-4.7859,0.0,rozpeti dne %
+St,866,1.1252,1.0654,1.9355,0.0531,rozpeti dne %
+Ut,868,1.0715,1.0789,-0.2544,0.7993,rozpeti dne %
+Ct,867,0.1119,0.0981,1.1593,0.2466,podil vyprodeju (spodnich 10 % dnu roku)
+Pa,849,0.1119,0.0982,1.1455,0.2522,podil vyprodeju (spodnich 10 % dnu roku)
+Po,861,0.0883,0.1041,-1.4376,0.1508,podil vyprodeju (spodnich 10 % dnu roku)
+St,866,0.0958,0.1022,-0.5625,0.5739,podil vyprodeju (spodnich 10 % dnu roku)
+Ut,868,0.0968,0.1019,-0.4582,0.6469,podil vyprodeju (spodnich 10 % dnu roku)

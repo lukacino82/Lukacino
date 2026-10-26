@@ -1,0 +1,43 @@
+test,n,win,nedobeh,win_uzavrene,nahodna_win,tp_body,sl_body,hrube_b,cisty_b,t,cisty_2011_18,cisty_2019_26,smer,skupina,TP_atr,SL_atr
+POC vcerejska long z vrchu | vse | TP0.25/SL0.25 ATR,2001,0.3943,0.1569,0.4677,0.5,11.1908,11.1908,-0.3143,-0.8143,-2.8829,-0.5694,-1.0565,long,vse,0.25,0.25
+POC vcerejska long z vrchu | vse | TP0.5/SL0.25 ATR,2001,0.1609,0.3153,0.235,0.3333,22.3817,11.1908,-0.5382,-1.0382,-2.9738,-0.8028,-1.271,long,vse,0.5,0.25
+POC vcerejska long z vrchu | vse | TP0.25/SL0.5 ATR,2001,0.4723,0.3043,0.6789,0.6667,11.1908,22.3817,-0.5258,-1.0258,-2.7579,-0.5576,-1.489,long,vse,0.25,0.5
+POC vcerejska long z vrchu | CD proti pohybu ceny (absorpce) | TP0.25/SL0.25 ATR,140,0.4,0.1214,0.4553,0.5,14.1141,14.1141,0.0798,-0.4202,-0.3166,-0.4904,-0.3846,long,CD proti pohybu ceny (absorpce),0.25,0.25
+POC vcerejska long z vrchu | CD proti pohybu ceny (absorpce) | TP0.5/SL0.25 ATR,140,0.1571,0.2643,0.2136,0.3333,28.2281,14.1141,-0.571,-1.071,-0.6562,-1.9448,-0.6294,long,CD proti pohybu ceny (absorpce),0.5,0.25
+POC vcerejska long z vrchu | CD proti pohybu ceny (absorpce) | TP0.25/SL0.5 ATR,140,0.5,0.2571,0.6731,0.6667,14.1141,28.2281,0.4554,-0.0446,-0.0261,-0.9509,0.4134,long,CD proti pohybu ceny (absorpce),0.25,0.5
+POC vcerejska long z vrchu | CD ve smeru pohybu ceny | TP0.25/SL0.25 ATR,1101,0.3851,0.139,0.4473,0.5,11.0182,11.0182,-0.7761,-1.2761,-3.4212,-0.8453,-1.7077,long,CD ve smeru pohybu ceny,0.25,0.25
+POC vcerejska long z vrchu | CD ve smeru pohybu ceny | TP0.5/SL0.25 ATR,1101,0.1599,0.2925,0.2259,0.3333,22.0365,11.0182,-0.959,-1.459,-3.1762,-0.9596,-1.9593,long,CD ve smeru pohybu ceny,0.5,0.25
+POC vcerejska long z vrchu | CD ve smeru pohybu ceny | TP0.25/SL0.5 ATR,1101,0.4678,0.2825,0.6519,0.6667,11.0182,22.0365,-1.1682,-1.6682,-3.3467,-0.9196,-2.4182,long,CD ve smeru pohybu ceny,0.25,0.5
+POC vcerejska long z vrchu | CD roste | TP0.25/SL0.25 ATR,900,0.4056,0.1789,0.4939,0.5,11.402,11.402,0.2507,-0.2493,-0.5785,-0.227,-0.2711,long,CD roste,0.25,0.25
+POC vcerejska long z vrchu | CD roste | TP0.5/SL0.25 ATR,900,0.1622,0.3433,0.247,0.3333,22.804,11.402,-0.0233,-0.5233,-0.9778,-0.6081,-0.4407,long,CD roste,0.5,0.25
+POC vcerejska long z vrchu | CD roste | TP0.25/SL0.5 ATR,900,0.4778,0.3311,0.7143,0.6667,11.402,22.804,0.26,-0.24,-0.4303,-0.1083,-0.3682,long,CD roste,0.25,0.5
+POC vcerejska long z vrchu | CD klesa | TP0.25/SL0.25 ATR,1101,0.3851,0.139,0.4473,0.5,11.0182,11.0182,-0.7761,-1.2761,-3.4212,-0.8453,-1.7077,long,CD klesa,0.25,0.25
+POC vcerejska long z vrchu | CD klesa | TP0.5/SL0.25 ATR,1101,0.1599,0.2925,0.2259,0.3333,22.0365,11.0182,-0.959,-1.459,-3.1762,-0.9596,-1.9593,long,CD klesa,0.5,0.25
+POC vcerejska long z vrchu | CD klesa | TP0.25/SL0.5 ATR,1101,0.4678,0.2825,0.6519,0.6667,11.0182,22.0365,-1.1682,-1.6682,-3.3467,-0.9196,-2.4182,long,CD klesa,0.25,0.5
+POC vcerejska long z vrchu | denni CD > 0 | TP0.25/SL0.25 ATR,966,0.3954,0.1749,0.4793,0.5,12.067,12.067,-0.1423,-0.6423,-1.4842,-0.5491,-0.7171,long,denni CD > 0,0.25,0.25
+POC vcerejska long z vrchu | denni CD > 0 | TP0.5/SL0.25 ATR,966,0.1781,0.3147,0.2598,0.3333,24.1341,12.067,-0.0569,-0.5569,-1.0189,-0.9347,-0.2538,long,denni CD > 0,0.5,0.25
+POC vcerejska long z vrchu | denni CD > 0 | TP0.25/SL0.5 ATR,966,0.4596,0.3302,0.6862,0.6667,12.067,24.1341,-0.3072,-0.8072,-1.411,-0.6124,-0.9635,long,denni CD > 0,0.25,0.5
+POC vcerejska long z vrchu | denni CD < 0 | TP0.25/SL0.25 ATR,1035,0.3932,0.1401,0.4573,0.5,10.3731,10.3731,-0.4748,-0.9748,-2.6514,-0.5848,-1.4435,long,denni CD < 0,0.25,0.25
+POC vcerejska long z vrchu | denni CD < 0 | TP0.5/SL0.25 ATR,1035,0.1449,0.3159,0.2119,0.3333,20.7461,10.3731,-0.9873,-1.4873,-3.3674,-0.7024,-2.4309,long,denni CD < 0,0.5,0.25
+POC vcerejska long z vrchu | denni CD < 0 | TP0.25/SL0.5 ATR,1035,0.4841,0.2802,0.6725,0.6667,10.3731,20.7461,-0.7299,-1.2299,-2.5523,-0.5159,-2.0883,long,denni CD < 0,0.25,0.5
+POC vcerejska short zespodu | vse | TP0.25/SL0.25 ATR,1977,0.4416,0.1523,0.5209,0.5,11.1036,11.1036,0.2354,-0.2646,-0.9303,-0.4806,-0.0467,short,vse,0.25,0.25
+POC vcerejska short zespodu | vse | TP0.5/SL0.25 ATR,1977,0.2145,0.3065,0.3093,0.3333,22.2072,11.1036,0.4229,-0.0771,-0.21,-0.5521,0.4022,short,vse,0.5,0.25
+POC vcerejska short zespodu | vse | TP0.25/SL0.5 ATR,1977,0.5164,0.3227,0.7625,0.6667,11.1036,22.2072,0.4679,-0.0321,-0.0918,-0.2514,0.1892,short,vse,0.25,0.5
+POC vcerejska short zespodu | CD proti pohybu ceny (absorpce) | TP0.25/SL0.25 ATR,129,0.4186,0.1628,0.5,0.5,11.8529,11.8529,0.0212,-0.4788,-0.406,0.2249,-1.0907,short,CD proti pohybu ceny (absorpce),0.25,0.25
+POC vcerejska short zespodu | CD proti pohybu ceny (absorpce) | TP0.5/SL0.25 ATR,129,0.2093,0.3178,0.3068,0.3333,23.7058,11.8529,0.6491,0.1491,0.0928,0.7416,-0.3661,short,CD proti pohybu ceny (absorpce),0.5,0.25
+POC vcerejska short zespodu | CD proti pohybu ceny (absorpce) | TP0.25/SL0.5 ATR,129,0.5194,0.3488,0.7976,0.6667,11.8529,23.7058,2.0859,1.5859,1.2108,0.7138,2.3441,short,CD proti pohybu ceny (absorpce),0.25,0.5
+POC vcerejska short zespodu | CD ve smeru pohybu ceny | TP0.25/SL0.25 ATR,1035,0.4097,0.1633,0.4896,0.5,11.3229,11.3229,-0.448,-0.948,-2.3369,-0.634,-1.2553,short,CD ve smeru pohybu ceny,0.25,0.25
+POC vcerejska short zespodu | CD ve smeru pohybu ceny | TP0.5/SL0.25 ATR,1035,0.1884,0.315,0.275,0.3333,22.6459,11.3229,-0.2501,-0.7501,-1.4497,-0.8333,-0.6686,short,CD ve smeru pohybu ceny,0.5,0.25
+POC vcerejska short zespodu | CD ve smeru pohybu ceny | TP0.25/SL0.5 ATR,1035,0.485,0.343,0.7382,0.6667,11.3229,22.6459,-0.2388,-0.7388,-1.4519,-0.4791,-0.993,short,CD ve smeru pohybu ceny,0.25,0.5
+POC vcerejska short zespodu | CD roste | TP0.25/SL0.25 ATR,1035,0.4097,0.1633,0.4896,0.5,11.3229,11.3229,-0.448,-0.948,-2.3369,-0.634,-1.2553,short,CD roste,0.25,0.25
+POC vcerejska short zespodu | CD roste | TP0.5/SL0.25 ATR,1035,0.1884,0.315,0.275,0.3333,22.6459,11.3229,-0.2501,-0.7501,-1.4497,-0.8333,-0.6686,short,CD roste,0.5,0.25
+POC vcerejska short zespodu | CD roste | TP0.25/SL0.5 ATR,1035,0.485,0.343,0.7382,0.6667,11.3229,22.6459,-0.2388,-0.7388,-1.4519,-0.4791,-0.993,short,CD roste,0.25,0.5
+POC vcerejska short zespodu | CD klesa | TP0.25/SL0.25 ATR,942,0.4766,0.1401,0.5543,0.5,10.8626,10.8626,0.9862,0.4862,1.2278,-0.3173,1.3245,short,CD klesa,0.25,0.25
+POC vcerejska short zespodu | CD klesa | TP0.5/SL0.25 ATR,942,0.2431,0.2972,0.3459,0.3333,21.7252,10.8626,1.1622,0.6622,1.2734,-0.2528,1.617,short,CD klesa,0.5,0.25
+POC vcerejska short zespodu | CD klesa | TP0.25/SL0.5 ATR,942,0.551,0.3004,0.7876,0.6667,10.8626,21.7252,1.2444,0.7444,1.5703,-0.009,1.5304,short,CD klesa,0.25,0.5
+POC vcerejska short zespodu | denni CD > 0 | TP0.25/SL0.25 ATR,971,0.4119,0.1679,0.495,0.5,12.0597,12.0597,-0.3448,-0.8448,-1.922,-0.5346,-1.1008,short,denni CD > 0,0.25,0.25
+POC vcerejska short zespodu | denni CD > 0 | TP0.5/SL0.25 ATR,971,0.1988,0.3193,0.292,0.3333,24.1194,12.0597,-0.0581,-0.5581,-0.9937,-0.4721,-0.6291,short,denni CD > 0,0.5,0.25
+POC vcerejska short zespodu | denni CD > 0 | TP0.25/SL0.5 ATR,971,0.4861,0.3337,0.7295,0.6667,12.0597,24.1194,-0.4651,-0.9651,-1.7314,-0.3065,-1.5086,short,denni CD > 0,0.25,0.5
+POC vcerejska short zespodu | denni CD < 0 | TP0.25/SL0.25 ATR,1005,0.4697,0.1373,0.5444,0.5,10.1797,10.1797,0.785,0.285,0.7839,-0.4378,1.1729,short,denni CD < 0,0.25,0.25
+POC vcerejska short zespodu | denni CD < 0 | TP0.5/SL0.25 ATR,1005,0.2289,0.2945,0.3244,0.3333,20.3595,10.1797,0.8657,0.3657,0.7673,-0.6155,1.5711,short,denni CD < 0,0.5,0.25
+POC vcerejska short zespodu | denni CD < 0 | TP0.25/SL0.5 ATR,1005,0.5453,0.3124,0.7931,0.6667,10.1797,20.3595,1.3587,0.8587,2.0165,-0.2077,2.1686,short,denni CD < 0,0.25,0.5
