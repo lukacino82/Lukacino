@@ -1,0 +1,15 @@
+pravidlo,CAGR_median,CAGR_p5,maxDD_median,p_DD_horsi_50pct,p_ruin
+buy & hold 1x,0.1195,0.0523,-0.3202,0.0267,0.0
+buy & hold 2x,0.2173,0.069,-0.5682,0.7667,0.0
+buy & hold 3x,0.2818,0.0504,-0.75,0.9767,0.0033
+Kelly (plny),0.1824,-0.0757,-0.8579,1.0,0.0133
+Kelly polovicni,0.1468,-0.0377,-0.7547,1.0,0.0
+cilova volatilita 15 %,0.1232,0.0418,-0.3098,0.0233,0.0
+martingale (2x po ztratovem tydnu),0.2107,0.0162,-0.7244,0.88,0.0067
+"anti-martingale / Paroli (2x po ziskovem tydnu, max 3)",0.1486,-0.008,-0.6425,0.8967,0.0
+"D'Alembert (+0.5x po ztrate, -0.5x po zisku)",0.1789,0.0505,-0.5895,0.7,0.0033
+Fibonacci po ztratovych tydnech,0.2084,0.015,-0.6807,0.8233,0.0033
+pyramidovani: +0.5x za kazdych 5 % pod maximem,0.1901,0.0695,-0.5756,0.66,0.0067
+pyramidovani: +0.5x za kazdych 10 % pod maximem,0.1499,0.0795,-0.4225,0.31,0.0033
+pocitani karet: 2x pri signalu (RSI2<10 nebo pod W-VWAP -1SD),0.2027,0.1122,-0.3769,0.11,0.0
+riziko z tydennich propadu (q99 tydne = 10 % uctu),0.1853,0.0604,-0.5121,0.53,0.0

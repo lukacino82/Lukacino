@@ -169,3 +169,31 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
   - Momentum long má alfu nevýznamnou (t ≤ 1,4).
 - **Příklad pokles 10 b. → long, TP 12 / SL 10:** 1 490 obchodů ročně, úspěšnost 42 % (potřeba 47,7 %), −643 b. ročně ≈ −32 tis. USD na kontrakt.
 - **Víc současných obchodů jen násobí náklady.** VWAP filtr ani vyšší RRR nad VWAP nepomůže (max t 1,93).
+
+## 18. Testy z poznámek: statistiky, delta, VWAP, volume profile, money management, formace (`es_stats/VYSLEDKY.md`, Drive 32)
+- **Dny v týdnu a hodiny:** bez stabilního směru.
+  - Výnos ani výprodeje se mezi dny neliší (p ≥ 0,15).
+  - Nejlepší den roku se ani jednou neopakoval v dalším roce.
+  - Robustní je jen volatilita: pondělí nejklidnější (rozpětí 0,96 % vs 1,1 %, t −4,8); 10:00, 9:30 a 15:00 ET nejaktivnější; čtvrtek a pátek v 10:00 0,52 %.
+- **Propady:**
+  - Průměrný největší propad uvnitř týdne je −1,0 % (2017) až −4,2 % (2020).
+  - 92,7 % týdnů má propad menší než 5 %, 90,6 % měsíců menší než 10 %.
+  - Uvnitř roku až −35 % (2020) a −27,6 % (2022), takže expozice nad ~1,4× v takovém roce sebere víc než polovinu účtu.
+- **Kumulativní delta:**
+  - Longy při CD > 0: +0,01 ATR, t ≤ 1,5.
+  - Extrémy ±5k–40k kontraktů a flushing nedávají ani pokračování, ani obrat.
+- **VWAP:**
+  - Fade ±1–3 SD má úspěšnost o 3,6 p. b. pod náhodou a v balanci je ještě horší.
+  - Retest VWAPu a framework W/M + denní setup: 0 kladných variant ze 48.
+  - Jediný náznak: závěr pod týdenním VWAP −1 až −2 SD → +0,1 ATR další den (t 3,0). Jde o přeprodanost.
+- **Volume profile:**
+  - POC ani naked POC nejsou magnety (dotyk jako kontrolní úroveň).
+  - Pravidlo 80 % platí ve 46 % (denní VA), 13 % (týdenní) a 3 % (měsíční).
+  - LVN a HVN mají stejnou rychlost pohybu.
+- **Money management:**
+  - Martingale, Fibonacci, D'Alembert, Paroli, Kelly ani pyramidování do poklesu edge nevytvoří. Leží na přímce páky B&H nebo pod ní; martingale a Fibonacci mají DD −91 %.
+  - Zvyšovat sázku jen při přeprodanosti („počítání karet“) dává Sharpe 0,89 vs 0,75, alfu t 2,2 a DD −37 %. Je to ale zesílení známé edge přeprodanosti.
+- **Formace:**
+  - HA vzory na objemových barech: stejné znaménko v testu jen 51 %.
+  - Obraty předpovídá hlavně volatilita (AUC 0,64), po nákladech je výsledek záporný.
+  - Delta divergence obrat neprodlužuje, je dokonce slabší.

@@ -1,0 +1,5 @@
+test,n,win,nedobeh,win_uzavrene,nahodna_win,tp_body,sl_body,hrube_b,cisty_b,t,cisty_2011_18,cisty_2019_26
+dno (novy 60min low) -> long | vsechny udalosti 2015-26,7363,0.1821,0.2589,0.2457,0.2982,15.0658,6.3081,0.1961,-0.3039,-0.5602,-0.4793,-0.2128
+dno (novy 60min low) -> long | top 10 % modelu 2015-26,741,0.2821,0.0634,0.3012,0.3225,13.3632,6.2844,0.0664,-0.4336,-0.6278,-0.827,-0.2284
+vrchol (novy 60min high) -> short | vsechny udalosti 2015-26,7897,0.1697,0.2755,0.2342,0.2911,15.2478,6.193,-0.1912,-0.6912,-3.5427,-0.5737,-0.7517
+vrchol (novy 60min high) -> short | top 10 % modelu 2015-26,796,0.2726,0.0879,0.2989,0.3134,13.8631,6.3097,0.0712,-0.4288,-0.9063,-0.3588,-0.4649

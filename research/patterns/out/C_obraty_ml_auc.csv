@@ -1,0 +1,25 @@
+udalost,rok,auc,podil_obratu
+dno (novy 60min low) -> long,2015,0.6053,0.1854
+dno (novy 60min low) -> long,2016,0.6539,0.1654
+dno (novy 60min low) -> long,2017,0.6659,0.2148
+dno (novy 60min low) -> long,2018,0.6083,0.1743
+dno (novy 60min low) -> long,2019,0.6595,0.1451
+dno (novy 60min low) -> long,2020,0.6995,0.1419
+dno (novy 60min low) -> long,2021,0.668,0.1757
+dno (novy 60min low) -> long,2022,0.5733,0.1822
+dno (novy 60min low) -> long,2023,0.613,0.2597
+dno (novy 60min low) -> long,2024,0.6713,0.1915
+dno (novy 60min low) -> long,2025,0.6511,0.1696
+dno (novy 60min low) -> long,2026,0.73,0.1795
+vrchol (novy 60min high) -> short,2015,0.635,0.1795
+vrchol (novy 60min high) -> short,2016,0.6381,0.1802
+vrchol (novy 60min high) -> short,2017,0.6303,0.184
+vrchol (novy 60min high) -> short,2018,0.616,0.1988
+vrchol (novy 60min high) -> short,2019,0.6728,0.1553
+vrchol (novy 60min high) -> short,2020,0.5762,0.1392
+vrchol (novy 60min high) -> short,2021,0.6461,0.1202
+vrchol (novy 60min high) -> short,2022,0.5999,0.1925
+vrchol (novy 60min high) -> short,2023,0.6514,0.1851
+vrchol (novy 60min high) -> short,2024,0.5825,0.1834
+vrchol (novy 60min high) -> short,2025,0.6145,0.1395
+vrchol (novy 60min high) -> short,2026,0.6765,0.1851
