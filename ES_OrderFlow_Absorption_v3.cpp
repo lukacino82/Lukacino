@@ -1,9 +1,12 @@
 #include "sierrachart.h"
 #include <cmath>
-#include <algorithm>
 #include <map>
 
 SCDLLName("ES Order Flow Absorption Detector v3")
+
+static inline float MaxF(float a, float b) { return a > b ? a : b; }
+static inline float MinF(float a, float b) { return a < b ? a : b; }
+static inline int MaxI(int a, int b) { return a > b ? a : b; }
 
 // Everything read from the Volume at Price data of one closed bar.
 struct BarFootprint
@@ -27,8 +30,7 @@ struct BarFootprint
 static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float imbalanceRatio,
                           float bigLevelVol, BarFootprint& fp)
 {
-    int size = 0;
-    sc.VolumeAtPriceForBars->GetSizeAtBarIndex(idx, size);
+    const int size = (int)sc.VolumeAtPriceForBars->GetSizeAtBarIndex((unsigned int)idx);
     if (size <= 0)
         return false;
 
@@ -65,8 +67,8 @@ static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float 
             fp.pocPrice = t * sc.TickSize;
             fp.pocDelta = d;
         }
-        fp.maxLevelDelta = std::max(fp.maxLevelDelta, d);
-        fp.minLevelDelta = std::min(fp.minLevelDelta, d);
+        fp.maxLevelDelta = MaxF(fp.maxLevelDelta, d);
+        fp.minLevelDelta = MinF(fp.minLevelDelta, d);
         if (bigLevelVol > 0.0f && vol >= bigLevelVol)
             ++fp.bigLevels;
         if (t >= highTicks - zoneTicks)
@@ -90,12 +92,12 @@ static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float 
         const float ask = it->second.second;
         Iter below = lv.find(t - 1);
         Iter above = lv.find(t + 1);
-        const bool buyImb = below != lv.end() && ask >= imbalanceRatio * std::max(below->second.first, 1.0f);
-        const bool sellImb = above != lv.end() && bid >= imbalanceRatio * std::max(above->second.second, 1.0f);
+        const bool buyImb = below != lv.end() && ask >= imbalanceRatio * MaxF(below->second.first, 1.0f);
+        const bool sellImb = above != lv.end() && bid >= imbalanceRatio * MaxF(above->second.second, 1.0f);
         buyRun = buyImb ? buyRun + 1 : 0;
         sellRun = sellImb ? sellRun + 1 : 0;
-        fp.stackedBuy = std::max(fp.stackedBuy, buyRun);
-        fp.stackedSell = std::max(fp.stackedSell, sellRun);
+        fp.stackedBuy = MaxI(fp.stackedBuy, buyRun);
+        fp.stackedSell = MaxI(fp.stackedSell, sellRun);
     }
     return true;
 }
@@ -280,7 +282,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         const float stop = StopTicks.GetInt() * sc.TickSize;
         const int horizon = HorizonBars.GetInt();
 
-        for (int j = std::max(0, i - horizon); j < i; ++j)
+        for (int j = MaxI(0, i - horizon); j < i; ++j)
         {
             const float dir = State.Arrays[0][j];
             if (dir == 0.0f)

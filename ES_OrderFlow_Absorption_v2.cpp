@@ -1,16 +1,18 @@
 #include "sierrachart.h"
 #include <cmath>
-#include <algorithm>
 
 SCDLLName("ES Order Flow Absorption Detector v2")
+
+static inline float MaxF(float a, float b) { return a > b ? a : b; }
+static inline float MinF(float a, float b) { return a < b ? a : b; }
+static inline int MaxI(int a, int b) { return a > b ? a : b; }
 
 // Bar-level volume statistics from Volume at Price data: volume traded within
 // zoneTicks of the bar high and of the bar low, plus the number of price levels.
 static bool GetBarLevelStats(SCStudyInterfaceRef sc, int barIndex, int zoneTicks,
                              float& highZoneVol, float& lowZoneVol, int& levels)
 {
-    int size = 0;
-    sc.VolumeAtPriceForBars->GetSizeAtBarIndex(barIndex, size);
+    const int size = (int)sc.VolumeAtPriceForBars->GetSizeAtBarIndex((unsigned int)barIndex);
     if (size <= 0)
         return false;
 
@@ -153,7 +155,7 @@ SCSFExport scsf_ESAbsorptionDetectorV2(SCStudyInterfaceRef sc)
         const float stop = StopTicks.GetInt() * sc.TickSize;
         const int horizon = HorizonBars.GetInt();
 
-        for (int j = std::max(0, i - horizon); j < i; ++j)
+        for (int j = MaxI(0, i - horizon); j < i; ++j)
         {
             const float dir = State.Arrays[0][j];
             if (dir == 0.0f)
