@@ -1,0 +1,5 @@
+# Citlivé soubory nesmí jít stáhnout přes web
+<FilesMatch "^(config(\.sample)?\.php|prompt\.txt)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes

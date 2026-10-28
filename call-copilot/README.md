@@ -36,3 +36,18 @@ z nich fakta/ceny/odpovědi na námitky a v UI zobrazí zdroj (`📚 Zdroj: …`
 Pro nejlepší výsledky piš dokumenty jako sekce s nadpisem (`# Námitka: je to drahé`)
 a konkrétní odpovědí. Ukázka: `knowledge/ukazka-faq.md`.
 Pro velké báze (stovky stran) lze BM25 nahradit embeddingy.
+
+## Nasazení na sdílený hosting (Active24, PHP)
+Active24 sdílený hosting nespouští Node, proto je tu ekvivalentní PHP backend (`php/api.php`).
+```bash
+./build-php.sh        # vytvoří dist/copilot/
+```
+1. Nahraj obsah `dist/copilot/` přes FTP do `rentez.eu/copilot/` (včetně skrytých `.htaccess`).
+2. Na hostingu zkopíruj `config.sample.php` → `config.php`, doplň `anthropic_api_key` a `password_hash`
+   (`php -r "echo password_hash('heslo', PASSWORD_DEFAULT);"`).
+3. V administraci Active24 zapni HTTPS (Let's Encrypt) – mikrofon funguje jen přes HTTPS.
+4. Otevři `https://rentez.eu/copilot/`, přihlas se heslem.
+
+Backend je za přihlášením (session cookie), takže cizí návštěvníci nemohou čerpat tvůj API klíč.
+`config.php`, `prompt.txt` a složka `knowledge/` jsou přes `.htaccess` nedostupné z webu.
+Vyžaduje PHP ≥ 8.1 s rozšířeními curl a mbstring.

@@ -13,6 +13,7 @@
     :root { --bg:#f4f5f8; --panel:#fff; --line:#dfe2ea; --text:#1b1f2a; --muted:#69708a; }
   }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,sans-serif; }
   header { display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:17px; margin:0; margin-right:auto; }
@@ -59,6 +60,14 @@
 </style>
 </head>
 <body>
+<div id="login" hidden style="position:fixed;inset:0;background:var(--bg);z-index:9;display:flex;align-items:center;justify-content:center">
+  <form id="loginForm" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(340px,90vw)">
+    <h2 style="margin-bottom:12px">Přihlášení operátora</h2>
+    <input type="password" id="pw" placeholder="Heslo" autocomplete="current-password" required>
+    <div id="loginErr" style="color:var(--bad);font-size:13px;min-height:20px;margin:6px 0"></div>
+    <button class="primary" style="width:100%">Přihlásit</button>
+  </form>
+</div>
 <header>
   <h1>🎧 Call Copilot</h1>
   <span id="status">Připraveno</span>
@@ -233,12 +242,13 @@ async function requestSuggest() {
   // posledních ~40 replik stačí a drží nízkou latenci
   const transcript = lines.slice(-40).map((l) => `${WHO[l.who]}: ${l.text}`).join('\n');
   try {
-    const r = await fetch('/api/suggest', {
+    const r = await fetch('api.php?a=suggest', {
       method: 'POST', signal: ctrl.signal,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ goal: $('goal').value, context: $('context').value, transcript }),
     });
     const j = await r.json();
+    if (r.status === 401) { checkAuth(); throw new Error('Přihlášení vypršelo'); }
     if (!r.ok) throw new Error(j.error || r.status);
     render(j);
     if (running) setStatus('Poslouchám…');
@@ -277,6 +287,21 @@ function render(s) {
   $('nextGoal').textContent = s.next_goal ? `Další cíl: ${s.next_goal}` : '';
 }
 
+// ---------- Přihlášení ----------
+async function checkAuth() {
+  let ok = false;
+  try { ok = (await (await fetch('api.php?a=me')).json()).auth; } catch {}
+  $('login').hidden = ok;
+  if (ok) loadKb();
+}
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await fetch('api.php?a=login', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: $('pw').value }) });
+  if (r.ok) { $('pw').value = ''; $('loginErr').textContent = ''; checkAuth(); }
+  else $('loginErr').textContent = 'Špatné heslo.';
+});
+
 // ---------- Znalostní báze ----------
 function renderKb(docs) {
   $('kbList').innerHTML = docs.length ? '' : '<div style="color:var(--muted);font-size:13px">Báze je prázdná.</div>';
@@ -284,15 +309,16 @@ function renderKb(docs) {
     const row = document.createElement('div'); row.className = 'kbdoc';
     row.innerHTML = `<span>📄 ${esc(d.name)} · ${d.chunks} úryvků</span>`;
     const del = document.createElement('button'); del.textContent = '✕';
-    del.onclick = async () => renderKb((await (await fetch('/api/kb?name=' + encodeURIComponent(d.name), { method: 'DELETE' })).json()).docs);
+    del.onclick = async () => renderKb((await (await fetch('api.php?a=kb&name=' + encodeURIComponent(d.name), { method: 'DELETE' })).json()).docs);
     row.append(del); $('kbList').append(row);
   }
 }
-fetch('/api/kb').then((r) => r.json()).then((j) => renderKb(j.docs)).catch(() => {});
+function loadKb() { fetch('api.php?a=kb').then((r) => r.json()).then((j) => renderKb(j.docs)).catch(() => {}); }
+checkAuth();
 $('kbFile').addEventListener('change', async (e) => {
   let docs;
   for (const f of e.target.files) {
-    const r = await fetch('/api/kb', { method: 'POST', headers: { 'content-type': 'application/json' },
+    const r = await fetch('api.php?a=kb', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: f.name, text: await f.text() }) });
     docs = (await r.json()).docs;
   }

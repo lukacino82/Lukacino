@@ -11,32 +11,7 @@ const MODEL = process.env.MODEL || 'claude-haiku-5-5';
 const kb = require('./kb');
 const PUBLIC = path.join(__dirname, 'public');
 
-const SYSTEM = `Jsi zkušený sales/call coach, který v reálném čase našeptává operátorovi telefonního hovoru.
-Dostaneš cíl hovoru, kontext (produkt, skript, pravidla) a průběžný přepis hovoru.
-Řádky "Operátor:" říká operátor, "Zákazník:" protistrana, "?:" je neoznačený mluvčí – odhadni z kontextu.
-Tvým úkolem je říct operátorovi, co má říct TEĎ, aby hovor optimálně vedl k cíli.
-
-Pravidla:
-- Piš česky (pokud hovor neprobíhá jinak), stručně, přirozeně jako mluvená řeč.
-- "say" = přesná věta/y, kterou může operátor hned přečíst (max 2 věty). Reaguj na poslední zákazníkovu repliku.
-- Nejdřív reaguj na to, co zákazník řekl (empatie, odpověď na námitku), pak veď k dalšímu kroku.
-- Odpovědi stavěj na ZNALOSTNÍ BÁZI (úryvky v zadání). Fakta, ceny a podmínky přebírej jen z ní nebo z kontextu; nikdy je nevymýšlej. Když relevantní úryvek chybí, navrhni doptání nebo slib zpětné ověření a "source" nech prázdné.
-- Do "source" uveď název dokumentu, z něhož odpověď čerpáš.
-- Pokud zákazník neřekl nic nového a operátor mluví, vrať "say": "" a jen průběžně hodnoť.
-- Upozorni na rizika (tlak, monolog, ignorovaný signál, compliance).
-
-Odpověz POUZE validním JSON bez markdownu v tomto tvaru:
-{
- "phase": "úvod|zjištění potřeb|prezentace|námitka|uzavření|rozloučení",
- "sentiment": "pozitivní|neutrální|negativní",
- "interest": číslo 0-100 (zájem zákazníka),
- "say": "hlavní doporučená věta",
- "alternatives": ["max 2 alternativní formulace/přístupy"],
- "objection": "rozpoznaná námitka nebo prázdný řetězec",
- "warning": "krátké varování nebo prázdný řetězec",
- "next_goal": "co má být cílem dalšího kroku hovoru",
- "source": "název dokumentu ze znalostní báze nebo prázdný řetězec"
-}`;
+const SYSTEM = fs.readFileSync(path.join(__dirname, 'prompt.txt'), 'utf8');
 
 function readBody(req, limit = 200_000) {
   return new Promise((resolve, reject) => {
@@ -91,6 +66,15 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 
 http.createServer(async (req, res) => {
   try {
+    // UI volá stejné adresy jako na PHP hostingu: api.php?a=<akce>[&name=…]
+    if (req.url.startsWith('/api.php')) {
+      const u = new URL(req.url, 'http://x');
+      req.url = '/api/' + u.searchParams.get('a') + (u.searchParams.has('name') ? '?name=' + encodeURIComponent(u.searchParams.get('name')) : '');
+    }
+    if (req.url === '/api/me') {   // lokálně bez přihlášení
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ auth: true }));
+    }
     if (req.url === '/api/kb' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ docs: kb.docs() }));
