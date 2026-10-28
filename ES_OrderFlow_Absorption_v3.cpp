@@ -159,6 +159,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef OppositeLockBars = sc.Input[25];
     SCInputRef MinRoomTicks = sc.Input[26];
     SCInputRef RoomLookback = sc.Input[27];
+    SCInputRef MinWickTicks = sc.Input[28];
 
     if (sc.SetDefaults)
     {
@@ -287,6 +288,9 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         RoomLookback.Name = "Room to run: lookback for the recent extreme (bars)";
         RoomLookback.SetInt(40);
         RoomLookback.SetIntLimits(2, 1000);
+        MinWickTicks.Name = "Failed auction: minimum wick beyond the bar body (ticks)";
+        MinWickTicks.SetInt(2);
+        MinWickTicks.SetIntLimits(1, 100);
         return;
     }
 
@@ -454,8 +458,15 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         if (UseThinExtreme.GetYesNo())
         {
             const float limit = ThinRatio.GetFloat() * expectedZone;
-            failedHigh = brickUp && !brickDown && fp.highZoneVol <= limit && (VAH.GetFloat() <= 0.0f || sc.High[i] > VAH.GetFloat());
-            failedLow = brickDown && !brickUp && fp.lowZoneVol <= limit && (VAL.GetFloat() <= 0.0f || sc.Low[i] < VAL.GetFloat());
+            // The thin extreme must be a rejected probe (a wick beyond the body), not the edge where a Renko brick
+            // simply completes: that edge is always thin and would produce a signal on every brick.
+            const float bodyTop = sc.Open[i] > sc.Close[i] ? sc.Open[i] : sc.Close[i];
+            const float bodyBottom = sc.Open[i] < sc.Close[i] ? sc.Open[i] : sc.Close[i];
+            const float minWick = MinWickTicks.GetInt() * sc.TickSize;
+            failedHigh = brickDown && !brickUp && sc.High[i] - bodyTop >= minWick && fp.highZoneVol <= limit
+                && (VAH.GetFloat() <= 0.0f || sc.High[i] > VAH.GetFloat());
+            failedLow = brickUp && !brickDown && bodyBottom - sc.Low[i] >= minWick && fp.lowZoneVol <= limit
+                && (VAL.GetFloat() <= 0.0f || sc.Low[i] < VAL.GetFloat());
         }
 
         // Pattern 3: heavy volume at the extreme with aggressive flow against the rejection.
