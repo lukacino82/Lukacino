@@ -42,14 +42,27 @@ const LLM_BASE_URL = process.env.LLM_BASE_URL;
 const LLM_KEY = process.env.LLM_API_KEY || API_KEY;
 const LLM_READY = LLM_BASE_URL ? true : !!API_KEY;
 
+// Bezplatné tarify mají limit tokenů za minutu (429) – počkáme dobu, kterou API doporučí, a zkusíme znovu.
 async function claude(model, system, user, maxTokens, signal) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await claudeOnce(model, system, user, maxTokens, signal); }
+    catch (e) {
+      const m = /429/.test(e.message) && /try again in ([\d.]+)(ms|s)/i.exec(e.message);
+      if (!m || attempt >= 2) throw e;
+      const wait = Math.min(10000, parseFloat(m[1]) * (m[2].toLowerCase() === 'ms' ? 1 : 1000) + 300);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+}
+
+async function claudeOnce(model, system, user, maxTokens, signal) {
   let r, pick;
   if (LLM_BASE_URL) {
     r = await fetch(LLM_BASE_URL.replace(/\/$/, '') + '/chat/completions', {
       method: 'POST', signal,
       headers: { 'content-type': 'application/json', ...(LLM_KEY ? { authorization: `Bearer ${LLM_KEY}` } : {}) },
       // reasoning modely (gpt-oss, qwen3…) počítají "přemýšlení" do limitu tokenů, proto větší rezerva
-      body: JSON.stringify({ model, max_tokens: maxTokens * 4, temperature: 0.4,
+      body: JSON.stringify({ model, max_tokens: maxTokens + 800, temperature: 0.4,
         ...(process.env.LLM_REASONING_EFFORT ? { reasoning_effort: process.env.LLM_REASONING_EFFORT } : {}),
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
     });
@@ -75,7 +88,7 @@ function suggest({ goal, context, transcript, lead }) {
   const lines = transcript.split('\n');
   const recent = lines.slice(-4);
   const lastClient = lines.filter((l) => !l.startsWith('Operátor:')).slice(-2);
-  const hits = kb.retrieve([...recent, ...lastClient].join(' '));
+  const hits = kb.retrieve([...recent, ...lastClient].join(' '), 3);
   const kbText = hits.length
     ? hits.map((h, i) => `[${i + 1}] (${h.doc})\n${h.text}`).join('\n\n')
     : '(žádný relevantní úryvek)';

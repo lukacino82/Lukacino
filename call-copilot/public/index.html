@@ -361,11 +361,12 @@ function scheduleSuggest() {
 
 async function requestSuggest() {
   if (!lines.length) return;
+  if (lines[lines.length - 1].who === 'op') return;   // mluví operátor – nový návrh nepotřebuje (šetří limit tokenů)
   if (inflight) inflight.abort();               // zahodíme zastaralý dotaz
   const ctrl = (inflight = new AbortController());
   $('say').classList.add('stale');
-  // posledních ~40 replik stačí a drží nízkou latenci
-  const transcript = lines.slice(-40).map((l) => `${WHO[l.who]}: ${l.text}`).join('\n');
+  // posledních ~16 replik stačí a šetří tokeny i latenci
+  const transcript = lines.slice(-16).map((l) => `${WHO[l.who]}: ${l.text}`).join('\n');
   try {
     const r = await fetch('api.php?a=suggest', {
       method: 'POST', signal: ctrl.signal, headers: J,
