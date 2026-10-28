@@ -196,8 +196,11 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         StackSellSG.Name = "Stacked sell imbalances";
         AvgLevelSG.Name = "Volume per level";
         ReasonSG.Name = "Watch reason bitmask";
+        // Metrics are not drawn but stay visible in the Chart Values Window and the region data line.
         for (int s = 4; s <= 22; ++s)
-            sc.Subgraph[s].DrawStyle = DRAWSTYLE_IGNORE;
+            sc.Subgraph[s].DrawStyle = DRAWSTYLE_HIDDEN;
+        State.DrawStyle = DRAWSTYLE_IGNORE;
+        Resolve.DrawStyle = DRAWSTYLE_IGNORE;
 
         Lookback.Name = "Average lookback (bars)";
         Lookback.SetInt(20);
