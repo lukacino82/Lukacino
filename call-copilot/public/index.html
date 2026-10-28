@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Call Copilot</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#181b22; --line:#2a2f3a; --text:#e8eaf0; --muted:#8b93a7;
+    --accent:#4f8cff; --good:#3ecf8e; --bad:#ff5d5d; --warn:#ffb020;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f5f8; --panel:#fff; --line:#dfe2ea; --text:#1b1f2a; --muted:#69708a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,sans-serif; }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; margin-right:auto; }
+  button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 14px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.rec { background:var(--bad); border-color:var(--bad); color:#fff; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); display:inline-block; }
+  .dot.on { background:var(--bad); animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  main { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); gap:16px; padding:16px; max-width:1300px; margin:0 auto; }
+  @media (max-width:860px) { main { grid-template-columns:1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
+  #transcript { height:48vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  .line { padding:8px 10px; border-radius:8px; background:var(--bg); border-left:3px solid var(--muted); }
+  .line.op { border-color:var(--accent); } .line.cu { border-color:var(--good); }
+  .line.interim { opacity:.55; font-style:italic; }
+  .who { font-size:11px; color:var(--muted); text-transform:uppercase; display:block; }
+  .suggest { border:2px solid var(--accent); border-radius:12px; padding:14px 16px; font-size:19px; line-height:1.4; min-height:70px; }
+  .suggest.empty { border-color:var(--line); color:var(--muted); font-size:15px; }
+  .suggest.stale { opacity:.5; }
+  .meta { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+  .chip { background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:13px; }
+  .chip.positive { color:var(--good); } .chip.negative { color:var(--bad); }
+  .bar { height:6px; background:var(--bg); border-radius:3px; overflow:hidden; margin-top:4px; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; transition:width .4s; }
+  .alt { padding:8px 10px; border:1px dashed var(--line); border-radius:8px; margin-top:6px; cursor:pointer; }
+  .alt:hover { border-color:var(--accent); }
+  .warn { margin-top:10px; padding:8px 10px; border-radius:8px; background:rgba(255,176,32,.12); color:var(--warn); }
+  .goal { margin-top:10px; color:var(--muted); font-size:13px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  textarea, input[type=text] { width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; resize:vertical; }
+  details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); }
+  .row { display:flex; gap:8px; } .row > input { flex:1; }
+  #status { color:var(--muted); font-size:13px; }
+  #status.err { color:var(--bad); }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; padding:6px 10px; background:var(--panel); }
+  .seg button.active { background:var(--accent); color:#fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Call Copilot</h1>
+  <span id="status">Připraveno</span>
+  <div class="seg" id="speakerSeg" title="Kdo právě mluví (Mezerník přepíná)">
+    <button data-s="auto" class="active">Auto</button>
+    <button data-s="op">Operátor</button>
+    <button data-s="cu">Zákazník</button>
+  </div>
+  <span class="dot" id="dot"></span>
+  <button id="toggle" class="primary">▶ Začít hovor</button>
+  <button id="clear">Vyčistit</button>
+</header>
+
+<main>
+  <section>
+    <h2>Přepis hovoru</h2>
+    <div id="transcript"></div>
+    <div class="row" style="margin-top:10px">
+      <input type="text" id="sim" placeholder="Simulovat repliku zákazníka (bez mikrofonu) + Enter">
+    </div>
+    <details open>
+      <summary>Nastavení hovoru</summary>
+      <label for="goal">Cíl hovoru</label>
+      <input type="text" id="goal" placeholder="např. domluvit schůzku / uzavřít prodej tarifu / vymoci platbu">
+      <label for="context">Kontext, produkt, skript, pravidla, ceny</label>
+      <textarea id="context" rows="6" placeholder="Co prodáváme, klíčové argumenty, časté námitky a odpovědi, co se nesmí říkat…"></textarea>
+      <label for="lang">Jazyk rozpoznávání</label>
+      <input type="text" id="lang" value="cs-CZ">
+    </details>
+  </section>
+
+  <section>
+    <h2>Navrhuji říct</h2>
+    <div id="say" class="suggest empty">Spusť hovor – návrhy se objeví tady.</div>
+    <div class="meta" id="meta"></div>
+    <div>
+      <div style="font-size:13px;color:var(--muted)">Zájem zákazníka <span id="interestVal"></span></div>
+      <div class="bar"><i id="interestBar"></i></div>
+    </div>
+    <h2 style="margin-top:16px">Alternativy</h2>
+    <div id="alts"></div>
+    <div id="warn"></div>
+    <div class="goal" id="nextGoal"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const load = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+
+for (const k of ['goal', 'context', 'lang']) {
+  if (load(k)) $(k).value = load(k);
+  $(k).addEventListener('input', () => store(k, $(k).value));
+}
+
+let lines = [];          // {who:'op'|'cu'|'?', text}
+let speaker = 'auto';
+let rec = null, running = false, interimEl = null;
+let debounce = null, inflight = null, pending = false;
+
+const WHO = { op: 'Operátor', cu: 'Zákazník', '?': '?' };
+
+function setStatus(t, err) { $('status').textContent = t; $('status').className = err ? 'err' : ''; }
+
+function setSpeaker(s) {
+  speaker = s;
+  document.querySelectorAll('#speakerSeg button').forEach((b) => b.classList.toggle('active', b.dataset.s === s));
+}
+$('speakerSeg').addEventListener('click', (e) => e.target.dataset.s && setSpeaker(e.target.dataset.s));
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    setSpeaker({ auto: 'op', op: 'cu', cu: 'auto' }[speaker]);
+  }
+});
+
+function renderLine(l, interim) {
+  const d = document.createElement('div');
+  d.className = `line ${l.who === 'op' ? 'op' : l.who === 'cu' ? 'cu' : ''} ${interim ? 'interim' : ''}`;
+  const w = document.createElement('span'); w.className = 'who'; w.textContent = WHO[l.who];
+  d.append(w, document.createTextNode(l.text));
+  return d;
+}
+function scrollDown() { const t = $('transcript'); t.scrollTop = t.scrollHeight; }
+
+function addFinal(text, who) {
+  text = text.trim();
+  if (!text) return;
+  const l = { who: who || (speaker === 'auto' ? '?' : speaker), text };
+  lines.push(l);
+  if (interimEl) { interimEl.remove(); interimEl = null; }
+  $('transcript').append(renderLine(l));
+  scrollDown();
+  scheduleSuggest();
+}
+function showInterim(text) {
+  if (interimEl) interimEl.remove();
+  if (!text.trim()) { interimEl = null; return; }
+  interimEl = renderLine({ who: speaker === 'auto' ? '?' : speaker, text }, true);
+  $('transcript').append(interimEl);
+  scrollDown();
+}
+
+// ---------- Rozpoznávání řeči ----------
+function startRec() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setStatus('Tento prohlížeč nepodporuje Web Speech API – použij Chrome/Edge.', true); return false; }
+  rec = new SR();
+  rec.lang = $('lang').value || 'cs-CZ';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = (ev) => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) addFinal(r[0].transcript); else interim += r[0].transcript;
+    }
+    showInterim(interim);
+  };
+  rec.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    setStatus(`Chyba mikrofonu: ${e.error}`, true);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') stop();
+  };
+  // Chrome po chvíli ticha rozpoznávání ukončí – automaticky ho restartujeme.
+  rec.onend = () => { if (running) { try { rec.start(); } catch {} } };
+  rec.start();
+  return true;
+}
+
+function start() {
+  if (!startRec()) return;
+  running = true;
+  $('toggle').textContent = '■ Ukončit hovor'; $('toggle').className = 'rec';
+  $('dot').classList.add('on');
+  setStatus('Poslouchám…');
+}
+function stop() {
+  running = false;
+  if (rec) { rec.onend = null; try { rec.stop(); } catch {} }
+  $('toggle').textContent = '▶ Začít hovor'; $('toggle').className = 'primary';
+  $('dot').classList.remove('on');
+  setStatus('Zastaveno');
+}
+$('toggle').onclick = () => (running ? stop() : start());
+$('clear').onclick = () => {
+  lines = []; $('transcript').innerHTML = ''; interimEl = null;
+  $('say').textContent = 'Spusť hovor – návrhy se objeví tady.'; $('say').className = 'suggest empty';
+  $('meta').innerHTML = ''; $('alts').innerHTML = ''; $('warn').innerHTML = ''; $('nextGoal').textContent = '';
+  $('interestBar').style.width = '0'; $('interestVal').textContent = '';
+};
+$('sim').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.value.trim()) { addFinal(e.target.value, 'cu'); e.target.value = ''; }
+});
+
+// ---------- Návrhy od AI ----------
+function scheduleSuggest() {
+  clearTimeout(debounce);
+  debounce = setTimeout(requestSuggest, 900);   // počkáme, jestli mluvčí nepokračuje
+}
+
+async function requestSuggest() {
+  if (!lines.length) return;
+  if (inflight) { pending = true; inflight.abort(); }  // zahodíme zastaralý dotaz
+  const ctrl = (inflight = new AbortController());
+  $('say').classList.add('stale');
+  // posledních ~40 replik stačí a drží nízkou latenci
+  const transcript = lines.slice(-40).map((l) => `${WHO[l.who]}: ${l.text}`).join('\n');
+  try {
+    const r = await fetch('/api/suggest', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal: $('goal').value, context: $('context').value, transcript }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    render(j);
+    if (running) setStatus('Poslouchám…');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    setStatus(`AI: ${e.message}`, true);
+    $('say').classList.remove('stale');
+  } finally {
+    if (inflight === ctrl) inflight = null;
+  }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+function render(s) {
+  const say = $('say');
+  say.classList.remove('stale');
+  if (s.say) { say.textContent = s.say; say.className = 'suggest'; }
+  else { say.className = 'suggest empty'; say.textContent = 'Zatím nic neříkej – poslouchej.'; }
+
+  const sent = (s.sentiment || '').toLowerCase();
+  $('meta').innerHTML =
+    `<span class="chip">Fáze: ${esc(s.phase)}</span>` +
+    `<span class="chip ${sent.startsWith('poz') ? 'positive' : sent.startsWith('neg') ? 'negative' : ''}">Nálada: ${esc(s.sentiment)}</span>` +
+    (s.objection ? `<span class="chip" style="color:var(--warn)">Námitka: ${esc(s.objection)}</span>` : '');
+
+  const iv = Math.max(0, Math.min(100, Number(s.interest) || 0));
+  $('interestBar').style.width = iv + '%'; $('interestVal').textContent = iv + ' %';
+
+  $('alts').innerHTML = (s.alternatives || []).map((a) => `<div class="alt">${esc(a)}</div>`).join('')
+    || '<div style="color:var(--muted)">—</div>';
+  $('alts').querySelectorAll('.alt').forEach((el) => el.onclick = () => { $('say').textContent = el.textContent; });
+
+  $('warn').innerHTML = s.warning ? `<div class="warn">⚠ ${esc(s.warning)}</div>` : '';
+  $('nextGoal').textContent = s.next_goal ? `Další cíl: ${s.next_goal}` : '';
+}
+</script>
+</body>
+</html>
