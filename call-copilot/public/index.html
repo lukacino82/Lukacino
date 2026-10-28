@@ -434,7 +434,7 @@ function renderNotes(c) {
   const n = c.notes || {};
   const out = $('notesOut');
   out.style.color = '';
-  const outcomeCls = /schůzka|zájem/.test(n.outcome) ? 'good' : /nezájem|nevolat/.test(n.outcome) ? 'bad' : '';
+  const outcomeCls = /nezájem|nevolat/.test(n.outcome) ? 'bad' : /schůzka|zájem/.test(n.outcome) ? 'good' : '';
   out.innerHTML =
     `<div class="meta"><span class="chip ${outcomeCls}">${esc(n.outcome)}</span><span class="chip">Skóre leadu: ${esc(n.lead_score)}</span>` +
     `<span class="chip">${esc(c.lead?.name || 'neznámý')}${c.lead?.company ? ' · ' + esc(c.lead.company) : ''}</span></div>` +
