@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.MODEL || 'claude-haiku-5-5';
+const kb = require('./kb');
 const PUBLIC = path.join(__dirname, 'public');
 
 const SYSTEM = `Jsi zkušený sales/call coach, který v reálném čase našeptává operátorovi telefonního hovoru.
@@ -19,7 +20,8 @@ Pravidla:
 - Piš česky (pokud hovor neprobíhá jinak), stručně, přirozeně jako mluvená řeč.
 - "say" = přesná věta/y, kterou může operátor hned přečíst (max 2 věty). Reaguj na poslední zákazníkovu repliku.
 - Nejdřív reaguj na to, co zákazník řekl (empatie, odpověď na námitku), pak veď k dalšímu kroku.
-- Neslibuj nic, co není v kontextu; nevymýšlej ceny ani fakta. Když informace chybí, navrhni doptání.
+- Odpovědi stavěj na ZNALOSTNÍ BÁZI (úryvky v zadání). Fakta, ceny a podmínky přebírej jen z ní nebo z kontextu; nikdy je nevymýšlej. Když relevantní úryvek chybí, navrhni doptání nebo slib zpětné ověření a "source" nech prázdné.
+- Do "source" uveď název dokumentu, z něhož odpověď čerpáš.
 - Pokud zákazník neřekl nic nového a operátor mluví, vrať "say": "" a jen průběžně hodnoť.
 - Upozorni na rizika (tlak, monolog, ignorovaný signál, compliance).
 
@@ -32,7 +34,8 @@ Odpověz POUZE validním JSON bez markdownu v tomto tvaru:
  "alternatives": ["max 2 alternativní formulace/přístupy"],
  "objection": "rozpoznaná námitka nebo prázdný řetězec",
  "warning": "krátké varování nebo prázdný řetězec",
- "next_goal": "co má být cílem dalšího kroku hovoru"
+ "next_goal": "co má být cílem dalšího kroku hovoru",
+ "source": "název dokumentu ze znalostní báze nebo prázdný řetězec"
 }`;
 
 function readBody(req, limit = 200_000) {
@@ -55,7 +58,14 @@ function extractJson(text) {
 }
 
 async function suggest({ goal, context, transcript }) {
+  // dotaz do báze = poslední repliky (ty nejnovější dvakrát, aby měly větší váhu)
+  const recent = transcript.split('\n').slice(-4);
+  const hits = kb.retrieve(recent.join(' ') + ' ' + recent.slice(-2).join(' '));
+  const kbText = hits.length
+    ? hits.map((h, i) => `[${i + 1}] (${h.doc})\n${h.text}`).join('\n\n')
+    : '(žádný relevantní úryvek)';
   const user =
+    `ZNALOSTNÍ BÁZE – nalezené úryvky:\n${kbText}\n\n` +
     `CÍL HOVORU:\n${goal || '(neurčen)'}\n\nKONTEXT / SKRIPT:\n${context || '(žádný)'}\n\n` +
     `PŘEPIS HOVORU (nejnovější dole):\n${transcript}`;
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -81,6 +91,22 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 
 http.createServer(async (req, res) => {
   try {
+    if (req.url === '/api/kb' && req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ docs: kb.docs() }));
+    }
+    if (req.url === '/api/kb' && req.method === 'POST') {
+      const { name, text } = JSON.parse(await readBody(req, 5_000_000));
+      if (!text || !String(text).trim()) throw new Error('Prázdný dokument');
+      kb.save(name, String(text));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ docs: kb.docs() }));
+    }
+    if (req.url.startsWith('/api/kb?') && req.method === 'DELETE') {
+      kb.remove(new URL(req.url, 'http://x').searchParams.get('name'));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ docs: kb.docs() }));
+    }
     if (req.method === 'POST' && req.url === '/api/suggest') {
       if (!API_KEY) {
         res.writeHead(500, { 'content-type': 'application/json' });

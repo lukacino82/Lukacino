@@ -26,3 +26,13 @@ přepínáš označení mluvčího Auto / Operátor / Zákazník; v režimu Auto
 - Bez mikrofonu můžeš flow vyzkoušet přes textové pole „Simulovat repliku“.
 - Přepis se posílá na tvůj server a odtud do Claude API – ošetři souhlas s nahráváním/GDPR.
 - Web Speech API v Chrome posílá audio Googlu; pro produkci zvaž vlastní STT (Deepgram, Whisper…).
+
+## Znalostní báze
+Dokumenty (`.md`, `.txt`, `.csv`, `.json`) nahraješ v UI (Nastavení hovoru → Znalostní báze)
+nebo je dáš do složky `knowledge/`. Server je rozdělí na úryvky podle nadpisů a odstavců
+a při každém návrhu vyhledá (BM25, bez diakritiky a s hrubým stemmingem pro češtinu)
+úryvky nejpodobnější posledním replikám hovoru. Claude je dostane jako podklad, čerpá
+z nich fakta/ceny/odpovědi na námitky a v UI zobrazí zdroj (`📚 Zdroj: …`).
+Pro nejlepší výsledky piš dokumenty jako sekce s nadpisem (`# Námitka: je to drahé`)
+a konkrétní odpovědí. Ukázka: `knowledge/ukazka-faq.md`.
+Pro velké báze (stovky stran) lze BM25 nahradit embeddingy.
