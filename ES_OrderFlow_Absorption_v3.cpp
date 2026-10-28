@@ -155,6 +155,10 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef DeltaShockMult = sc.Input[21];
     SCInputRef FlipFraction = sc.Input[22];
     SCInputRef AlertOnWatch = sc.Input[23];
+    SCInputRef CooldownBars = sc.Input[24];
+    SCInputRef OppositeLockBars = sc.Input[25];
+    SCInputRef MinRoomTicks = sc.Input[26];
+    SCInputRef RoomLookback = sc.Input[27];
 
     if (sc.SetDefaults)
     {
@@ -271,6 +275,18 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         FlipFraction.SetFloatLimits(0.01f, 1.0f);
         AlertOnWatch.Name = "Alert also on yellow dot (watch)";
         AlertOnWatch.SetYesNo(0);
+        CooldownBars.Name = "Anti-whipsaw: bars before the next trigger in the same direction";
+        CooldownBars.SetInt(5);
+        CooldownBars.SetIntLimits(0, 500);
+        OppositeLockBars.Name = "Anti-whipsaw: bars before a trigger in the opposite direction";
+        OppositeLockBars.SetInt(10);
+        OppositeLockBars.SetIntLimits(0, 500);
+        MinRoomTicks.Name = "Room to run: minimum distance to the recent extreme (ticks, 0 = off)";
+        MinRoomTicks.SetInt(0);
+        MinRoomTicks.SetIntLimits(0, 5000);
+        RoomLookback.Name = "Room to run: lookback for the recent extreme (bars)";
+        RoomLookback.SetInt(40);
+        RoomLookback.SetIntLimits(2, 1000);
         return;
     }
 
@@ -475,15 +491,43 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     const int p = i - 1;
     const bool stackedOkLong = !RequireStacked.GetYesNo() || (haveFootprint && fp.stackedBuy >= StackCount.GetInt());
     const bool stackedOkShort = !RequireStacked.GetYesNo() || (haveFootprint && fp.stackedSell >= StackCount.GetInt());
+
+    // Anti-whipsaw: the most recent trigger blocks same-direction triggers for CooldownBars and
+    // opposite-direction triggers for OppositeLockBars. Room to run: the recent extreme in the trade direction
+    // must be at least MinRoomTicks away, so the price has space to reach the target.
+    float lastDir = 0.0f;
+    int lastAge = 1000000;
+    for (int j = i - 1; j >= MaxI(0, i - MaxI(CooldownBars.GetInt(), OppositeLockBars.GetInt())); --j)
+    {
+        if (State.Arrays[0][j] != 0.0f)
+        {
+            lastDir = State.Arrays[0][j];
+            lastAge = i - j;
+            break;
+        }
+    }
+    const bool blockedLong = (lastDir > 0.0f && lastAge < CooldownBars.GetInt()) || (lastDir < 0.0f && lastAge < OppositeLockBars.GetInt());
+    const bool blockedShort = (lastDir < 0.0f && lastAge < CooldownBars.GetInt()) || (lastDir > 0.0f && lastAge < OppositeLockBars.GetInt());
+
+    float recentHigh = sc.High[i], recentLow = sc.Low[i];
+    for (int j = MaxI(0, i - RoomLookback.GetInt()); j < i; ++j)
+    {
+        recentHigh = MaxF(recentHigh, sc.High[j]);
+        recentLow = MinF(recentLow, sc.Low[j]);
+    }
+    const float minRoom = MinRoomTicks.GetInt() * sc.TickSize;
+    const bool roomLong = MinRoomTicks.GetInt() == 0 || recentHigh - sc.Close[i] >= minRoom;
+    const bool roomShort = MinRoomTicks.GetInt() == 0 || sc.Close[i] - recentLow >= minRoom;
+
     bool newTrigger = false;
-    if (LongWatch[p] != 0.0f && sc.Close[i] > sc.High[p] && delta > 0.0f && stackedOkLong)
+    if (LongWatch[p] != 0.0f && sc.Close[i] > sc.High[p] && delta > 0.0f && stackedOkLong && !blockedLong && roomLong)
     {
         LongTrigger[i] = sc.Low[i] - 2.0f * sc.TickSize;
         State.Arrays[0][i] = 1.0f;
         State.Arrays[1][i] = sc.Close[i];
         newTrigger = true;
     }
-    else if (ShortWatch[p] != 0.0f && sc.Close[i] < sc.Low[p] && delta < 0.0f && stackedOkShort)
+    else if (ShortWatch[p] != 0.0f && sc.Close[i] < sc.Low[p] && delta < 0.0f && stackedOkShort && !blockedShort && roomShort)
     {
         ShortTrigger[i] = sc.High[i] + 2.0f * sc.TickSize;
         State.Arrays[0][i] = -1.0f;
