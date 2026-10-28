@@ -126,7 +126,10 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCSubgraphRef StackBuySG = sc.Subgraph[19];
     SCSubgraphRef StackSellSG = sc.Subgraph[20];
     SCSubgraphRef AvgLevelSG = sc.Subgraph[21];   // bar volume per price level (basis for "big level")
-    SCSubgraphRef ReasonSG = sc.Subgraph[22];     // bitmask of the watch: 1 divergence, 2 thin extreme, 4 big volume at extreme
+    SCSubgraphRef ReasonSG = sc.Subgraph[22];     // bitmask of the watch: 1 divergence, 2 thin extreme, 4 big volume at extreme, 8 delta shock
+    SCSubgraphRef ShockSG = sc.Subgraph[23];      // delta change of the bar / average |delta change| of previous bars
+    SCSubgraphRef FlipSG = sc.Subgraph[24];       // +1 buyers take over (delta flips up with a shock), -1 sellers take over
+    SCSubgraphRef PressureSG = sc.Subgraph[25];   // sum of delta / sum of volume over the lookback, in percent
 
     SCInputRef Lookback = sc.Input[0];
     SCInputRef DeltaThreshold = sc.Input[1];
@@ -148,6 +151,10 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef RequireStacked = sc.Input[17];
     SCInputRef AlertsOn = sc.Input[18];
     SCInputRef ZoneDeltaFraction = sc.Input[19];
+    SCInputRef UseDeltaShock = sc.Input[20];
+    SCInputRef DeltaShockMult = sc.Input[21];
+    SCInputRef FlipFraction = sc.Input[22];
+    SCInputRef AlertOnWatch = sc.Input[23];
 
     if (sc.SetDefaults)
     {
@@ -196,8 +203,11 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         StackSellSG.Name = "Stacked sell imbalances";
         AvgLevelSG.Name = "Volume per level";
         ReasonSG.Name = "Watch reason bitmask";
+        ShockSG.Name = "Delta shock (delta change / average |delta change|)";
+        FlipSG.Name = "Delta flip (+1 buyers take over, -1 sellers take over)";
+        PressureSG.Name = "Pressure % (sum delta / sum volume over lookback)";
         // Metrics are not drawn but stay visible in the Chart Values Window and the region data line.
-        for (int s = 4; s <= 22; ++s)
+        for (int s = 4; s <= 25; ++s)
             sc.Subgraph[s].DrawStyle = DRAWSTYLE_HIDDEN;
         State.DrawStyle = DRAWSTYLE_IGNORE;
         Resolve.DrawStyle = DRAWSTYLE_IGNORE;
@@ -246,11 +256,21 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         UseBigVolume.SetYesNo(1);
         RequireStacked.Name = "Require stacked imbalances on the confirmation bar";
         RequireStacked.SetYesNo(0);
-        AlertsOn.Name = "Alerts on watch and trigger";
+        AlertsOn.Name = "Alert on confirmed LONG/SHORT trigger";
         AlertsOn.SetYesNo(1);
         ZoneDeltaFraction.Name = "Big volume pattern: minimum |zone delta| / zone volume";
         ZoneDeltaFraction.SetFloat(0.20f);
         ZoneDeltaFraction.SetFloatLimits(0.01f, 1.0f);
+        UseDeltaShock.Name = "Pattern 4: delta shock / flip (pressure changes sides)";
+        UseDeltaShock.SetYesNo(1);
+        DeltaShockMult.Name = "Delta shock: |delta change| / average |delta change| minimum";
+        DeltaShockMult.SetFloat(2.5f);
+        DeltaShockMult.SetFloatLimits(1.0f, 20.0f);
+        FlipFraction.Name = "Delta flip: minimum |delta| / volume of the bar";
+        FlipFraction.SetFloat(0.10f);
+        FlipFraction.SetFloatLimits(0.01f, 1.0f);
+        AlertOnWatch.Name = "Alert also on yellow dot (watch)";
+        AlertOnWatch.SetYesNo(0);
         return;
     }
 
@@ -266,6 +286,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     Timeouts[i] = i > 0 ? Timeouts[i - 1] : 0.0f;
 
     // Delta metrics are available for every bar, including the one in progress.
+    const int n = Lookback.GetInt();
     const float volume = sc.Volume[i];
     const float delta = sc.AskVolume[i] - sc.BidVolume[i];
     DeltaSG[i] = delta;
@@ -274,6 +295,34 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     CumDeltaSG[i] = (i > 0 ? CumDeltaSG[i - 1] : 0.0f) + delta;
     VolJumpSG[i] = (i > 0 && sc.Volume[i - 1] > 0.0f) ? volume / sc.Volume[i - 1] : 0.0f;
     VolRatioSG[i] = 0.0f;
+
+    // Pressure: who dominated the last n bars. Shock / flip: the delta of this bar against its own recent behaviour.
+    PressureSG[i] = 0.0f;
+    ShockSG[i] = 0.0f;
+    FlipSG[i] = 0.0f;
+    if (i >= n)
+    {
+        float sumDelta = 0.0f, sumVolume = 0.0f, avgAbsChg = 0.0f;
+        for (int j = i - n + 1; j <= i; ++j)
+        {
+            sumDelta += DeltaSG[j];
+            sumVolume += sc.Volume[j];
+        }
+        for (int j = i - n; j < i; ++j)
+            avgAbsChg += fabsf(DeltaChgSG[j]);
+        avgAbsChg /= n;
+        if (sumVolume > 0.0f)
+            PressureSG[i] = 100.0f * sumDelta / sumVolume;
+        if (avgAbsChg > 0.0f)
+        {
+            ShockSG[i] = DeltaChgSG[i] / avgAbsChg;
+            const float prevDelta = DeltaSG[i - 1];
+            const bool flipped = delta * prevDelta < 0.0f;
+            if (flipped && fabsf(ShockSG[i]) >= DeltaShockMult.GetFloat() && volume > 0.0f
+                && fabsf(delta) / volume >= FlipFraction.GetFloat())
+                FlipSG[i] = delta > 0.0f ? 1.0f : -1.0f;
+        }
+    }
     MaxLevelSG[i] = PocDeltaSG[i] = BigLevelsSG[i] = StackBuySG[i] = StackSellSG[i] = AvgLevelSG[i] = 0.0f;
 
     const bool barClosed = sc.GetBarHasClosedStatus(i) == BHCS_BAR_HAS_CLOSED;
@@ -336,7 +385,6 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         return;
 
     // Baselines from the previous bars only.
-    const int n = Lookback.GetInt();
     float avgVolume = 0.0f, avgLevelVol = 0.0f;
     int levelSamples = 0;
     if (i >= n)
@@ -403,19 +451,23 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         }
     }
 
-    const bool longCandidate = sellerDivergence || failedLow || bigAtLow;
-    const bool shortCandidate = buyerDivergence || failedHigh || bigAtHigh;
+    // Pattern 4: delta flips sign with a shock after the opposite brick, so pressure changes sides.
+    const bool buyersTakeOver = UseDeltaShock.GetYesNo() && FlipSG[i] > 0.0f && sc.Close[i - 1] < sc.Open[i - 1];
+    const bool sellersTakeOver = UseDeltaShock.GetYesNo() && FlipSG[i] < 0.0f && sc.Close[i - 1] > sc.Open[i - 1];
+
+    const bool longCandidate = sellerDivergence || failedLow || bigAtLow || buyersTakeOver;
+    const bool shortCandidate = buyerDivergence || failedHigh || bigAtHigh || sellersTakeOver;
 
     float reason = 0.0f;
     if (longCandidate && !shortCandidate)
     {
         LongWatch[i] = sc.Low[i] - sc.TickSize;
-        reason = (sellerDivergence ? 1.0f : 0.0f) + (failedLow ? 2.0f : 0.0f) + (bigAtLow ? 4.0f : 0.0f);
+        reason = (sellerDivergence ? 1.0f : 0.0f) + (failedLow ? 2.0f : 0.0f) + (bigAtLow ? 4.0f : 0.0f) + (buyersTakeOver ? 8.0f : 0.0f);
     }
     else if (shortCandidate && !longCandidate)
     {
         ShortWatch[i] = sc.High[i] + sc.TickSize;
-        reason = (buyerDivergence ? 1.0f : 0.0f) + (failedHigh ? 2.0f : 0.0f) + (bigAtHigh ? 4.0f : 0.0f);
+        reason = (buyerDivergence ? 1.0f : 0.0f) + (failedHigh ? 2.0f : 0.0f) + (bigAtHigh ? 4.0f : 0.0f) + (sellersTakeOver ? 8.0f : 0.0f);
     }
     ReasonSG[i] = reason;
 
@@ -441,8 +493,9 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
 
     // Alerts only for the bar that has just closed, never during historical recalculation.
     int& LastAlertBar = sc.GetPersistentInt(2);
-    if (AlertsOn.GetYesNo() && !sc.IsFullRecalculation && i == sc.ArraySize - 2 && LastAlertBar != i
-        && (newTrigger || LongWatch[i] != 0.0f || ShortWatch[i] != 0.0f))
+    const bool watchNow = LongWatch[i] != 0.0f || ShortWatch[i] != 0.0f;
+    if (!sc.IsFullRecalculation && i == sc.ArraySize - 2 && LastAlertBar != i
+        && ((newTrigger && AlertsOn.GetYesNo()) || (!newTrigger && watchNow && AlertOnWatch.GetYesNo())))
     {
         LastAlertBar = i;
         SCString msg;
@@ -451,6 +504,6 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         else
             msg.Format("%s absorption watch (reason %d, delta %d, volume %d)",
                        LongWatch[i] != 0.0f ? "Seller" : "Buyer", (int)reason, (int)delta, (int)volume);
-        sc.SetAlert(1, msg);
+        sc.SetAlert(newTrigger ? 2 : 1, msg);
     }
 }
