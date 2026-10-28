@@ -13,7 +13,7 @@ const PUBLIC = path.join(__dirname, 'public');
 
 const SYSTEM = fs.readFileSync(path.join(__dirname, 'prompt.txt'), 'utf8');
 const NOTES_SYSTEM = fs.readFileSync(path.join(__dirname, 'notes-prompt.txt'), 'utf8');
-const NOTES_MODEL = process.env.NOTES_MODEL || 'claude-sonnet-5-5';
+const NOTES_MODEL = process.env.NOTES_MODEL || (process.env.LLM_BASE_URL ? MODEL : 'claude-sonnet-5-5');
 const CALLS_DIR = path.join(__dirname, 'calls');
 fs.mkdirSync(CALLS_DIR, { recursive: true });
 
@@ -36,15 +36,32 @@ function extractJson(text) {
   return JSON.parse(text.slice(start, end + 1));
 }
 
+// Poskytovatel LLM: výchozí Claude API; s LLM_BASE_URL libovolné OpenAI-kompatibilní API
+// (Ollama lokálně zdarma, Gemini/Groq s bezplatným limitem, OpenRouter…).
+const LLM_BASE_URL = process.env.LLM_BASE_URL;
+const LLM_KEY = process.env.LLM_API_KEY || API_KEY;
+const LLM_READY = LLM_BASE_URL ? true : !!API_KEY;
+
 async function claude(model, system, user, maxTokens, signal) {
-  const r = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
-    method: 'POST', signal,
-    headers: { 'content-type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
-  });
-  if (!r.ok) throw new Error(`Claude API ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const j = await r.json();
-  return extractJson(j.content.map((b) => b.text || '').join(''));
+  let r, pick;
+  if (LLM_BASE_URL) {
+    r = await fetch(LLM_BASE_URL.replace(/\/$/, '') + '/chat/completions', {
+      method: 'POST', signal,
+      headers: { 'content-type': 'application/json', ...(LLM_KEY ? { authorization: `Bearer ${LLM_KEY}` } : {}) },
+      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.4,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+    });
+    pick = (j) => j.choices?.[0]?.message?.content || '';
+  } else {
+    r = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
+      method: 'POST', signal,
+      headers: { 'content-type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+    });
+    pick = (j) => j.content.map((b) => b.text || '').join('');
+  }
+  if (!r.ok) throw new Error(`LLM API ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  return extractJson(pick(await r.json()));
 }
 
 const leadText = (l = {}) =>
@@ -125,7 +142,7 @@ http.createServer(async (req, res) => {
       }
 
       if ((route === 'suggest' || route === 'notes') && req.method === 'POST') {
-        if (!API_KEY) return json(res, 500, { error: 'Chybí ANTHROPIC_API_KEY (viz README).' });
+        if (!LLM_READY) return json(res, 500, { error: 'Chybí ANTHROPIC_API_KEY nebo LLM_BASE_URL (viz README).' });
         const body = JSON.parse(await readBody(req, 1_000_000));
         if (!body.transcript || typeof body.transcript !== 'string') throw new Error('Prázdný přepis');
         if (route === 'suggest') return json(res, 200, await suggest(body));

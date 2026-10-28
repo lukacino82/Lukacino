@@ -45,6 +45,19 @@ node server.js                            # http://localhost:3000  (potřebuje N
 Server poslouchá jen na `localhost`. Otevři v Chrome/Edge. Volitelně `MODEL` (návrhy, výchozí
 `claude-haiku-5-5`) a `NOTES_MODEL` (zápisy, výchozí `claude-sonnet-5-5`).
 
+### Zdarma / bez Claude API
+Appka umí i jiné modely přes OpenAI-kompatibilní API (`LLM_BASE_URL`, `MODEL`, volitelně `LLM_API_KEY`):
+```bash
+# a) Ollama – běží lokálně na tvém PC, zdarma (stáhni z ollama.com, pak: ollama pull qwen2.5:7b)
+LLM_BASE_URL=http://localhost:11434/v1 MODEL=qwen2.5:7b node server.js
+# b) Groq – bezplatný limit (klíč z console.groq.com)
+LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_API_KEY=gsk_... MODEL=llama-3.3-70b-versatile node server.js
+# c) Google Gemini – bezplatný limit (klíč z aistudio.google.com)
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai LLM_API_KEY=... MODEL=gemini-2.0-flash node server.js
+```
+Bezplatné limity a názvy modelů se mění – ověř je u poskytovatele. Menší/bezplatné modely bývají
+v češtině slabší než Claude a hůř drží JSON formát.
+
 ### Průběh cold callu
 1. Vyplň **lead** (jméno, firma, poznámky) a jednou **cíl** + **skript** v Nastavení hovoru.
 2. Zavolej z telefonu na **hlasitý odposlech** a polož ho k mikrofonu PC (nebo použij virtuální kabel).
