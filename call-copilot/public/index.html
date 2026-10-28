@@ -84,6 +84,7 @@
   <span id="timer">0:00</span>
   <div class="seg" id="speakerSeg" title="Kdo právě mluví (Mezerník přepíná)">
     <button data-s="auto" class="active">Auto</button>
+    <button data-s="vol" title="Podle hlasitosti (nejdřív kalibrace v Nastavení hovoru)">Hlasitost</button>
     <button data-s="op">Já</button>
     <button data-s="cu">Klient</button>
   </div>
@@ -113,6 +114,16 @@
       <input type="text" id="goal" placeholder="např. domluvit 15min online ukázku / získat souhlas se zasláním nabídky">
       <label for="context">Skript, nabídka, pravidla (stálý kontext)</label>
       <textarea id="context" rows="6" placeholder="Co nabízíme, úvodní věta, kvalifikační otázky, co se nesmí slibovat…"></textarea>
+      <label>Rozlišení mluvčích podle hlasitosti</label>
+      <div class="box" style="margin-top:0">
+        <div style="font-size:13px;color:var(--muted)">Mikrofon je blízko tebe, hlas klienta z telefonu je tišší. Naměř obojí a přepni v záhlaví na „Hlasitost“.</div>
+        <div class="bar" style="height:10px;margin:8px 0;position:relative"><i id="lvlBar"></i><b id="lvlThr" style="position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--bad);left:0"></b></div>
+        <div class="row">
+          <button class="small" id="calOp">1) Změřit můj hlas (5 s)</button>
+          <button class="small" id="calCu">2) Změřit klienta (5 s)</button>
+        </div>
+        <div id="calInfo" style="font-size:13px;margin-top:6px;color:var(--muted)">Nezkalibrováno.</div>
+      </div>
       <label for="lang">Jazyk rozpoznávání</label>
       <input type="text" id="lang" value="cs-CZ">
     </details>
@@ -222,7 +233,7 @@ $('speakerSeg').addEventListener('click', (e) => e.target.dataset.s && setSpeake
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
     e.preventDefault();
-    setSpeaker({ auto: 'op', op: 'cu', cu: 'auto' }[speaker]);
+    setSpeaker({ auto: 'op', vol: 'op', op: 'cu', cu: 'auto' }[speaker]);
   }
 });
 
@@ -239,7 +250,7 @@ function scrollDown() { const t = $('transcript'); t.scrollTop = t.scrollHeight;
 function addFinal(text, who) {
   text = text.trim();
   if (!text) return;
-  const l = { who: who || (speaker === 'auto' ? '?' : speaker), text };
+  const l = { who: who || labelFor(), text };
   lines.push(l);
   if (interimEl) { interimEl.remove(); interimEl = null; }
   $('transcript').append(renderLine(l));
@@ -250,7 +261,7 @@ function addFinal(text, who) {
 function showInterim(text) {
   if (interimEl) interimEl.remove();
   if (!text.trim()) { interimEl = null; return; }
-  interimEl = renderLine({ who: speaker === 'auto' ? '?' : speaker, text }, true);
+  interimEl = renderLine({ who: speaker === 'vol' ? liveWho() : speaker === 'auto' ? '?' : speaker, text }, true);
   $('transcript').append(interimEl);
   scrollDown();
 }
@@ -294,6 +305,7 @@ function tick() {
 
 function start() {
   if (!startRec()) return;
+  startMeter();
   running = true;
   if (!callStart) callStart = Date.now();
   clearInterval(timerInt); timerInt = setInterval(tick, 1000); tick();
@@ -304,6 +316,7 @@ function start() {
 }
 function stop() {
   running = false;
+  if (!calib) stopMeter();
   clearInterval(timerInt);
   if (rec) { rec.onend = null; try { rec.stop(); } catch {} }
   if (inflight) inflight.abort();
@@ -395,6 +408,82 @@ function render(s) {
   $('warn').innerHTML = s.warning ? `<div class="warn">⚠ ${esc(s.warning)}</div>` : '';
   $('nextGoal').textContent = s.next_goal ? `Další cíl: ${s.next_goal}` : '';
 }
+
+// ---------- Rozlišení mluvčích podle hlasitosti ----------
+// Mikrofon u operátora: jeho hlas má vyšší hladinu než hlas klienta z reproduktoru telefonu.
+const NOISE = 0.006;                       // pod touto hladinou je ticho
+let micStream = null, audioCtx = null, analyser = null, meterBuf = null, meterTimer = null;
+let frames = [];                           // hladiny od posledního dokončeného úseku
+let curLevel = 0, calib = null;
+let lvlOp = parseFloat(load('lvlOp')) || 0, lvlCu = parseFloat(load('lvlCu')) || 0;
+let threshold = parseFloat(load('lvlThr')) || 0;
+
+const p80 = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length * 0.8)]; };
+
+async function startMeter() {
+  if (micStream) return true;
+  try {
+    // vypnuté úpravy zvuku, aby hladiny odpovídaly skutečné hlasitosti
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    audioCtx = new AudioContext();
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
+    audioCtx.createMediaStreamSource(micStream).connect(analyser);
+    meterBuf = new Float32Array(analyser.fftSize);
+    meterTimer = setInterval(sampleLevel, 50);
+    return true;
+  } catch (e) { setStatus('Měření hlasitosti: ' + e.message, true); return false; }
+}
+function stopMeter() {
+  clearInterval(meterTimer); meterTimer = null;
+  if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  if (audioCtx) audioCtx.close();
+  micStream = audioCtx = analyser = null; curLevel = 0; $('lvlBar').style.width = '0';
+}
+function sampleLevel() {
+  analyser.getFloatTimeDomainData(meterBuf);
+  let sum = 0; for (const v of meterBuf) sum += v * v;
+  curLevel = Math.sqrt(sum / meterBuf.length);
+  if (curLevel > NOISE) { frames.push(curLevel); if (frames.length > 600) frames.splice(0, frames.length - 600); }
+  $('lvlBar').style.width = Math.min(100, curLevel * 400) + '%';
+  if (calib && curLevel > NOISE) calib.vals.push(curLevel);
+}
+const showThr = () => { $('lvlThr').style.left = Math.min(100, threshold * 400) + '%'; };
+function calInfo() {
+  const f = (x) => (x ? x.toFixed(3) : '—');
+  let t = `Můj hlas: ${f(lvlOp)} · klient: ${f(lvlCu)} · hranice: ${f(threshold)}`;
+  if (lvlOp && lvlCu && lvlOp <= lvlCu * 1.3) t += ' ⚠ Hlasy jsou si příliš blízko – posuň telefon dál od mikrofonu nebo sedni blíž.';
+  $('calInfo').textContent = t; showThr();
+}
+async function calibrate(kind) {
+  if (calib) return;
+  if (!(await startMeter())) return;
+  calib = { kind, vals: [] };
+  const btn = $(kind === 'op' ? 'calOp' : 'calCu'); const old = btn.textContent;
+  btn.disabled = true; btn.textContent = kind === 'op' ? 'Mluv…' : 'Nech mluvit klienta / přehraj hlas…';
+  setTimeout(() => {
+    const lvl = p80(calib.vals); calib = null;
+    btn.disabled = false; btn.textContent = old;
+    if (!lvl) { $('calInfo').textContent = 'Nic jsem neslyšel – zkus znovu a povol mikrofon.'; }
+    else {
+      if (kind === 'op') { lvlOp = lvl; save('lvlOp', lvl); } else { lvlCu = lvl; save('lvlCu', lvl); }
+      if (lvlOp && lvlCu) { threshold = Math.sqrt(lvlOp * lvlCu); save('lvlThr', threshold); }   // geometrický střed
+      calInfo();
+    }
+    if (!running) stopMeter();
+  }, 5000);
+}
+$('calOp').onclick = () => calibrate('op');
+$('calCu').onclick = () => calibrate('cu');
+calInfo();
+
+// kdo mluvil poslední úsek: podle hlasitosti, bez kalibrace nechá "?"
+function labelFor() {
+  if (speaker !== 'vol') return speaker === 'auto' ? '?' : speaker;
+  const lvl = p80(frames); frames = [];
+  if (!threshold || !lvl) return '?';
+  return lvl >= threshold ? 'op' : 'cu';
+}
+function liveWho() { return !threshold ? '?' : curLevel >= threshold ? 'op' : 'cu'; }
 
 // ---------- Zápis z hovoru ----------
 async function generateNotes() {
