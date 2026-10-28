@@ -48,7 +48,9 @@ async function claude(model, system, user, maxTokens, signal) {
     r = await fetch(LLM_BASE_URL.replace(/\/$/, '') + '/chat/completions', {
       method: 'POST', signal,
       headers: { 'content-type': 'application/json', ...(LLM_KEY ? { authorization: `Bearer ${LLM_KEY}` } : {}) },
-      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.4,
+      // reasoning modely (gpt-oss, qwen3…) počítají "přemýšlení" do limitu tokenů, proto větší rezerva
+      body: JSON.stringify({ model, max_tokens: maxTokens * 4, temperature: 0.4,
+        ...(process.env.LLM_REASONING_EFFORT ? { reasoning_effort: process.env.LLM_REASONING_EFFORT } : {}),
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
     });
     pick = (j) => j.choices?.[0]?.message?.content || '';

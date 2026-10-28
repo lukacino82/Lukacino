@@ -55,6 +55,7 @@ LLM_BASE_URL=https://api.groq.com/openai/v1 LLM_API_KEY=gsk_... MODEL=llama-3.3-
 # c) Google Gemini – bezplatný limit (klíč z aistudio.google.com)
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai LLM_API_KEY=... MODEL=gemini-2.0-flash node server.js
 ```
+Pro „přemýšlející“ modely (např. `openai/gpt-oss-120b` na Groq) nastav pro rychlejší odpovědi `LLM_REASONING_EFFORT=low`.
 Bezplatné limity a názvy modelů se mění – ověř je u poskytovatele. Menší/bezplatné modely bývají
 v češtině slabší než Claude a hůř drží JSON formát.
 
