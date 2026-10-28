@@ -1,1 +1,5 @@
 dist/
+calls/*
+!calls/.gitkeep
+knowledge/*
+!knowledge/ukazka-faq.md

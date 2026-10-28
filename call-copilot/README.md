@@ -37,7 +37,34 @@ Pro nejlepší výsledky piš dokumenty jako sekce s nadpisem (`# Námitka: je t
 a konkrétní odpovědí. Ukázka: `knowledge/ukazka-faq.md`.
 Pro velké báze (stovky stran) lze BM25 nahradit embeddingy.
 
-## Nasazení na sdílený hosting (Active24, PHP)
+## Osobní použití na PC (doporučeno)
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...      # Windows PowerShell: $env:ANTHROPIC_API_KEY="sk-ant-..."
+node server.js                            # http://localhost:3000  (potřebuje Node 18+)
+```
+Server poslouchá jen na `localhost`. Otevři v Chrome/Edge. Volitelně `MODEL` (návrhy, výchozí
+`claude-haiku-5-5`) a `NOTES_MODEL` (zápisy, výchozí `claude-sonnet-5-5`).
+
+### Průběh cold callu
+1. Vyplň **lead** (jméno, firma, poznámky) a jednou **cíl** + **skript** v Nastavení hovoru.
+2. Zavolej z telefonu na **hlasitý odposlech** a polož ho k mikrofonu PC (nebo použij virtuální kabel).
+   Klikni **Začít hovor**.
+3. Vpravo v **Našeptávači** vidíš větu k řečení, fázi, náladu, zájem, námitku a zdroj ze znalostní báze.
+4. **Ukončit hovor** → automaticky vznikne **Zápis** (shrnutí, výsledek, skóre leadu, potřeby, námitky,
+   další kroky, hotový follow-up e-mail/SMS, koučink) a uloží se do `calls/`. Najdeš ho v **Historii**,
+   jde zkopírovat nebo stáhnout jako `.md`.
+5. V zápisu jsou **poučení pro znalostní bázi** – jedním klikem je přidáš (`knowledge/z-hovoru.md`).
+   Báze tak roste s každým hovorem. Můžeš ji také ručně doplňovat (rychlé přidání, nahrání souboru,
+   úprava dokumentů, nebo prostě soubory do složky `knowledge/` – index se obnoví sám).
+
+Rozdělaný hovor se po obnovení stránky obnoví. `calls/` a tvá znalostní báze jsou v `.gitignore`
+(neposílají se na GitHub).
+
+### Právní poznámka
+Přepis hovoru je záznam hovoru a obsahuje osobní údaje. Informuj volaného, že hovor zaznamenáváš/přepisuješ,
+a přepis posílá Google (rozpoznávání řeči v Chrome) a Anthropic (návrhy a zápisy).
+
+## Nasazení na sdílený hosting (starší, základní verze – bez zápisů a historie hovorů)
 Active24 sdílený hosting nespouští Node, proto je tu ekvivalentní PHP backend (`php/api.php`).
 ```bash
 ./build-php.sh        # vytvoří dist/copilot/

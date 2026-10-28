@@ -19,16 +19,19 @@
   header h1 { font-size:17px; margin:0; margin-right:auto; }
   button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 14px; font:inherit; cursor:pointer; }
   button:hover { border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button.rec { background:var(--bad); border-color:var(--bad); color:#fff; }
+  button.small { padding:3px 10px; font-size:13px; }
   .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); display:inline-block; }
   .dot.on { background:var(--bad); animation:pulse 1.2s infinite; }
   @keyframes pulse { 50% { opacity:.3; } }
-  main { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); gap:16px; padding:16px; max-width:1300px; margin:0 auto; }
-  @media (max-width:860px) { main { grid-template-columns:1fr; } }
+  main { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:16px; padding:16px; max-width:1400px; margin:0 auto; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; } }
   section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
   h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; }
-  #transcript { height:48vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  h3 { font-size:14px; margin:14px 0 4px; }
+  #transcript { height:42vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
   .line { padding:8px 10px; border-radius:8px; background:var(--bg); border-left:3px solid var(--muted); }
   .line.op { border-color:var(--accent); } .line.cu { border-color:var(--good); }
   .line.interim { opacity:.55; font-style:italic; }
@@ -44,19 +47,25 @@
   .alt { padding:8px 10px; border:1px dashed var(--line); border-radius:8px; margin-top:6px; cursor:pointer; }
   .alt:hover { border-color:var(--accent); }
   .warn { margin-top:10px; padding:8px 10px; border-radius:8px; background:rgba(255,176,32,.12); color:var(--warn); }
-  .kbdoc { display:flex; justify-content:space-between; padding:4px 8px; border:1px solid var(--line); border-radius:6px; margin-top:4px; font-size:13px; }
-  .kbdoc button { padding:0 8px; }
-  .src { color:var(--muted); font-size:13px; margin-top:8px; }
-  .goal { margin-top:10px; color:var(--muted); font-size:13px; }
+  .goal, .src { color:var(--muted); font-size:13px; margin-top:8px; }
   label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
-  textarea, input[type=text] { width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; resize:vertical; }
+  textarea, input[type=text], input[type=password] { width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; resize:vertical; }
   details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); }
   .row { display:flex; gap:8px; } .row > input { flex:1; }
-  #status { color:var(--muted); font-size:13px; }
-  #status.err { color:var(--bad); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  #status { color:var(--muted); font-size:13px; } #status.err { color:var(--bad); }
+  #timer { font-variant-numeric:tabular-nums; color:var(--muted); min-width:44px; }
   .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .seg button { border:0; border-radius:0; padding:6px 10px; background:var(--panel); }
   .seg button.active { background:var(--accent); color:#fff; }
+  .tabs { display:flex; gap:4px; margin:-4px 0 12px; border-bottom:1px solid var(--line); }
+  .tabs button { border:0; border-bottom:2px solid transparent; border-radius:0; background:none; color:var(--muted); padding:8px 12px; }
+  .tabs button.active { color:var(--text); border-bottom-color:var(--accent); }
+  .box { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:8px; }
+  .box ul { margin:4px 0 0; padding-left:18px; }
+  .kbdoc, .hist { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; margin-top:4px; font-size:13px; }
+  .hist { cursor:pointer; } .hist:hover { border-color:var(--accent); }
+  .good { color:var(--good); } .bad { color:var(--bad); }
 </style>
 </head>
 <body>
@@ -68,17 +77,19 @@
     <button class="primary" style="width:100%">Přihlásit</button>
   </form>
 </div>
+
 <header>
   <h1>🎧 Call Copilot</h1>
   <span id="status">Připraveno</span>
+  <span id="timer">0:00</span>
   <div class="seg" id="speakerSeg" title="Kdo právě mluví (Mezerník přepíná)">
     <button data-s="auto" class="active">Auto</button>
-    <button data-s="op">Operátor</button>
-    <button data-s="cu">Zákazník</button>
+    <button data-s="op">Já</button>
+    <button data-s="cu">Klient</button>
   </div>
   <span class="dot" id="dot"></span>
   <button id="toggle" class="primary">▶ Začít hovor</button>
-  <button id="clear">Vyčistit</button>
+  <button id="newCall">Nový hovor</button>
 </header>
 
 <main>
@@ -86,57 +97,123 @@
     <h2>Přepis hovoru</h2>
     <div id="transcript"></div>
     <div class="row" style="margin-top:10px">
-      <input type="text" id="sim" placeholder="Simulovat repliku zákazníka (bez mikrofonu) + Enter">
+      <input type="text" id="sim" placeholder="Simulovat repliku klienta (bez mikrofonu) + Enter">
     </div>
-    <details open>
+
+    <h2 style="margin-top:16px">Volaný lead</h2>
+    <div class="grid2">
+      <input type="text" id="leadName" placeholder="Jméno">
+      <input type="text" id="leadCompany" placeholder="Firma">
+    </div>
+    <textarea id="leadNotes" rows="2" placeholder="Co o leadu víš (obor, odkud kontakt, předchozí komunikace…)" style="margin-top:8px"></textarea>
+
+    <details>
       <summary>Nastavení hovoru</summary>
       <label for="goal">Cíl hovoru</label>
-      <input type="text" id="goal" placeholder="např. domluvit schůzku / uzavřít prodej tarifu / vymoci platbu">
-      <label for="context">Kontext, produkt, skript, pravidla, ceny</label>
-      <textarea id="context" rows="6" placeholder="Co prodáváme, klíčové argumenty, časté námitky a odpovědi, co se nesmí říkat…"></textarea>
-      <label>Znalostní báze (.md, .txt, .csv, .json) – AI z ní čerpá odpovědi</label>
-      <input type="file" id="kbFile" accept=".md,.txt,.csv,.json" multiple>
-      <div id="kbList" style="margin-top:8px"></div>
+      <input type="text" id="goal" placeholder="např. domluvit 15min online ukázku / získat souhlas se zasláním nabídky">
+      <label for="context">Skript, nabídka, pravidla (stálý kontext)</label>
+      <textarea id="context" rows="6" placeholder="Co nabízíme, úvodní věta, kvalifikační otázky, co se nesmí slibovat…"></textarea>
       <label for="lang">Jazyk rozpoznávání</label>
       <input type="text" id="lang" value="cs-CZ">
     </details>
   </section>
 
   <section>
-    <h2>Navrhuji říct</h2>
-    <div id="say" class="suggest empty">Spusť hovor – návrhy se objeví tady.</div>
-    <div class="src" id="src"></div>
-    <div class="meta" id="meta"></div>
-    <div>
-      <div style="font-size:13px;color:var(--muted)">Zájem zákazníka <span id="interestVal"></span></div>
-      <div class="bar"><i id="interestBar"></i></div>
+    <div class="tabs" id="tabs">
+      <button data-t="live" class="active">Našeptávač</button>
+      <button data-t="notes">Zápis</button>
+      <button data-t="hist">Historie</button>
+      <button data-t="kb">Znalostní báze</button>
     </div>
-    <h2 style="margin-top:16px">Alternativy</h2>
-    <div id="alts"></div>
-    <div id="warn"></div>
-    <div class="goal" id="nextGoal"></div>
+
+    <!-- Našeptávač -->
+    <div data-pane="live">
+      <h2>Navrhuji říct</h2>
+      <div id="say" class="suggest empty">Spusť hovor – návrhy se objeví tady.</div>
+      <div class="src" id="src"></div>
+      <div class="meta" id="meta"></div>
+      <div>
+        <div style="font-size:13px;color:var(--muted)">Zájem klienta <span id="interestVal"></span></div>
+        <div class="bar"><i id="interestBar"></i></div>
+      </div>
+      <h2 style="margin-top:16px">Alternativy</h2>
+      <div id="alts"></div>
+      <div id="warn"></div>
+      <div class="goal" id="nextGoal"></div>
+    </div>
+
+    <!-- Zápis -->
+    <div data-pane="notes" hidden>
+      <div class="row" style="margin-bottom:8px">
+        <button id="makeNotes" class="primary small">Vytvořit zápis z přepisu</button>
+        <button id="copyNotes" class="small" hidden>Kopírovat</button>
+        <button id="dlNotes" class="small" hidden>Stáhnout .md</button>
+      </div>
+      <div id="notesOut" style="color:var(--muted)">Zápis se vytvoří automaticky po ukončení hovoru.</div>
+    </div>
+
+    <!-- Historie -->
+    <div data-pane="hist" hidden>
+      <div id="histList"></div>
+    </div>
+
+    <!-- Znalostní báze -->
+    <div data-pane="kb" hidden>
+      <h2>Rychle přidat poznatek</h2>
+      <input type="text" id="kbTitle" placeholder="Nadpis, např. Námitka: už máme dodavatele">
+      <textarea id="kbText" rows="4" placeholder="Co a jak na to odpovědět…" style="margin-top:6px"></textarea>
+      <button id="kbAdd" class="primary small" style="margin-top:6px">Přidat do báze</button>
+
+      <h2 style="margin-top:18px">Dokumenty</h2>
+      <input type="file" id="kbFile" accept=".md,.txt,.csv,.json" multiple>
+      <div id="kbList" style="margin-top:8px"></div>
+      <div id="kbEditor" hidden>
+        <label id="kbEditName"></label>
+        <textarea id="kbEditText" rows="12"></textarea>
+        <button id="kbSave" class="primary small" style="margin-top:6px">Uložit</button>
+        <button id="kbCancel" class="small" style="margin-top:6px">Zavřít</button>
+      </div>
+    </div>
   </section>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const store = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const load = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+const ul = (a) => a && a.length ? `<ul>${a.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<div style="color:var(--muted)">—</div>';
+const J = { 'content-type': 'application/json' };
 
-for (const k of ['goal', 'context', 'lang']) {
+// stálá nastavení + lead se pamatují mezi načteními stránky
+for (const k of ['goal', 'context', 'lang', 'leadName', 'leadCompany', 'leadNotes']) {
   if (load(k)) $(k).value = load(k);
-  $(k).addEventListener('input', () => store(k, $(k).value));
+  $(k).addEventListener('input', () => save(k, $(k).value));
 }
+const lead = () => ({ name: $('leadName').value, company: $('leadCompany').value, notes: $('leadNotes').value });
 
 let lines = [];          // {who:'op'|'cu'|'?', text}
 let speaker = 'auto';
 let rec = null, running = false, interimEl = null;
-let debounce = null, inflight = null, pending = false;
+let debounce = null, inflight = null;
+let callStart = null, timerInt = null, currentCall = null;
 
 const WHO = { op: 'Operátor', cu: 'Zákazník', '?': '?' };
+const transcriptText = () => lines.map((l) => `${WHO[l.who]}: ${l.text}`).join('\n');
+const persistDraft = () => save('draft', JSON.stringify({ lines, callStart }));
 
 function setStatus(t, err) { $('status').textContent = t; $('status').className = err ? 'err' : ''; }
 
+// ---------- Záložky ----------
+function tab(t) {
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.t === t));
+  document.querySelectorAll('[data-pane]').forEach((p) => p.hidden = p.dataset.pane !== t);
+  if (t === 'hist') loadHist();
+  if (t === 'kb') loadKb();
+}
+$('tabs').addEventListener('click', (e) => e.target.dataset.t && tab(e.target.dataset.t));
+
+// ---------- Mluvčí ----------
 function setSpeaker(s) {
   speaker = s;
   document.querySelectorAll('#speakerSeg button').forEach((b) => b.classList.toggle('active', b.dataset.s === s));
@@ -149,6 +226,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ---------- Přepis ----------
 function renderLine(l, interim) {
   const d = document.createElement('div');
   d.className = `line ${l.who === 'op' ? 'op' : l.who === 'cu' ? 'cu' : ''} ${interim ? 'interim' : ''}`;
@@ -166,6 +244,7 @@ function addFinal(text, who) {
   if (interimEl) { interimEl.remove(); interimEl = null; }
   $('transcript').append(renderLine(l));
   scrollDown();
+  persistDraft();
   scheduleSuggest();
 }
 function showInterim(text) {
@@ -173,6 +252,11 @@ function showInterim(text) {
   if (!text.trim()) { interimEl = null; return; }
   interimEl = renderLine({ who: speaker === 'auto' ? '?' : speaker, text }, true);
   $('transcript').append(interimEl);
+  scrollDown();
+}
+function renderAllLines() {
+  $('transcript').innerHTML = '';
+  lines.forEach((l) => $('transcript').append(renderLine(l)));
   scrollDown();
 }
 
@@ -203,27 +287,55 @@ function startRec() {
   return true;
 }
 
+function tick() {
+  const s = Math.floor((Date.now() - callStart) / 1000);
+  $('timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 function start() {
   if (!startRec()) return;
   running = true;
+  if (!callStart) callStart = Date.now();
+  clearInterval(timerInt); timerInt = setInterval(tick, 1000); tick();
   $('toggle').textContent = '■ Ukončit hovor'; $('toggle').className = 'rec';
   $('dot').classList.add('on');
+  tab('live');
   setStatus('Poslouchám…');
 }
 function stop() {
   running = false;
+  clearInterval(timerInt);
   if (rec) { rec.onend = null; try { rec.stop(); } catch {} }
-  $('toggle').textContent = '▶ Začít hovor'; $('toggle').className = 'primary';
+  if (inflight) inflight.abort();
+  clearTimeout(debounce);
+  if (interimEl) { interimEl.remove(); interimEl = null; }
+  $('toggle').textContent = '▶ Pokračovat v hovoru'; $('toggle').className = 'primary';
   $('dot').classList.remove('on');
   setStatus('Zastaveno');
 }
-$('toggle').onclick = () => (running ? stop() : start());
-$('clear').onclick = () => {
-  lines = []; $('transcript').innerHTML = ''; interimEl = null;
-  $('say').textContent = 'Spusť hovor – návrhy se objeví tady.'; $('say').className = 'suggest empty';
-  $('meta').innerHTML = ''; $('alts').innerHTML = ''; $('warn').innerHTML = ''; $('nextGoal').textContent = '';
-  $('interestBar').style.width = '0'; $('interestVal').textContent = '';
+$('toggle').onclick = async () => {
+  if (!running) return start();
+  stop();
+  if (lines.length >= 2) await generateNotes();   // po ukončení hovoru rovnou vznikne zápis
 };
+
+function newCall() {
+  if (running) stop();
+  lines = []; callStart = null; currentCall = null;
+  save('draft', '');
+  $('transcript').innerHTML = ''; interimEl = null;
+  for (const k of ['leadName', 'leadCompany', 'leadNotes']) { $(k).value = ''; save(k, ''); }
+  $('say').textContent = 'Spusť hovor – návrhy se objeví tady.'; $('say').className = 'suggest empty';
+  $('meta').innerHTML = ''; $('alts').innerHTML = ''; $('warn').innerHTML = ''; $('nextGoal').textContent = ''; $('src').textContent = '';
+  $('interestBar').style.width = '0'; $('interestVal').textContent = '';
+  $('notesOut').innerHTML = 'Zápis se vytvoří automaticky po ukončení hovoru.'; $('notesOut').style.color = 'var(--muted)';
+  ['copyNotes', 'dlNotes'].forEach((id) => $(id).hidden = true);
+  $('timer').textContent = '0:00';
+  $('toggle').textContent = '▶ Začít hovor'; $('toggle').className = 'primary';
+  setStatus('Připraveno'); tab('live');
+}
+$('newCall').onclick = newCall;
+
 $('sim').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.value.trim()) { addFinal(e.target.value, 'cu'); e.target.value = ''; }
 });
@@ -236,16 +348,15 @@ function scheduleSuggest() {
 
 async function requestSuggest() {
   if (!lines.length) return;
-  if (inflight) { pending = true; inflight.abort(); }  // zahodíme zastaralý dotaz
+  if (inflight) inflight.abort();               // zahodíme zastaralý dotaz
   const ctrl = (inflight = new AbortController());
   $('say').classList.add('stale');
   // posledních ~40 replik stačí a drží nízkou latenci
   const transcript = lines.slice(-40).map((l) => `${WHO[l.who]}: ${l.text}`).join('\n');
   try {
     const r = await fetch('api.php?a=suggest', {
-      method: 'POST', signal: ctrl.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ goal: $('goal').value, context: $('context').value, transcript }),
+      method: 'POST', signal: ctrl.signal, headers: J,
+      body: JSON.stringify({ goal: $('goal').value, context: $('context').value, lead: lead(), transcript }),
     });
     const j = await r.json();
     if (r.status === 401) { checkAuth(); throw new Error('Přihlášení vypršelo'); }
@@ -260,8 +371,6 @@ async function requestSuggest() {
     if (inflight === ctrl) inflight = null;
   }
 }
-
-function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 
 function render(s) {
   const say = $('say');
@@ -282,49 +391,170 @@ function render(s) {
     || '<div style="color:var(--muted)">—</div>';
   $('alts').querySelectorAll('.alt').forEach((el) => el.onclick = () => { $('say').textContent = el.textContent; });
 
-  $('warn').innerHTML = s.warning ? `<div class="warn">⚠ ${esc(s.warning)}</div>` : '';
   $('src').textContent = s.source ? `📚 Zdroj: ${s.source}` : '';
+  $('warn').innerHTML = s.warning ? `<div class="warn">⚠ ${esc(s.warning)}</div>` : '';
   $('nextGoal').textContent = s.next_goal ? `Další cíl: ${s.next_goal}` : '';
 }
 
-// ---------- Přihlášení ----------
-async function checkAuth() {
-  let ok = false;
-  try { ok = (await (await fetch('api.php?a=me')).json()).auth; } catch {}
-  $('login').hidden = ok;
-  if (ok) loadKb();
+// ---------- Zápis z hovoru ----------
+async function generateNotes() {
+  if (lines.length < 2) { $('notesOut').textContent = 'Přepis je příliš krátký.'; tab('notes'); return; }
+  tab('notes');
+  $('makeNotes').disabled = true;
+  $('notesOut').style.color = 'var(--muted)';
+  $('notesOut').textContent = 'Vytvářím zápis…';
+  try {
+    const r = await fetch('api.php?a=notes', { method: 'POST', headers: J,
+      body: JSON.stringify({ goal: $('goal').value, context: $('context').value, lead: lead(), transcript: transcriptText() }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    currentCall = j;
+    renderNotes(j);
+  } catch (e) {
+    $('notesOut').style.color = 'var(--bad)';
+    $('notesOut').textContent = 'Zápis se nepodařilo vytvořit: ' + e.message;
+  } finally { $('makeNotes').disabled = false; }
 }
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const r = await fetch('api.php?a=login', { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ password: $('pw').value }) });
-  if (r.ok) { $('pw').value = ''; $('loginErr').textContent = ''; checkAuth(); }
-  else $('loginErr').textContent = 'Špatné heslo.';
-});
+$('makeNotes').onclick = generateNotes;
+
+function callToMd(c) {
+  const n = c.notes || {}, l = c.lead || {};
+  const li = (a) => (a && a.length ? a.map((x) => `- ${x}`).join('\n') : '-');
+  return `# Hovor ${new Date(c.date).toLocaleString('cs-CZ')} – ${l.name || 'neznámý'}${l.company ? ' (' + l.company + ')' : ''}\n\n` +
+    `**Výsledek:** ${n.outcome} · **Skóre leadu:** ${n.lead_score}\n\n## Shrnutí\n${n.summary}\n\n` +
+    `## Potřeby klienta\n${li(n.client?.needs)}\n\n## Bolesti\n${li(n.client?.pain_points)}\n\n` +
+    `Rozhoduje: ${n.client?.decision_maker || '-'} · Časový rámec: ${n.client?.timeline || '-'}\n\n` +
+    `## Námitky\n${li((n.objections || []).map((o) => `${o.objection} → ${o.operator_response} (${o.worked ? 'zabralo' : 'nezabralo'})`))}\n\n` +
+    `## Další kroky\n${li((n.next_steps || []).map((s) => `${s.what}${s.when ? ' – ' + s.when : ''}`))}\n\n` +
+    `## Follow-up zpráva\n${n.followup_message || '-'}\n\n## Co zlepšit\n${li(n.coaching?.improve)}\n\n` +
+    `## Přepis\n${c.transcript}\n`;
+}
+
+function renderNotes(c) {
+  const n = c.notes || {};
+  const out = $('notesOut');
+  out.style.color = '';
+  const outcomeCls = /schůzka|zájem/.test(n.outcome) ? 'good' : /nezájem|nevolat/.test(n.outcome) ? 'bad' : '';
+  out.innerHTML =
+    `<div class="meta"><span class="chip ${outcomeCls}">${esc(n.outcome)}</span><span class="chip">Skóre leadu: ${esc(n.lead_score)}</span>` +
+    `<span class="chip">${esc(c.lead?.name || 'neznámý')}${c.lead?.company ? ' · ' + esc(c.lead.company) : ''}</span></div>` +
+    `<div class="box">${esc(n.summary)}</div>` +
+    `<h3>Další kroky</h3><div class="box">${ul((n.next_steps || []).map((s) => s.what + (s.when ? ' – ' + s.when : '')))}</div>` +
+    `<h3>Klient</h3><div class="box"><b>Potřeby</b>${ul(n.client?.needs)}<b>Bolesti</b>${ul(n.client?.pain_points)}` +
+    `<div style="margin-top:6px">Rozhoduje: ${esc(n.client?.decision_maker || '—')} · Časový rámec: ${esc(n.client?.timeline || '—')}</div></div>` +
+    `<h3>Námitky</h3><div class="box">${ul((n.objections || []).map((o) => `${o.objection} → ${o.operator_response} (${o.worked ? '✓ zabralo' : '✗ nezabralo'})`))}</div>` +
+    (n.followup_message ? `<h3>Follow-up zpráva <button class="small" id="cpFu">Kopírovat</button></h3><div class="box" style="white-space:pre-wrap">${esc(n.followup_message)}</div>` : '') +
+    `<h3>Koučink</h3><div class="box"><b class="good">Šlo dobře</b>${ul(n.coaching?.went_well)}<b class="bad">Zlepšit</b>${ul(n.coaching?.improve)}</div>` +
+    `<h3>Poučení pro znalostní bázi</h3><div id="kbSug"></div>`;
+  const sug = $('kbSug');
+  if (!(n.kb_suggestions || []).length) sug.innerHTML = '<div style="color:var(--muted)">Nic nového nezaznělo.</div>';
+  (n.kb_suggestions || []).forEach((k) => {
+    const box = document.createElement('div'); box.className = 'box';
+    box.innerHTML = `<b>${esc(k.title)}</b><div style="margin:4px 0;white-space:pre-wrap">${esc(k.text)}</div>`;
+    const b = document.createElement('button'); b.className = 'small primary'; b.textContent = 'Přidat do báze';
+    b.onclick = async () => { await kbAppend(k.title, k.text); b.textContent = '✓ Přidáno'; b.disabled = true; };
+    box.append(b); sug.append(box);
+  });
+  if ($('cpFu')) $('cpFu').onclick = () => navigator.clipboard.writeText(n.followup_message);
+  $('copyNotes').hidden = $('dlNotes').hidden = false;
+  $('copyNotes').onclick = () => navigator.clipboard.writeText(callToMd(c));
+  $('dlNotes').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([callToMd(c)], { type: 'text/markdown' }));
+    a.download = `hovor-${c.id}.md`; a.click();
+  };
+}
+
+// ---------- Historie ----------
+async function loadHist() {
+  const j = await (await fetch('api.php?a=calls')).json();
+  const box = $('histList');
+  box.innerHTML = (j.calls || []).length ? '' : '<div style="color:var(--muted)">Zatím žádné hovory.</div>';
+  for (const c of j.calls || []) {
+    const row = document.createElement('div'); row.className = 'hist';
+    row.innerHTML = `<span><b>${esc(c.lead?.name || 'neznámý')}</b>${c.lead?.company ? ' · ' + esc(c.lead.company) : ''}<br>` +
+      `<span style="color:var(--muted)">${new Date(c.date).toLocaleString('cs-CZ')} · ${esc(c.outcome || '')}</span></span><span>${esc(c.score ?? '')}</span>`;
+    row.onclick = async () => {
+      const full = await (await fetch('api.php?a=calls&id=' + encodeURIComponent(c.id))).json();
+      renderNotes(full); tab('notes');
+    };
+    box.append(row);
+  }
+}
 
 // ---------- Znalostní báze ----------
+async function kbAppend(title, text) {
+  const r = await fetch('api.php?a=kb', { method: 'POST', headers: J,
+    body: JSON.stringify({ name: 'z-hovoru.md', append: true, text: `# ${title}\n${text}` }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error);
+  renderKb(j.docs);
+}
+$('kbAdd').onclick = async () => {
+  if (!$('kbTitle').value.trim() || !$('kbText').value.trim()) return;
+  await kbAppend($('kbTitle').value.trim(), $('kbText').value.trim());
+  $('kbTitle').value = $('kbText').value = '';
+};
+
 function renderKb(docs) {
   $('kbList').innerHTML = docs.length ? '' : '<div style="color:var(--muted);font-size:13px">Báze je prázdná.</div>';
   for (const d of docs) {
     const row = document.createElement('div'); row.className = 'kbdoc';
     row.innerHTML = `<span>📄 ${esc(d.name)} · ${d.chunks} úryvků</span>`;
-    const del = document.createElement('button'); del.textContent = '✕';
-    del.onclick = async () => renderKb((await (await fetch('api.php?a=kb&name=' + encodeURIComponent(d.name), { method: 'DELETE' })).json()).docs);
-    row.append(del); $('kbList').append(row);
+    const ed = document.createElement('button'); ed.className = 'small'; ed.textContent = 'Upravit';
+    ed.onclick = async () => {
+      const j = await (await fetch('api.php?a=kb&name=' + encodeURIComponent(d.name))).json();
+      $('kbEditName').textContent = d.name; $('kbEditText').value = j.text; $('kbEditor').hidden = false;
+    };
+    const del = document.createElement('button'); del.className = 'small'; del.textContent = '✕';
+    del.onclick = async () => {
+      if (!confirm(`Smazat ${d.name}?`)) return;
+      renderKb((await (await fetch('api.php?a=kb&name=' + encodeURIComponent(d.name), { method: 'DELETE' })).json()).docs);
+    };
+    const wrap = document.createElement('span'); wrap.append(ed, ' ', del);
+    row.append(wrap); $('kbList').append(row);
   }
 }
+$('kbSave').onclick = async () => {
+  const r = await fetch('api.php?a=kb', { method: 'POST', headers: J,
+    body: JSON.stringify({ name: $('kbEditName').textContent, text: $('kbEditText').value }) });
+  renderKb((await r.json()).docs); $('kbEditor').hidden = true;
+};
+$('kbCancel').onclick = () => { $('kbEditor').hidden = true; };
 function loadKb() { fetch('api.php?a=kb').then((r) => r.json()).then((j) => renderKb(j.docs)).catch(() => {}); }
-checkAuth();
 $('kbFile').addEventListener('change', async (e) => {
   let docs;
   for (const f of e.target.files) {
-    const r = await fetch('api.php?a=kb', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: f.name, text: await f.text() }) });
+    const r = await fetch('api.php?a=kb', { method: 'POST', headers: J, body: JSON.stringify({ name: f.name, text: await f.text() }) });
     docs = (await r.json()).docs;
   }
   if (docs) renderKb(docs);
   e.target.value = '';
 });
+
+// ---------- Přihlášení (jen pro PHP hosting; lokálně se nezobrazí) ----------
+async function checkAuth() {
+  let ok = false;
+  try { ok = (await (await fetch('api.php?a=me')).json()).auth; } catch {}
+  $('login').hidden = ok;
+}
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await fetch('api.php?a=login', { method: 'POST', headers: J, body: JSON.stringify({ password: $('pw').value }) });
+  if (r.ok) { $('pw').value = ''; $('loginErr').textContent = ''; checkAuth(); }
+  else $('loginErr').textContent = 'Špatné heslo.';
+});
+checkAuth();
+
+// obnova rozdělaného hovoru po omylovém obnovení stránky
+try {
+  const d = JSON.parse(load('draft') || 'null');
+  if (d && d.lines && d.lines.length) {
+    lines = d.lines; callStart = d.callStart; renderAllLines();
+    setStatus('Obnoven rozdělaný hovor – pokračuj tlačítkem nebo „Nový hovor“.');
+    $('toggle').textContent = '▶ Pokračovat v hovoru';
+  }
+} catch {}
 </script>
 </body>
 </html>

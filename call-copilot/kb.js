@@ -50,7 +50,15 @@ function rebuild() {
   avgLen = chunks.reduce((a, c) => a + c.len, 0) / (chunks.length || 1);
 }
 
+// Soubory můžeš přidávat/upravovat i ručně ve složce – index se při změně sám obnoví.
+let sig = '';
+function refresh() {
+  const now = listDocs().map((f) => f + fs.statSync(path.join(KB_DIR, f)).mtimeMs).join('|');
+  if (now !== sig) { sig = now; rebuild(); }
+}
+
 function retrieve(query, k = 5) {
+  refresh();
   if (!chunks.length) return [];
   const q = [...new Set(tokenize(query))], N = chunks.length;
   return chunks.map((c) => {
@@ -70,9 +78,17 @@ function safeName(n) {
   return /\.(md|txt|csv|json)$/i.test(n) ? n : n + '.txt';
 }
 
-function save(name, text) { fs.writeFileSync(path.join(KB_DIR, safeName(name)), text); rebuild(); }
-function remove(name) { fs.rmSync(path.join(KB_DIR, safeName(name)), { force: true }); rebuild(); }
-function docs() { return listDocs().map((d) => ({ name: d, chunks: chunks.filter((c) => c.doc === d).length })); }
+function save(name, text) { fs.writeFileSync(path.join(KB_DIR, safeName(name)), text); rebuild(); sig = ''; }
+function remove(name) { fs.rmSync(path.join(KB_DIR, safeName(name)), { force: true }); rebuild(); sig = ''; }
+function docs() { refresh(); return docsNow(); }
+function docsNow() { return listDocs().map((d) => ({ name: d, chunks: chunks.filter((c) => c.doc === d).length })); }
+
+function read(name) { return fs.readFileSync(path.join(KB_DIR, safeName(name)), 'utf8'); }
+function append(name, text) {
+  const f = path.join(KB_DIR, safeName(name));
+  fs.appendFileSync(f, (fs.existsSync(f) ? '\n\n' : '') + text.trim() + '\n');
+  rebuild();
+}
 
 rebuild();
-module.exports = { retrieve, save, remove, docs };
+module.exports = { retrieve, save, remove, docs, read, append };
