@@ -440,6 +440,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef DomStripSpacing = sc.Input[84];
     SCInputRef BuyColor = sc.Input[85];
     SCInputRef SellColor = sc.Input[86];
+    SCInputRef DisplayMode = sc.Input[87];
 
     if (sc.SetDefaults)
     {
@@ -661,7 +662,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         BoxX.SetInt(3);
         BoxX.SetIntLimits(0, 95);
         BoxY.Name = "Text box: position vertical (% of chart height, 100 = top)";
-        BoxY.SetInt(93);
+        BoxY.SetInt(96);
         BoxY.SetIntLimits(2, 100);
         BoxFont.Name = "Text box: font size";
         BoxFont.SetInt(9);
@@ -683,15 +684,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         Show2h.Name = "Monitor: show 2 h";
         Show2h.SetYesNo(1);
         Show3h.Name = "Monitor: show 3 h";
-        Show3h.SetYesNo(1);
+        Show3h.SetYesNo(0);
         Show4h.Name = "Monitor: show 4 h";
-        Show4h.SetYesNo(1);
+        Show4h.SetYesNo(0);
         Show5h.Name = "Monitor: show 5 h";
         Show5h.SetYesNo(1);
         ShowSession.Name = "Monitor: show session";
         ShowSession.SetYesNo(1);
         MaxEvents.Name = "Big prints: number of prints listed";
-        MaxEvents.SetInt(5);
+        MaxEvents.SetInt(2);
         MaxEvents.SetIntLimits(1, 30);
         ShowComments.Name = "Monitor: comment line per interval (trend/sideways, price at high/low, volume vs previous, delta shift)";
         ShowComments.SetYesNo(1);
@@ -702,12 +703,12 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ShowHeader.Name = "Section: header (price and time)";
         ShowHeader.SetYesNo(1);
         ShowStats.Name = "Section: statistics of the signals (wins, losses)";
-        ShowStats.SetYesNo(1);
+        ShowStats.SetYesNo(0);
         BoxWidth.Name = "Text box width in characters (0 = as wide as the longest line; longer lines are wrapped)";
-        BoxWidth.SetInt(70);
+        BoxWidth.SetInt(62);
         BoxWidth.SetIntLimits(0, 400);
         ShowSlices.Name = "Monitor: development by time slices (0-30 min, 30-60 min, 1-2 h ... 4-5 h, delta and price change)";
-        ShowSlices.SetYesNo(1);
+        ShowSlices.SetYesNo(0);
         ShowDomStrip.Name = "Dominance strip: show dominance of every interval in its own colored text (buyers green, sellers red)";
         ShowDomStrip.SetYesNo(1);
         DomStripX.Name = "Dominance strip: position horizontal of the first item (% of chart width)";
@@ -717,12 +718,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         DomStripY.SetInt(99);
         DomStripY.SetIntLimits(2, 100);
         DomStripSpacing.Name = "Dominance strip: horizontal distance between items (% of chart width)";
-        DomStripSpacing.SetInt(11);
+        DomStripSpacing.SetInt(6);
         DomStripSpacing.SetIntLimits(2, 40);
         BuyColor.Name = "Dominance strip: color when buyers dominate";
         BuyColor.SetColor(RGB(0, 150, 0));
         SellColor.Name = "Dominance strip: color when sellers dominate";
         SellColor.SetColor(RGB(210, 0, 0));
+        DisplayMode.Name = "Display: 0 = compact (few lines: signal, bar, position, big prints), 1 = detailed (all sections)";
+        DisplayMode.SetInt(0);
+        DisplayMode.SetIntLimits(0, 1);
         TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
         TrapLocationHours.SetFloat(2.0f);
         TrapLocationHours.SetFloatLimits(0.0f, 24.0f);
@@ -968,7 +972,9 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
 
         int domKind[7] = { 2, 2, 2, 2, 2, 2, 2 };   // 1 buyers, -1 sellers, 0 balanced, 2 not shown
         float domDeltaPct[7] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-        const char* domWho[7] = { "", "", "", "", "", "", "" };
+        const char* domTrend[7] = { "--", "--", "--", "--", "--", "--", "--" };
+        bool domFlag[7] = { false, false, false, false, false, false, false };
+        const char* shortLabels[7] = { "30m", "1h", "2h", "3h", "4h", "5h", "Ses" };
         SCString txtM;
         txtM.Format("MARKET ACTIVITY MONITOR\n%s\n", "INT    CENOVE PASMO     DELTA  DELTA%  DOMIN.  TREND      ZMENA");
         for (int w = 0; w < W; ++w)
@@ -1010,7 +1016,6 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             const char* who = buyPct >= domLimit ? "KUPUJI" : (buyPct <= 100.0f - domLimit ? "PRODAVA" : "VYROVN");
             domKind[w] = buyPct >= domLimit ? 1 : (buyPct <= 100.0f - domLimit ? -1 : 0);
             domDeltaPct[w] = vol > 0.0f ? 100.0f * d / vol : 0.0f;
-            domWho[w] = who;
 
             // A large delta without the matching price move: price went against it or hardly moved.
             const char* flag = "";
@@ -1022,6 +1027,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 else if (d < 0.0f && efficiency < 0.15f) flag = "NESOULAD: prodava se, cena stoji";
             }
 
+            domFlag[w] = flag[0] != '\0';
+            domTrend[w] = efficiency < 0.30f ? "--" : (change > 0.0f ? "UP" : "DN");
             SCString rangeText;
             rangeText.Format("%.2f-%.2f", lo, hi);
             // Trend: direction of the price change in the interval and the share of its range the price covered.
@@ -1104,7 +1111,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     continue;
                 }
                 SCString stripText;
-                stripText.Format(" %s %s %+.2f%% ", labels[w], domWho[w], domDeltaPct[w]);
+                stripText.Format(" %s %+.1f%% %s%s ", shortLabels[w], domDeltaPct[w], domTrend[w], domFlag[w] ? " !" : "");
 
                 s_UseTool ToolD;
                 ToolD.Clear();
@@ -1278,10 +1285,138 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91830);
         }
 
+        SCString secCompact;
+        if (DisplayMode.GetInt() == 0)
+        {
+            // Compact mode: only what is needed for a decision, a few short lines.
+            const int k = i - 1;
+            const double nowT = sc.BaseDateTimeIn[i].GetAsDouble();
+            SCString part;
+            if (ShowHeader.GetYesNo())
+            {
+                part.Format("cena %.2f   %02d:%02d\n", sc.Close[i], sc.BaseDateTimeIn[i].GetHour(), sc.BaseDateTimeIn[i].GetMinute());
+                secCompact.Append(part.GetChars());
+            }
+            if (ShowTraps.GetYesNo())
+            {
+                const float st = TrapStateSG[k];
+                const bool sellersSide = st > 0.0f;
+                if (st == 0.0f)
+                    part.Format("SIGNAL  bez setupu");
+                else if (fabsf(st) == 1.0f)
+                    part.Format("SETUP %s  %s tlaci, signal po prekonani %.2f", sellersSide ? "LONG" : "SHORT",
+                                sellersSide ? "prodavajici" : "kupujici", TrapLevelSG[k]);
+                else
+                    part.Format("PAST %s  %s v pasti, uroven %.2f", sellersSide ? "LONG" : "SHORT",
+                                sellersSide ? "prodavajici" : "kupujici", TrapLevelSG[k]);
+                secCompact.Append(part.GetChars());
+                for (int j = k; j >= 0 && j >= i - 400; --j)
+                {
+                    if (State.Arrays[3][j] == 0.0f)
+                        continue;
+                    const int ageMin = (int)((nowT - sc.BaseDateTimeIn[j].GetAsDouble()) * 1440.0 + 0.5);
+                    part.Format("   |   posledni %02d:%02d %s (pred %dh%02dm)", sc.BaseDateTimeIn[j].GetHour(),
+                                sc.BaseDateTimeIn[j].GetMinute(), State.Arrays[3][j] > 0.0f ? "LONG" : "SHORT", ageMin / 60, ageMin % 60);
+                    secCompact.Append(part.GetChars());
+                    break;
+                }
+                secCompact.Append("\n");
+            }
+            if (ShowPanel.GetYesNo())
+            {
+                SCString why;
+                const int reason = (int)ReasonSG[k];
+                if (reason & 1) why.Append("delta/cena ");
+                if (reason & 2) why.Append("vyschly-extrem ");
+                if (reason & 4) why.Append("velky-objem ");
+                if (reason & 8) why.Append("shock ");
+                if (why.GetLength() == 0) why.Append("-");
+                part.Format("BAR  delta %+d (%+.1f%%)  vol %.1fx  watch: %s%s%s\n", (int)DeltaSG[k], DeltaPctSG[k], VolRatioSG[k],
+                            why.GetChars(), StackBuySG[k] >= (float)StackCount.GetInt() ? "  STACK+" : "",
+                            StackSellSG[k] >= (float)StackCount.GetInt() ? "  STACK-" : "");
+                secCompact.Append(part.GetChars());
+            }
+            if (ShowIntervals.GetYesNo() && ShowBands.GetYesNo())
+            {
+                const int bandIds[2] = { sc.GetPersistentInt(11), sc.GetPersistentInt(16) };
+                const char* bandLabels[2] = { "1h", "seance" };
+                SCString positions;
+                for (int q = 0; q < 2; ++q)
+                {
+                    if (bandIds[q] <= 0)
+                        continue;
+                    const float bandLow = (bandIds[q] - 1) * BandPoints.GetFloat();
+                    const float bandHigh = bandLow + BandPoints.GetFloat();
+                    part.Format("%spasmo %s %.0f-%.0f (cena %s)", positions.GetLength() > 0 ? "   |   " : "", bandLabels[q], bandLow, bandHigh,
+                                sc.Close[i] < bandLow ? "POD" : (sc.Close[i] > bandHigh ? "NAD" : "V"));
+                    positions.Append(part.GetChars());
+                }
+                if (positions.GetLength() > 0)
+                {
+                    secCompact.Append(positions.GetChars());
+                    secCompact.Append("\n");
+                }
+            }
+            if (ShowPanelB.GetYesNo())
+            {
+                SCString prints;
+                int shownPrints = 0;
+                const double printStart = nowT - EventWindowMin.GetInt() / 1440.0;
+                for (int j = i - 1; j >= 0 && shownPrints < MaxEvents.GetInt(); --j)
+                {
+                    if (sc.BaseDateTimeIn[j].GetAsDouble() < printStart)
+                        break;
+                    const bool lvl = EventLevelDeltaSG[j] != 0.0f;
+                    const bool bigBar = fabsf(DeltaSG[j]) >= (float)BigBarDelta.GetInt();
+                    const bool spike = VolRatioSG[j] >= SpikeMult.GetFloat();
+                    if (!lvl && !bigBar && !spike)
+                        continue;
+                    part.Format("%s%02d:%02d", shownPrints > 0 ? "   |   " : "", sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute());
+                    prints.Append(part.GetChars());
+                    if (lvl)
+                    {
+                        part.Format(" %s %+d@%.2f", EventLevelDeltaSG[j] > 0.0f ? "NAKUP" : "PRODEJ", (int)EventLevelDeltaSG[j], EventLevelPriceSG[j]);
+                        prints.Append(part.GetChars());
+                    }
+                    if (bigBar)
+                    {
+                        part.Format(" delta %+d", (int)DeltaSG[j]);
+                        prints.Append(part.GetChars());
+                    }
+                    if (spike)
+                    {
+                        part.Format(" %.1fx objem", VolRatioSG[j]);
+                        prints.Append(part.GetChars());
+                    }
+                    ++shownPrints;
+                }
+                if (shownPrints > 0)
+                {
+                    secCompact.Append("VELKE  ");
+                    secCompact.Append(prints.GetChars());
+                    secCompact.Append("\n");
+                }
+            }
+            if (ShowStats.GetYesNo())
+            {
+                part.Format("STAT  W %d / L %d  (%.0f%%)%s\n", (int)Wins[k], (int)Losses[k], WinRate[k],
+                            (int)(Wins[k] + Losses[k]) < 30 ? "  neprukazne (<30)" : "");
+                secCompact.Append(part.GetChars());
+            }
+        }
+
         const char* texts[6] = { secHeader.GetChars(), secLastBar.GetChars(), secStats.GetChars(),
                                  secMonitor.GetChars(), secBig.GetChars(), secTraps.GetChars() };
-        const bool on[6] = { ShowHeader.GetYesNo() != 0, ShowPanel.GetYesNo() != 0, ShowStats.GetYesNo() != 0,
+        bool on[6] = { ShowHeader.GetYesNo() != 0, ShowPanel.GetYesNo() != 0, ShowStats.GetYesNo() != 0,
                              ShowIntervals.GetYesNo() != 0, ShowPanelB.GetYesNo() != 0, ShowTraps.GetYesNo() != 0 };
+
+        if (DisplayMode.GetInt() == 0)
+        {
+            texts[0] = secCompact.GetChars();
+            on[0] = true;
+            for (int q = 1; q < 6; ++q)
+                on[q] = false;
+        }
 
         std::string raw;
         for (int q = 0; q < 6; ++q)
