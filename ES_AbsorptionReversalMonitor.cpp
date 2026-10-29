@@ -354,6 +354,35 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef ShowBands = sc.Input[54];
     SCInputRef MonitorX = sc.Input[55];
     SCInputRef MonitorY = sc.Input[56];
+    SCInputRef FontName = sc.Input[57];
+    SCInputRef BoldText = sc.Input[58];
+    SCInputRef PanelAX = sc.Input[59];
+    SCInputRef PanelAY = sc.Input[60];
+    SCInputRef PanelAFont = sc.Input[61];
+    SCInputRef PanelAColor = sc.Input[62];
+    SCInputRef PanelABack = sc.Input[63];
+    SCInputRef PanelATransparent = sc.Input[64];
+    SCInputRef ShowPanelB = sc.Input[65];
+    SCInputRef PanelBX = sc.Input[66];
+    SCInputRef PanelBY = sc.Input[67];
+    SCInputRef PanelBFont = sc.Input[68];
+    SCInputRef PanelBColor = sc.Input[69];
+    SCInputRef PanelBBack = sc.Input[70];
+    SCInputRef PanelBTransparent = sc.Input[71];
+    SCInputRef MonitorFont = sc.Input[72];
+    SCInputRef MonitorColor = sc.Input[73];
+    SCInputRef MonitorBack = sc.Input[74];
+    SCInputRef MonitorTransparent = sc.Input[75];
+    SCInputRef Show30m = sc.Input[76];
+    SCInputRef Show1h = sc.Input[77];
+    SCInputRef Show2h = sc.Input[78];
+    SCInputRef Show3h = sc.Input[79];
+    SCInputRef Show4h = sc.Input[80];
+    SCInputRef Show5h = sc.Input[81];
+    SCInputRef ShowSession = sc.Input[82];
+    SCInputRef MaxEvents = sc.Input[83];
+    SCInputRef ShowComments = sc.Input[84];
+    SCInputRef ShowLegend = sc.Input[85];
 
     if (sc.SetDefaults)
     {
@@ -491,9 +520,9 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         MinWickTicks.Name = "Failed auction: minimum wick beyond the bar body (ticks)";
         MinWickTicks.SetInt(2);
         MinWickTicks.SetIntLimits(1, 100);
-        ShowPanel.Name = "Show info panel in the chart (metrics of the last closed bar)";
+        ShowPanel.Name = "Panel 1: show metrics of the last closed bar";
         ShowPanel.SetYesNo(1);
-        ShowIntervals.Name = "Show Market Activity Monitor (30 min - 5 h, session), big prints and trapped traders";
+        ShowIntervals.Name = "Show Market Activity Monitor (30 min - 5 h, session)";
         ShowIntervals.SetYesNo(1);
         SessionStartHour.Name = "Session start (hour of the chart time, e.g. 15.5 = 15:30)";
         SessionStartHour.SetFloat(0.0f);
@@ -571,6 +600,76 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         MonitorY.Name = "Monitor panel position: vertical (% of chart height, 100 = top)";
         MonitorY.SetInt(98);
         MonitorY.SetIntLimits(5, 100);
+
+        // Look and position of the text panels. Positions are percentages of the chart (100 = top / right edge).
+        FontName.Name = "Text: font name (a fixed-width font such as Consolas keeps the columns aligned)";
+        FontName.SetString("Consolas");
+        BoldText.Name = "Text: bold";
+        BoldText.SetYesNo(0);
+        PanelAX.Name = "Panel 1 (last closed bar): position horizontal (% of chart width)";
+        PanelAX.SetInt(3);
+        PanelAX.SetIntLimits(0, 95);
+        PanelAY.Name = "Panel 1 (last closed bar): position vertical (% of chart height, 100 = top)";
+        PanelAY.SetInt(96);
+        PanelAY.SetIntLimits(2, 100);
+        PanelAFont.Name = "Panel 1 (last closed bar): font size";
+        PanelAFont.SetInt(9);
+        PanelAFont.SetIntLimits(5, 36);
+        PanelAColor.Name = "Panel 1 (last closed bar): text color";
+        PanelAColor.SetColor(RGB(255, 255, 255));
+        PanelABack.Name = "Panel 1 (last closed bar): background color";
+        PanelABack.SetColor(RGB(30, 30, 30));
+        PanelATransparent.Name = "Panel 1 (last closed bar): transparent background";
+        PanelATransparent.SetYesNo(0);
+
+        ShowPanelB.Name = "Panel 2: show big prints and trapped traders";
+        ShowPanelB.SetYesNo(1);
+        PanelBX.Name = "Panel 2 (big prints, traps): position horizontal (% of chart width)";
+        PanelBX.SetInt(3);
+        PanelBX.SetIntLimits(0, 95);
+        PanelBY.Name = "Panel 2 (big prints, traps): position vertical (% of chart height, 100 = top)";
+        PanelBY.SetInt(76);
+        PanelBY.SetIntLimits(2, 100);
+        PanelBFont.Name = "Panel 2 (big prints, traps): font size";
+        PanelBFont.SetInt(9);
+        PanelBFont.SetIntLimits(5, 36);
+        PanelBColor.Name = "Panel 2 (big prints, traps): text color";
+        PanelBColor.SetColor(RGB(255, 255, 255));
+        PanelBBack.Name = "Panel 2 (big prints, traps): background color";
+        PanelBBack.SetColor(RGB(30, 30, 30));
+        PanelBTransparent.Name = "Panel 2 (big prints, traps): transparent background";
+        PanelBTransparent.SetYesNo(0);
+
+        MonitorFont.Name = "Monitor: font size";
+        MonitorFont.SetInt(9);
+        MonitorFont.SetIntLimits(5, 36);
+        MonitorColor.Name = "Monitor: text color";
+        MonitorColor.SetColor(RGB(255, 255, 255));
+        MonitorBack.Name = "Monitor: background color";
+        MonitorBack.SetColor(RGB(30, 30, 30));
+        MonitorTransparent.Name = "Monitor: transparent background";
+        MonitorTransparent.SetYesNo(0);
+        Show30m.Name = "Monitor: show 30 min";
+        Show30m.SetYesNo(1);
+        Show1h.Name = "Monitor: show 1 h";
+        Show1h.SetYesNo(1);
+        Show2h.Name = "Monitor: show 2 h";
+        Show2h.SetYesNo(1);
+        Show3h.Name = "Monitor: show 3 h";
+        Show3h.SetYesNo(1);
+        Show4h.Name = "Monitor: show 4 h";
+        Show4h.SetYesNo(1);
+        Show5h.Name = "Monitor: show 5 h";
+        Show5h.SetYesNo(1);
+        ShowSession.Name = "Monitor: show session";
+        ShowSession.SetYesNo(1);
+        MaxEvents.Name = "Panel 2: number of big prints listed";
+        MaxEvents.SetInt(5);
+        MaxEvents.SetIntLimits(1, 30);
+        ShowComments.Name = "Monitor: comment line per interval (trend/sideways, price at high/low, volume vs previous, delta shift)";
+        ShowComments.SetYesNo(1);
+        ShowLegend.Name = "Monitor: show a short legend of the labels";
+        ShowLegend.SetYesNo(0);
         return;
     }
 
@@ -717,18 +816,24 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         Tool.AddMethod = UTAM_ADD_OR_ADJUST;
         Tool.Region = sc.GraphRegion;
         Tool.UseRelativeVerticalValues = 1;
-        Tool.BeginDateTime = 3;
-        Tool.BeginValue = 96;
-        Tool.FontSize = 9;
-        Tool.Color = RGB(255, 255, 255);
-        Tool.FontBackColor = RGB(30, 30, 30);
-        Tool.TransparentLabelBackground = 0;
+        Tool.BeginDateTime = PanelAX.GetInt();
+        Tool.BeginValue = (float)PanelAY.GetInt();
+        Tool.FontFace = FontName.GetString();
+        Tool.FontBold = BoldText.GetYesNo();
+        Tool.FontSize = PanelAFont.GetInt();
+        Tool.Color = PanelAColor.GetColor();
+        Tool.FontBackColor = PanelABack.GetColor();
+        Tool.TransparentLabelBackground = PanelATransparent.GetYesNo();
         Tool.Text = txt;
         sc.UseTool(Tool);
     }
+    else if (!ShowPanel.GetYesNo() && i == sc.ArraySize - 1)
+    {
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91827);
+    }
 
     // Panels: Market Activity Monitor (30 min ... 5 h and the session) plus big prints and trapped traders.
-    if (ShowIntervals.GetYesNo() && i == sc.ArraySize - 1 && i > 0)
+    if ((ShowIntervals.GetYesNo() || ShowPanelB.GetYesNo()) && i == sc.ArraySize - 1 && i > 0)
     {
         const double lastT = sc.BaseDateTimeIn[i].GetAsDouble();
         double sessionStart = floor(lastT) + SessionStartHour.GetFloat() / 24.0;
@@ -739,6 +844,10 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         const double starts[7] = { lastT - 0.5 / 24.0, lastT - 1.0 / 24.0, lastT - 2.0 / 24.0, lastT - 3.0 / 24.0,
                                    lastT - 4.0 / 24.0, lastT - 5.0 / 24.0, sessionStart };
 
+        const bool showW[7] = { Show30m.GetYesNo() != 0, Show1h.GetYesNo() != 0, Show2h.GetYesNo() != 0, Show3h.GetYesNo() != 0,
+                                Show4h.GetYesNo() != 0, Show5h.GetYesNo() != 0, ShowSession.GetYesNo() != 0 };
+        if (ShowIntervals.GetYesNo())
+        {
         // Price bands are rebuilt once per new bar because they read Volume at Price of every bar in the windows.
         int& lastBandBar = sc.GetPersistentInt(3);
         if (ShowBands.GetYesNo() && lastBandBar != i)
@@ -813,16 +922,32 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         txtM.Format("MARKET ACTIVITY MONITOR   cena %.2f\n", sc.Close[i]);
         for (int w = 0; w < W; ++w)
         {
+            if (!showW[w])
+                continue;
             float sumAsk = 0.0f, sumBid = 0.0f;
             float hi = sc.High[i], lo = sc.Low[i];
+            float deltaOld = 0.0f, deltaNew = 0.0f;   // delta of the first and of the second half of the interval
+            const double mid = 0.5 * (starts[w] + lastT);
             int first = i;
             for (int j = i; j >= 0 && sc.BaseDateTimeIn[j].GetAsDouble() >= starts[w]; --j)
             {
                 sumAsk += sc.AskVolume[j];
                 sumBid += sc.BidVolume[j];
+                if (sc.BaseDateTimeIn[j].GetAsDouble() >= mid)
+                    deltaNew += sc.AskVolume[j] - sc.BidVolume[j];
+                else
+                    deltaOld += sc.AskVolume[j] - sc.BidVolume[j];
                 hi = MaxF(hi, sc.High[j]);
                 lo = MinF(lo, sc.Low[j]);
                 first = j;
+            }
+            // Volume of the interval of the same length right before this one (not for the session).
+            float prevVol = 0.0f;
+            if (w < 6)
+            {
+                const double prevStart = starts[w] - (lastT - starts[w]);
+                for (int j = first - 1; j >= 0 && sc.BaseDateTimeIn[j].GetAsDouble() >= prevStart; --j)
+                    prevVol += sc.AskVolume[j] + sc.BidVolume[j];
             }
             const float vol = sumAsk + sumBid;
             const float d = sumAsk - sumBid;
@@ -848,6 +973,36 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                         labels[w], lo, hi, (int)vol, (int)sumAsk, (int)sumBid, (int)d, who, buyPct, change, flag);
             txtM.Append(line.GetChars());
 
+            if (ShowComments.GetYesNo())
+            {
+                SCString comment;
+                const float pricePos = range > 0.0f ? (sc.Close[i] - lo) / range : 0.5f;
+                if (efficiency >= 0.6f) comment.Append(change > 0.0f ? "TREND NAHORU  " : "TREND DOLU  ");
+                else if (efficiency < 0.25f) comment.Append("BOCNI POHYB  ");
+                if (pricePos >= 0.8f) comment.Append("cena u HIGH intervalu  ");
+                else if (pricePos <= 0.2f) comment.Append("cena u LOW intervalu  ");
+                if (prevVol > 0.0f)
+                {
+                    const float volRatio = vol / prevVol;
+                    SCString part;
+                    if (volRatio >= 1.5f) { part.Format("objem %.1fx vyssi nez predchozi  ", volRatio); comment.Append(part.GetChars()); }
+                    else if (volRatio <= 0.6f) { part.Format("objem klesa (%.1fx predchozi)  ", volRatio); comment.Append(part.GetChars()); }
+                }
+                const float shiftLimit = 0.03f * vol;
+                if (deltaOld * deltaNew < 0.0f && fabsf(deltaOld) >= shiftLimit && fabsf(deltaNew) >= shiftLimit)
+                    comment.Append(deltaNew > 0.0f ? "DELTA SE OBRATILA: drive prodej, ted nakup  " : "DELTA SE OBRATILA: drive nakup, ted prodej  ");
+                else if (deltaOld * deltaNew > 0.0f && fabsf(deltaNew) > 1.5f * fabsf(deltaOld))
+                    comment.Append("tlak zrychluje  ");
+                else if (deltaOld * deltaNew > 0.0f && fabsf(deltaNew) < 0.5f * fabsf(deltaOld))
+                    comment.Append("tlak slabne  ");
+                if (comment.GetLength() > 0)
+                {
+                    SCString commentLine;
+                    commentLine.Format("       komentar: %s\n", comment.GetChars());
+                    txtM.Append(commentLine.GetChars());
+                }
+            }
+
             if (ShowBands.GetYesNo())
             {
                 SCString& cache = sc.GetPersistentSCString(w + 1);
@@ -860,6 +1015,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             }
         }
 
+        if (ShowLegend.GetYesNo())
+        {
+            SCString legend;
+            legend.Format("Legenda: KUPUJICI/PRODAVAJICI = aspon %.0f%% agresivniho objemu na jedne strane, VYROVNANO = %.0f-%.0f%% (zadna strana nedominuje)\n"
+                          "NESOULAD = velka delta, ale cena sla proti ni nebo stoji (mozna absorpce)\n",
+                          DominancePct.GetFloat(), 100.0f - DominancePct.GetFloat(), DominancePct.GetFloat());
+            txtM.Append(legend.GetChars());
+        }
+
         s_UseTool ToolM;
         ToolM.Clear();
         ToolM.ChartNumber = sc.ChartNumber;
@@ -870,20 +1034,29 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ToolM.UseRelativeVerticalValues = 1;
         ToolM.BeginDateTime = MonitorX.GetInt();
         ToolM.BeginValue = (float)MonitorY.GetInt();
-        ToolM.FontSize = 9;
-        ToolM.Color = RGB(255, 255, 255);
-        ToolM.FontBackColor = RGB(30, 30, 30);
-        ToolM.TransparentLabelBackground = 0;
+        ToolM.FontFace = FontName.GetString();
+        ToolM.FontBold = BoldText.GetYesNo();
+        ToolM.FontSize = MonitorFont.GetInt();
+        ToolM.Color = MonitorColor.GetColor();
+        ToolM.FontBackColor = MonitorBack.GetColor();
+        ToolM.TransparentLabelBackground = MonitorTransparent.GetYesNo();
         ToolM.Text = txtM;
         sc.UseTool(ToolM);
+        }
+        else
+        {
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91830);
+        }
 
+        if (ShowPanelB.GetYesNo())
+        {
         SCString txtB;
         SCString head;
         head.Format("\nVELKE OBJEMY (poslednich %d min, uzavrene bary)\n", EventWindowMin.GetInt());
         txtB.Append(head.GetChars());
         const double evStart = lastT - EventWindowMin.GetInt() / 1440.0;
         int shown = 0;
-        for (int j = i - 1; j >= 0 && shown < 5; --j)
+        for (int j = i - 1; j >= 0 && shown < MaxEvents.GetInt(); --j)
         {
             if (sc.BaseDateTimeIn[j].GetAsDouble() < evStart)
                 break;
@@ -962,14 +1135,21 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ToolB.AddMethod = UTAM_ADD_OR_ADJUST;
         ToolB.Region = sc.GraphRegion;
         ToolB.UseRelativeVerticalValues = 1;
-        ToolB.BeginDateTime = 3;
-        ToolB.BeginValue = 76;
-        ToolB.FontSize = 9;
-        ToolB.Color = RGB(255, 255, 255);
-        ToolB.FontBackColor = RGB(30, 30, 30);
-        ToolB.TransparentLabelBackground = 0;
+        ToolB.BeginDateTime = PanelBX.GetInt();
+        ToolB.BeginValue = (float)PanelBY.GetInt();
+        ToolB.FontFace = FontName.GetString();
+        ToolB.FontBold = BoldText.GetYesNo();
+        ToolB.FontSize = PanelBFont.GetInt();
+        ToolB.Color = PanelBColor.GetColor();
+        ToolB.FontBackColor = PanelBBack.GetColor();
+        ToolB.TransparentLabelBackground = PanelBTransparent.GetYesNo();
         ToolB.Text = txtB;
         sc.UseTool(ToolB);
+        }
+        else
+        {
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91828);
+        }
     }
 
     if (!barClosed || volume <= 0.0f)
