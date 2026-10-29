@@ -139,7 +139,8 @@ static void AccumulateLevels(SCStudyInterfaceRef sc, int idx, bool sellSide, std
 
 static TrapResult EvaluateTrap(SCStudyInterfaceRef sc, SCSubgraphRef DeltaSG, int i, bool sellersTrapped, int lookback,
                                int minPushTicks, float minPushDelta, int stallBars, int marginTicks,
-                               float minFraction, float minContracts)
+                               float minFraction, float minContracts, int levelMode, float originFraction,
+                               float pushRangeMult, float pushDeltaMult, float maxStallRange)
 {
     TrapResult r = TrapResult();
     const int from = MaxI(0, i - lookback);
@@ -172,14 +173,51 @@ static TrapResult EvaluateTrap(SCStudyInterfaceRef sc, SCSubgraphRef DeltaSG, in
             start = j;
         }
     }
+    // Volatility baseline: average bar range of the last 50 bars.
+    float avgRange = 0.0f;
+    int rangeCount = 0;
+    for (int j = MaxI(0, i - 50); j <= i; ++j)
+    {
+        avgRange += sc.High[j] - sc.Low[j];
+        ++rangeCount;
+    }
+    avgRange = rangeCount > 0 ? avgRange / rangeCount : 0.0f;
+
     const float pushSize = sellersTrapped ? startVal - sc.Low[ext] : sc.High[ext] - startVal;
-    if (pushSize < minPushTicks * sc.TickSize)
+    const float minPush = pushRangeMult > 0.0f ? pushRangeMult * avgRange : minPushTicks * sc.TickSize;
+    if (pushSize < minPush)
         return r;
+
+    // Sideways phase: the bars after the extreme (before the current bar) must stay in a narrow range.
+    if (maxStallRange > 0.0f && i - 1 > ext)
+    {
+        float hi = sc.High[ext], lo = sc.Low[ext];
+        for (int j = ext; j < i; ++j)
+        {
+            hi = MaxF(hi, sc.High[j]);
+            lo = MinF(lo, sc.Low[j]);
+        }
+        if (hi - lo > maxStallRange * avgRange)
+            return r;
+    }
 
     float pushDelta = 0.0f;
     for (int j = start; j <= ext; ++j)
         pushDelta += DeltaSG[j];
-    if (sellersTrapped ? pushDelta > -minPushDelta : pushDelta < minPushDelta)
+
+    // Significance of the push delta relative to the usual |delta| of a bar, scaled by the length of the push.
+    float avgAbsDelta = 0.0f;
+    int deltaCount = 0;
+    for (int j = MaxI(0, start - 100); j < start; ++j)
+    {
+        avgAbsDelta += fabsf(DeltaSG[j]);
+        ++deltaCount;
+    }
+    const int pushBars = ext - start + 1;
+    const float needDelta = (pushDeltaMult > 0.0f && deltaCount > 0)
+        ? pushDeltaMult * (avgAbsDelta / deltaCount) * sqrtf((float)pushBars)
+        : minPushDelta;
+    if (sellersTrapped ? pushDelta > -needDelta : pushDelta < needDelta)
         return r;   // the push was not one-sided enough
 
     r.state = 1;
@@ -210,10 +248,15 @@ static TrapResult EvaluateTrap(SCStudyInterfaceRef sc, SCSubgraphRef DeltaSG, in
         if (sellersTrapped ? it->first <= closeTicks - marginTicks : it->first >= closeTicks + marginTicks)
             trapped += it->second;
     }
-    r.level = pocTicks * sc.TickSize;
+    // Reversal level: where the push started (mode 1, fraction 1.0 = full origin) or where most aggressive volume traded (mode 0).
+    float levelPrice = pocTicks * sc.TickSize;
+    if (levelMode == 1)
+        levelPrice = sellersTrapped ? extVal + originFraction * (startVal - extVal) : extVal - originFraction * (extVal - startVal);
+    const int levelTicks = sc.PriceValueToTicks(levelPrice);
+    r.level = levelPrice;
     r.trappedVol = trapped;
 
-    const bool beyondLevel = sellersTrapped ? pocTicks <= closeTicks - marginTicks : pocTicks >= closeTicks + marginTicks;
+    const bool beyondLevel = sellersTrapped ? levelTicks <= closeTicks - marginTicks : levelTicks >= closeTicks + marginTicks;
     if (total > 0.0f && trapped / total >= minFraction && trapped >= minContracts && beyondLevel)
         r.state = 2;
     return r;
@@ -300,6 +343,12 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef TrapMarginTicks = sc.Input[43];
     SCInputRef TrapMinFraction = sc.Input[44];
     SCInputRef TrapMinContracts = sc.Input[45];
+    SCInputRef TrapLevelMode = sc.Input[46];
+    SCInputRef TrapOriginFraction = sc.Input[47];
+    SCInputRef TrapPushRangeMult = sc.Input[48];
+    SCInputRef TrapPushDeltaMult = sc.Input[49];
+    SCInputRef TrapReactionMult = sc.Input[50];
+    SCInputRef TrapMaxStallRange = sc.Input[51];
 
     if (sc.SetDefaults)
     {
@@ -485,6 +534,24 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         TrapMinContracts.Name = "Trapped traders: minimum underwater volume (contracts)";
         TrapMinContracts.SetFloat(1500.0f);
         TrapMinContracts.SetFloatLimits(10.0f, 10000000.0f);
+        TrapLevelMode.Name = "Reversal level (0 = price with most aggressive volume, 1 = where the push started)";
+        TrapLevelMode.SetInt(1);
+        TrapLevelMode.SetIntLimits(0, 1);
+        TrapOriginFraction.Name = "Reversal level mode 1: share of the push price must retrace (1.0 = full origin, 0.5 = half)";
+        TrapOriginFraction.SetFloat(1.0f);
+        TrapOriginFraction.SetFloatLimits(0.1f, 1.0f);
+        TrapPushRangeMult.Name = "Push size relative to volatility: x average bar range (0 = use ticks)";
+        TrapPushRangeMult.SetFloat(3.0f);
+        TrapPushRangeMult.SetFloatLimits(0.0f, 50.0f);
+        TrapPushDeltaMult.Name = "Push delta relative: x average |bar delta| x sqrt(bars) (0 = use contracts)";
+        TrapPushDeltaMult.SetFloat(2.0f);
+        TrapPushDeltaMult.SetFloatLimits(0.0f, 50.0f);
+        TrapReactionMult.Name = "Reaction bar: minimum |delta| as multiple of the average |bar delta|";
+        TrapReactionMult.SetFloat(1.0f);
+        TrapReactionMult.SetFloatLimits(0.0f, 50.0f);
+        TrapMaxStallRange.Name = "Sideways phase: max range x average bar range (0 = off)";
+        TrapMaxStallRange.SetFloat(0.0f);
+        TrapMaxStallRange.SetFloatLimits(0.0f, 50.0f);
         return;
     }
 
@@ -736,7 +803,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         {
             const bool sellers = st > 0.0f;
             if (fabsf(st) == 1.0f)
-                trapLine.Format("SETUP %s: %s tlaci (delta %+d), nove %s se nedela; past nad/pod %.2f\n",
+                trapLine.Format("SETUP %s: %s tlaci (delta %+d), nove %s se nedela; signal po prekonani %.2f\n",
                                 sellers ? "LONG" : "SHORT", sellers ? "prodavajici" : "kupujici", (int)TrapPushSG[k],
                                 sellers ? "low" : "high", TrapLevelSG[k]);
             else
@@ -779,13 +846,14 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         return;
 
     // Baselines from the previous bars only.
-    float avgVolume = 0.0f, avgLevelVol = 0.0f;
+    float avgVolume = 0.0f, avgLevelVol = 0.0f, avgAbsDelta = 0.0f;
     int levelSamples = 0;
     if (i >= n)
     {
         for (int j = i - n; j < i; ++j)
         {
             avgVolume += sc.Volume[j];
+            avgAbsDelta += fabsf(DeltaSG[j]);
             if (AvgLevelSG[j] > 0.0f)
             {
                 avgLevelVol += AvgLevelSG[j];
@@ -793,6 +861,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
             }
         }
         avgVolume /= n;
+        avgAbsDelta /= n;
         avgLevelVol = levelSamples > 0 ? avgLevelVol / levelSamples : 0.0f;
     }
     if (avgVolume > 0.0f)
@@ -833,10 +902,14 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     {
         trapSell = EvaluateTrap(sc, DeltaSG, i, true, TrapLookback.GetInt(), TrapMinPushTicks.GetInt(),
                                 (float)TrapMinPushDelta.GetInt(), TrapStallBars.GetInt(), TrapMarginTicks.GetInt(),
-                                TrapMinFraction.GetFloat(), TrapMinContracts.GetFloat());
+                                TrapMinFraction.GetFloat(), TrapMinContracts.GetFloat(), TrapLevelMode.GetInt(),
+                                TrapOriginFraction.GetFloat(), TrapPushRangeMult.GetFloat(), TrapPushDeltaMult.GetFloat(),
+                                TrapMaxStallRange.GetFloat());
         trapBuy = EvaluateTrap(sc, DeltaSG, i, false, TrapLookback.GetInt(), TrapMinPushTicks.GetInt(),
                                (float)TrapMinPushDelta.GetInt(), TrapStallBars.GetInt(), TrapMarginTicks.GetInt(),
-                               TrapMinFraction.GetFloat(), TrapMinContracts.GetFloat());
+                               TrapMinFraction.GetFloat(), TrapMinContracts.GetFloat(), TrapLevelMode.GetInt(),
+                               TrapOriginFraction.GetFloat(), TrapPushRangeMult.GetFloat(), TrapPushDeltaMult.GetFloat(),
+                               TrapMaxStallRange.GetFloat());
     }
     const bool pickSellers = trapSell.state > trapBuy.state
         || (trapSell.state == trapBuy.state && fabsf(trapSell.pushDelta) >= fabsf(trapBuy.pushDelta));
@@ -949,8 +1022,10 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     const bool shortFromAbsorption = arrowMode != 1 && ShortWatch[p] != 0.0f && sc.Close[i] < sc.Low[p] && delta < 0.0f && stackedOkShort;
 
     // Trapped traders fire once per push: the bar must reverse with the flow (up brick with buying, or down brick with selling).
-    bool longFromTrap = arrowMode != 0 && TrapStateSG[i] == 2.0f && sc.Close[i] > sc.Open[i] && delta > 0.0f;
-    bool shortFromTrap = arrowMode != 0 && TrapStateSG[i] == -2.0f && sc.Close[i] < sc.Open[i] && delta < 0.0f;
+    bool longFromTrap = arrowMode != 0 && TrapStateSG[i] == 2.0f && sc.Close[i] > sc.Open[i] && delta > 0.0f
+        && delta >= TrapReactionMult.GetFloat() * avgAbsDelta;
+    bool shortFromTrap = arrowMode != 0 && TrapStateSG[i] == -2.0f && sc.Close[i] < sc.Open[i] && delta < 0.0f
+        && -delta >= TrapReactionMult.GetFloat() * avgAbsDelta;
     if (longFromTrap || shortFromTrap)
     {
         const float key = (longFromTrap ? 1.0f : -1.0f) * (float)(trap.swing + 1);
