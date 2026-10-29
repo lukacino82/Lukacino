@@ -434,6 +434,12 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef ShowStats = sc.Input[78];
     SCInputRef BoxWidth = sc.Input[79];
     SCInputRef ShowSlices = sc.Input[80];
+    SCInputRef ShowDomStrip = sc.Input[81];
+    SCInputRef DomStripX = sc.Input[82];
+    SCInputRef DomStripY = sc.Input[83];
+    SCInputRef DomStripSpacing = sc.Input[84];
+    SCInputRef BuyColor = sc.Input[85];
+    SCInputRef SellColor = sc.Input[86];
 
     if (sc.SetDefaults)
     {
@@ -655,7 +661,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         BoxX.SetInt(3);
         BoxX.SetIntLimits(0, 95);
         BoxY.Name = "Text box: position vertical (% of chart height, 100 = top)";
-        BoxY.SetInt(96);
+        BoxY.SetInt(93);
         BoxY.SetIntLimits(2, 100);
         BoxFont.Name = "Text box: font size";
         BoxFont.SetInt(9);
@@ -702,6 +708,21 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         BoxWidth.SetIntLimits(0, 400);
         ShowSlices.Name = "Monitor: development by time slices (0-30 min, 30-60 min, 1-2 h ... 4-5 h, delta and price change)";
         ShowSlices.SetYesNo(1);
+        ShowDomStrip.Name = "Dominance strip: show dominance of every interval in its own colored text (buyers green, sellers red)";
+        ShowDomStrip.SetYesNo(1);
+        DomStripX.Name = "Dominance strip: position horizontal of the first item (% of chart width)";
+        DomStripX.SetInt(3);
+        DomStripX.SetIntLimits(0, 95);
+        DomStripY.Name = "Dominance strip: position vertical (% of chart height, 100 = top)";
+        DomStripY.SetInt(99);
+        DomStripY.SetIntLimits(2, 100);
+        DomStripSpacing.Name = "Dominance strip: horizontal distance between items (% of chart width)";
+        DomStripSpacing.SetInt(11);
+        DomStripSpacing.SetIntLimits(2, 40);
+        BuyColor.Name = "Dominance strip: color when buyers dominate";
+        BuyColor.SetColor(RGB(0, 150, 0));
+        SellColor.Name = "Dominance strip: color when sellers dominate";
+        SellColor.SetColor(RGB(210, 0, 0));
         TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
         TrapLocationHours.SetFloat(2.0f);
         TrapLocationHours.SetFloatLimits(0.0f, 24.0f);
@@ -717,6 +738,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91827);
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91828);
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91830);
+        for (int w = 0; w < 7; ++w)
+            sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91840 + w);
         return;
     }
 
@@ -943,6 +966,9 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             }
         }
 
+        int domKind[7] = { 2, 2, 2, 2, 2, 2, 2 };   // 1 buyers, -1 sellers, 0 balanced, 2 not shown
+        float domDeltaPct[7] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        const char* domWho[7] = { "", "", "", "", "", "", "" };
         SCString txtM;
         txtM.Format("MARKET ACTIVITY MONITOR\n%s\n", "INT    CENOVE PASMO     DELTA  DELTA%  DOMIN.  TREND      ZMENA");
         for (int w = 0; w < W; ++w)
@@ -982,6 +1008,9 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             const float efficiency = range > 0.0f ? fabsf(change) / range : 0.0f;
             const float domLimit = DominancePct.GetFloat();
             const char* who = buyPct >= domLimit ? "KUPUJI" : (buyPct <= 100.0f - domLimit ? "PRODAVA" : "VYROVN");
+            domKind[w] = buyPct >= domLimit ? 1 : (buyPct <= 100.0f - domLimit ? -1 : 0);
+            domDeltaPct[w] = vol > 0.0f ? 100.0f * d / vol : 0.0f;
+            domWho[w] = who;
 
             // A large delta without the matching price move: price went against it or hardly moved.
             const char* flag = "";
@@ -1064,6 +1093,41 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             }
         }
 
+        // Dominance strip: every interval is its own small text, so each one can have its own color.
+        {
+            int slot = 0;
+            for (int w = 0; w < W; ++w)
+            {
+                if (!ShowDomStrip.GetYesNo() || !showW[w])
+                {
+                    sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91840 + w);
+                    continue;
+                }
+                SCString stripText;
+                stripText.Format(" %s %s %+.2f%% ", labels[w], domWho[w], domDeltaPct[w]);
+
+                s_UseTool ToolD;
+                ToolD.Clear();
+                ToolD.ChartNumber = sc.ChartNumber;
+                ToolD.DrawingType = DRAWING_TEXT;
+                ToolD.LineNumber = 91840 + w;
+                ToolD.AddMethod = UTAM_ADD_OR_ADJUST;
+                ToolD.Region = sc.GraphRegion;
+                ToolD.UseRelativeVerticalValues = 1;
+                ToolD.BeginDateTime = DomStripX.GetInt() + slot * DomStripSpacing.GetInt();
+                ToolD.BeginValue = (float)DomStripY.GetInt();
+                ToolD.FontFace = FontName.GetString();
+                ToolD.FontBold = 1;
+                ToolD.FontSize = BoxFont.GetInt();
+                ToolD.Color = domKind[w] == 1 ? BuyColor.GetColor() : (domKind[w] == -1 ? SellColor.GetColor() : BoxColor.GetColor());
+                ToolD.FontBackColor = BoxBack.GetColor();
+                ToolD.TransparentLabelBackground = BoxTransparent.GetYesNo();
+                ToolD.Text = stripText;
+                sc.UseTool(ToolD);
+                ++slot;
+            }
+        }
+
         if (ShowSlices.GetYesNo())
         {
             // Non-overlapping time slices make the development visible: where the buying or selling happened.
@@ -1112,6 +1176,11 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         }
 
         secMonitor = txtM;
+        }
+        else
+        {
+            for (int w = 0; w < W; ++w)
+                sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91840 + w);
         }
 
         if (ShowPanelB.GetYesNo() || ShowTraps.GetYesNo())
