@@ -18,6 +18,8 @@ struct BarFootprint
     float pocDelta;
     float maxLevelDelta;    // most positive per-level delta (ask - bid)
     float minLevelDelta;    // most negative per-level delta
+    float priceMaxDelta;    // price of the most positive per-level delta
+    float priceMinDelta;    // price of the most negative per-level delta
     float highZoneVol;      // volume within zoneTicks of the bar high
     float highZoneDelta;
     float lowZoneVol;       // volume within zoneTicks of the bar low
@@ -67,8 +69,16 @@ static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float 
             fp.pocPrice = t * sc.TickSize;
             fp.pocDelta = d;
         }
-        fp.maxLevelDelta = MaxF(fp.maxLevelDelta, d);
-        fp.minLevelDelta = MinF(fp.minLevelDelta, d);
+        if (d > fp.maxLevelDelta)
+        {
+            fp.maxLevelDelta = d;
+            fp.priceMaxDelta = t * sc.TickSize;
+        }
+        if (d < fp.minLevelDelta)
+        {
+            fp.minLevelDelta = d;
+            fp.priceMinDelta = t * sc.TickSize;
+        }
         if (bigLevelVol > 0.0f && vol >= bigLevelVol)
             ++fp.bigLevels;
         if (t >= highTicks - zoneTicks)
@@ -102,6 +112,113 @@ static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float 
     return true;
 }
 
+// Trapped traders: aggressive sellers pushed price down (or buyers pushed it up), no new extreme is made any more,
+// and price has come back beyond the levels where most of that aggressive volume was traded. Those traders are
+// underwater and may have to exit, which feeds the move against them.
+struct TrapResult
+{
+    int state;          // 0 nothing, 1 setup (push + stall), 2 trapped (price beyond the heavy volume level)
+    int swing;          // bar index of the extreme of the push
+    float level;        // price with the most aggressive volume of the push
+    float trappedVol;   // aggressive volume of the push that is now underwater
+    float pushDelta;    // net delta of the push
+};
+
+static void AccumulateLevels(SCStudyInterfaceRef sc, int idx, bool sellSide, std::map<int, float>& levels)
+{
+    const int size = (int)sc.VolumeAtPriceForBars->GetSizeAtBarIndex((unsigned int)idx);
+    for (int k = 0; k < size; ++k)
+    {
+        const s_VolumeAtPriceV2* p = NULL;
+        sc.VolumeAtPriceForBars->GetVAPElementAtIndex(idx, k, &p);
+        if (p == NULL)
+            continue;
+        levels[(int)p->PriceInTicks] += sellSide ? (float)p->BidVolume : (float)p->AskVolume;
+    }
+}
+
+static TrapResult EvaluateTrap(SCStudyInterfaceRef sc, SCSubgraphRef DeltaSG, int i, bool sellersTrapped, int lookback,
+                               int minPushTicks, float minPushDelta, int stallBars, int marginTicks,
+                               float minFraction, float minContracts)
+{
+    TrapResult r = TrapResult();
+    const int from = MaxI(0, i - lookback);
+
+    // Extreme of the push: lowest low for trapped sellers, highest high for trapped buyers.
+    int ext = i;
+    float extVal = sellersTrapped ? sc.Low[i] : sc.High[i];
+    for (int j = i; j >= from; --j)
+    {
+        const float v = sellersTrapped ? sc.Low[j] : sc.High[j];
+        if (sellersTrapped ? v < extVal : v > extVal)
+        {
+            extVal = v;
+            ext = j;
+        }
+    }
+    r.swing = ext;
+    if (i - ext < stallBars)
+        return r;   // still making new extremes, or the extreme is too fresh
+
+    // Start of the push: the opposite extreme before it.
+    int start = ext;
+    float startVal = sellersTrapped ? sc.High[ext] : sc.Low[ext];
+    for (int j = ext; j >= from; --j)
+    {
+        const float v = sellersTrapped ? sc.High[j] : sc.Low[j];
+        if (sellersTrapped ? v > startVal : v < startVal)
+        {
+            startVal = v;
+            start = j;
+        }
+    }
+    const float pushSize = sellersTrapped ? startVal - sc.Low[ext] : sc.High[ext] - startVal;
+    if (pushSize < minPushTicks * sc.TickSize)
+        return r;
+
+    float pushDelta = 0.0f;
+    for (int j = start; j <= ext; ++j)
+        pushDelta += DeltaSG[j];
+    if (sellersTrapped ? pushDelta > -minPushDelta : pushDelta < minPushDelta)
+        return r;   // the push was not one-sided enough
+
+    r.state = 1;
+    r.pushDelta = pushDelta;
+
+    std::map<int, float> lv;   // price in ticks -> aggressive volume of the pushing side
+    for (int j = start; j <= ext; ++j)
+        AccumulateLevels(sc, j, sellersTrapped, lv);
+    if (lv.empty())
+        return r;
+
+    typedef std::map<int, float>::const_iterator Iter;
+    float total = 0.0f, maxVol = 0.0f;
+    int pocTicks = 0;
+    for (Iter it = lv.begin(); it != lv.end(); ++it)
+    {
+        total += it->second;
+        if (it->second > maxVol)
+        {
+            maxVol = it->second;
+            pocTicks = it->first;
+        }
+    }
+    const int closeTicks = sc.PriceValueToTicks(sc.Close[i]);
+    float trapped = 0.0f;
+    for (Iter it = lv.begin(); it != lv.end(); ++it)
+    {
+        if (sellersTrapped ? it->first <= closeTicks - marginTicks : it->first >= closeTicks + marginTicks)
+            trapped += it->second;
+    }
+    r.level = pocTicks * sc.TickSize;
+    r.trappedVol = trapped;
+
+    const bool beyondLevel = sellersTrapped ? pocTicks <= closeTicks - marginTicks : pocTicks >= closeTicks + marginTicks;
+    if (total > 0.0f && trapped / total >= minFraction && trapped >= minContracts && beyondLevel)
+        r.state = 2;
+    return r;
+}
+
 SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
 {
     SCSubgraphRef LongWatch = sc.Subgraph[0];
@@ -130,6 +247,12 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCSubgraphRef ShockSG = sc.Subgraph[23];      // delta change of the bar / average |delta change| of previous bars
     SCSubgraphRef FlipSG = sc.Subgraph[24];       // +1 buyers take over (delta flips up with a shock), -1 sellers take over
     SCSubgraphRef PressureSG = sc.Subgraph[25];   // sum of delta / sum of volume over the lookback, in percent
+    SCSubgraphRef EventLevelDeltaSG = sc.Subgraph[26]; // signed delta of a big single price level (0 = none)
+    SCSubgraphRef EventLevelPriceSG = sc.Subgraph[27]; // price of that level
+    SCSubgraphRef TrapStateSG = sc.Subgraph[28];  // +1 sellers setup, +2 sellers trapped, -1 buyers setup, -2 buyers trapped
+    SCSubgraphRef TrapLevelSG = sc.Subgraph[29];  // price with the most aggressive volume of the push
+    SCSubgraphRef TrapVolSG = sc.Subgraph[30];    // aggressive volume of the push that is now underwater
+    SCSubgraphRef TrapPushSG = sc.Subgraph[31];   // net delta of the push
 
     SCInputRef Lookback = sc.Input[0];
     SCInputRef DeltaThreshold = sc.Input[1];
@@ -161,6 +284,22 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef RoomLookback = sc.Input[27];
     SCInputRef MinWickTicks = sc.Input[28];
     SCInputRef ShowPanel = sc.Input[29];
+    SCInputRef ShowIntervals = sc.Input[30];
+    SCInputRef SessionStartHour = sc.Input[31];
+    SCInputRef BigLevelDelta = sc.Input[32];
+    SCInputRef BigBarDelta = sc.Input[33];
+    SCInputRef SpikeMult = sc.Input[34];
+    SCInputRef SqueezeMinDelta = sc.Input[35];
+    SCInputRef EventWindowMin = sc.Input[36];
+    SCInputRef ChaseTicks = sc.Input[37];
+    SCInputRef ArrowMode = sc.Input[38];
+    SCInputRef TrapLookback = sc.Input[39];
+    SCInputRef TrapMinPushTicks = sc.Input[40];
+    SCInputRef TrapMinPushDelta = sc.Input[41];
+    SCInputRef TrapStallBars = sc.Input[42];
+    SCInputRef TrapMarginTicks = sc.Input[43];
+    SCInputRef TrapMinFraction = sc.Input[44];
+    SCInputRef TrapMinContracts = sc.Input[45];
 
     if (sc.SetDefaults)
     {
@@ -212,8 +351,14 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         ShockSG.Name = "Delta shock (delta change / average |delta change|)";
         FlipSG.Name = "Delta flip (+1 buyers take over, -1 sellers take over)";
         PressureSG.Name = "Pressure % (sum delta / sum volume over lookback)";
+        EventLevelDeltaSG.Name = "Big level delta (single price level)";
+        EventLevelPriceSG.Name = "Big level price";
+        TrapStateSG.Name = "Trap state (+1/+2 sellers setup/trapped, -1/-2 buyers)";
+        TrapLevelSG.Name = "Trap level (price with most aggressive volume)";
+        TrapVolSG.Name = "Trapped volume (contracts underwater)";
+        TrapPushSG.Name = "Trap push delta";
         // Metrics are not drawn but stay visible in the Chart Values Window and the region data line.
-        for (int s = 4; s <= 25; ++s)
+        for (int s = 4; s <= 31; ++s)
             sc.Subgraph[s].DrawStyle = DRAWSTYLE_HIDDEN;
         State.DrawStyle = DRAWSTYLE_IGNORE;
         Resolve.DrawStyle = DRAWSTYLE_IGNORE;
@@ -294,12 +439,65 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         MinWickTicks.SetIntLimits(1, 100);
         ShowPanel.Name = "Show info panel in the chart (metrics of the last closed bar)";
         ShowPanel.SetYesNo(1);
+        ShowIntervals.Name = "Show interval panel (1h / 2h / 3h / session pressure, price band, big prints)";
+        ShowIntervals.SetYesNo(1);
+        SessionStartHour.Name = "Session start (hour of the chart time, e.g. 15.5 = 15:30)";
+        SessionStartHour.SetFloat(0.0f);
+        SessionStartHour.SetFloatLimits(0.0f, 23.99f);
+        BigLevelDelta.Name = "Big print: net delta at one price level (contracts)";
+        BigLevelDelta.SetInt(500);
+        BigLevelDelta.SetIntLimits(10, 100000);
+        BigBarDelta.Name = "Big print: net delta of one bar (contracts)";
+        BigBarDelta.SetInt(1500);
+        BigBarDelta.SetIntLimits(10, 1000000);
+        SpikeMult.Name = "Volume spike: bar volume / average minimum";
+        SpikeMult.SetFloat(3.0f);
+        SqueezeMinDelta.Name = "Interval absorption flag: minimum |net delta| (contracts)";
+        SqueezeMinDelta.SetInt(2000);
+        SqueezeMinDelta.SetIntLimits(10, 10000000);
+        EventWindowMin.Name = "Big print list: look back (minutes)";
+        EventWindowMin.SetInt(60);
+        EventWindowMin.SetIntLimits(5, 1440);
+        ChaseTicks.Name = "Anti-chase: block a trigger when price already ran this many ticks from the recent extreme (0 = off)";
+        ChaseTicks.SetInt(0);
+        ChaseTicks.SetIntLimits(0, 5000);
+        ArrowMode.Name = "Arrow source (0 absorption confirmation, 1 trapped traders, 2 both)";
+        ArrowMode.SetInt(1);
+        ArrowMode.SetIntLimits(0, 2);
+        TrapLookback.Name = "Trapped traders: lookback for the push (bars)";
+        TrapLookback.SetInt(40);
+        TrapLookback.SetIntLimits(10, 500);
+        TrapMinPushTicks.Name = "Trapped traders: minimum size of the push (ticks)";
+        TrapMinPushTicks.SetInt(24);
+        TrapMinPushTicks.SetIntLimits(2, 5000);
+        TrapMinPushDelta.Name = "Trapped traders: minimum net delta of the push (contracts)";
+        TrapMinPushDelta.SetInt(1000);
+        TrapMinPushDelta.SetIntLimits(10, 1000000);
+        TrapStallBars.Name = "Trapped traders: bars without a new extreme before the reversal";
+        TrapStallBars.SetInt(3);
+        TrapStallBars.SetIntLimits(1, 100);
+        TrapMarginTicks.Name = "Trapped traders: price must be this many ticks beyond the heavy level";
+        TrapMarginTicks.SetInt(2);
+        TrapMarginTicks.SetIntLimits(0, 100);
+        TrapMinFraction.Name = "Trapped traders: minimum share of the push volume that is underwater";
+        TrapMinFraction.SetFloat(0.6f);
+        TrapMinFraction.SetFloatLimits(0.05f, 1.0f);
+        TrapMinContracts.Name = "Trapped traders: minimum underwater volume (contracts)";
+        TrapMinContracts.SetFloat(1500.0f);
+        TrapMinContracts.SetFloatLimits(10.0f, 10000000.0f);
         return;
     }
 
     const int i = sc.Index;
     LongWatch[i] = ShortWatch[i] = LongTrigger[i] = ShortTrigger[i] = 0.0f;
     ReasonSG[i] = 0.0f;
+    EventLevelDeltaSG[i] = 0.0f;
+    EventLevelPriceSG[i] = 0.0f;
+    TrapStateSG[i] = 0.0f;
+    TrapLevelSG[i] = 0.0f;
+    TrapVolSG[i] = 0.0f;
+    TrapPushSG[i] = 0.0f;
+    State.Arrays[3][i] = 0.0f;
     State.Arrays[0][i] = 0.0f;
     State.Arrays[1][i] = 0.0f;
     State.Arrays[2][i] = 0.0f;
@@ -434,6 +632,149 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         sc.UseTool(Tool);
     }
 
+    // Interval panel: who dominated the last 1 / 2 / 3 hours and the session, in which price band, plus recent big prints.
+    if (ShowIntervals.GetYesNo() && i == sc.ArraySize - 1 && i > 0)
+    {
+        const double lastT = sc.BaseDateTimeIn[i].GetAsDouble();
+        double sessionStart = floor(lastT) + SessionStartHour.GetFloat() / 24.0;
+        if (sessionStart > lastT)
+            sessionStart -= 1.0;
+        const double starts[4] = { lastT - 1.0 / 24.0, lastT - 2.0 / 24.0, lastT - 3.0 / 24.0, sessionStart };
+        const char* labels[4] = { "1h", "2h", "3h", "Seance" };
+
+        SCString txtB;
+        txtB.Format("TLAK A CENOVE PASMO (aktualni bar vcetne)\n");
+        for (int w = 0; w < 4; ++w)
+        {
+            float sumAsk = 0.0f, sumBid = 0.0f;
+            float hi = sc.High[i], lo = sc.Low[i];
+            int first = i;
+            for (int j = i; j >= 0 && sc.BaseDateTimeIn[j].GetAsDouble() >= starts[w]; --j)
+            {
+                sumAsk += sc.AskVolume[j];
+                sumBid += sc.BidVolume[j];
+                hi = MaxF(hi, sc.High[j]);
+                lo = MinF(lo, sc.Low[j]);
+                first = j;
+            }
+            const float vol = sumAsk + sumBid;
+            const float d = sumAsk - sumBid;
+            const float buyPct = vol > 0.0f ? 100.0f * sumAsk / vol : 0.0f;
+            const float change = sc.Close[i] - sc.Open[first];
+            const float range = hi - lo;
+            const float efficiency = range > 0.0f ? fabsf(change) / range : 0.0f;
+            const char* who = buyPct >= 52.0f ? "KUPUJICI" : (buyPct <= 48.0f ? "PRODAVAJICI" : "VYROVNANO");
+
+            // Absorption of a large net delta: price moved against it or hardly moved at all.
+            const char* flag = "";
+            if (fabsf(d) >= (float)SqueezeMinDelta.GetInt())
+            {
+                if (d < 0.0f && change > 0.0f) flag = "ABSORPCE prodeju, cena roste (mozny short squeeze)";
+                else if (d > 0.0f && change < 0.0f) flag = "ABSORPCE nakupu, cena klesa (mozny long squeeze)";
+                else if (d < 0.0f && efficiency < 0.25f) flag = "ABSORPCE prodeju, cena stoji";
+                else if (d > 0.0f && efficiency < 0.25f) flag = "ABSORPCE nakupu, cena stoji";
+            }
+
+            SCString line;
+            line.Format("%-6s %-11s delta %+d  (%.0f%% BUY)  objem %d | cena %+.2f  pasmo %.2f-%.2f  %s\n",
+                        labels[w], who, (int)d, buyPct, (int)vol, change, lo, hi, flag);
+            txtB.Append(line.GetChars());
+        }
+
+        SCString head;
+        head.Format("\nVELKE OBJEMY (poslednich %d min, uzavrene bary)\n", EventWindowMin.GetInt());
+        txtB.Append(head.GetChars());
+        const double evStart = lastT - EventWindowMin.GetInt() / 1440.0;
+        int shown = 0;
+        for (int j = i - 1; j >= 0 && shown < 5; --j)
+        {
+            if (sc.BaseDateTimeIn[j].GetAsDouble() < evStart)
+                break;
+            const bool lvl = EventLevelDeltaSG[j] != 0.0f;
+            const bool bigBar = fabsf(DeltaSG[j]) >= (float)BigBarDelta.GetInt();
+            const bool spike = VolRatioSG[j] >= SpikeMult.GetFloat();
+            if (!lvl && !bigBar && !spike)
+                continue;
+
+            SCString line;
+            line.Format("%02d:%02d  ", sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute());
+            if (lvl)
+            {
+                SCString part;
+                part.Format("%s %+d @ %.2f   ", EventLevelDeltaSG[j] > 0.0f ? "NAKUP" : "PRODEJ", (int)EventLevelDeltaSG[j], EventLevelPriceSG[j]);
+                line.Append(part.GetChars());
+            }
+            if (bigBar)
+            {
+                SCString part;
+                part.Format("delta baru %+d   ", (int)DeltaSG[j]);
+                line.Append(part.GetChars());
+            }
+            if (spike)
+            {
+                SCString part;
+                part.Format("objem %.1fx prumer   ", VolRatioSG[j]);
+                line.Append(part.GetChars());
+            }
+            line.Append("\n");
+            txtB.Append(line.GetChars());
+            ++shown;
+        }
+        if (shown == 0)
+            txtB.Append("zadne\n");
+
+        // Trapped traders: current state of the last closed bar and the last trapped-trader signal.
+        txtB.Append("\nTRAPPED TRADERS\n");
+        const int k = i - 1;
+        const float st = TrapStateSG[k];
+        SCString trapLine;
+        if (st == 0.0f)
+        {
+            trapLine.Format("zadny setup\n");
+        }
+        else
+        {
+            const bool sellers = st > 0.0f;
+            if (fabsf(st) == 1.0f)
+                trapLine.Format("SETUP %s: %s tlaci (delta %+d), nove %s se nedela; past nad/pod %.2f\n",
+                                sellers ? "LONG" : "SHORT", sellers ? "prodavajici" : "kupujici", (int)TrapPushSG[k],
+                                sellers ? "low" : "high", TrapLevelSG[k]);
+            else
+                trapLine.Format("PAST AKTIVNI: %s v pasti %d kontraktu, nejvetsi objem @ %.2f, cena uz je za nim\n",
+                                sellers ? "prodavajici" : "kupujici", (int)TrapVolSG[k], TrapLevelSG[k]);
+        }
+        txtB.Append(trapLine.GetChars());
+        for (int j = k; j >= 0 && j >= i - 400; --j)
+        {
+            if (State.Arrays[3][j] == 0.0f)
+                continue;
+            SCString sig;
+            sig.Format("posledni signal %02d:%02d  %s  (%s v pasti %d kontraktu, objem @ %.2f)\n",
+                       sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute(),
+                       State.Arrays[3][j] > 0.0f ? "LONG" : "SHORT", State.Arrays[3][j] > 0.0f ? "prodavajici" : "kupujici",
+                       (int)TrapVolSG[j], TrapLevelSG[j]);
+            txtB.Append(sig.GetChars());
+            break;
+        }
+
+        s_UseTool ToolB;
+        ToolB.Clear();
+        ToolB.ChartNumber = sc.ChartNumber;
+        ToolB.DrawingType = DRAWING_TEXT;
+        ToolB.LineNumber = 91828;
+        ToolB.AddMethod = UTAM_ADD_OR_ADJUST;
+        ToolB.Region = sc.GraphRegion;
+        ToolB.UseRelativeVerticalValues = 1;
+        ToolB.BeginDateTime = 3;
+        ToolB.BeginValue = 76;
+        ToolB.FontSize = 9;
+        ToolB.Color = RGB(255, 255, 255);
+        ToolB.FontBackColor = RGB(30, 30, 30);
+        ToolB.TransparentLabelBackground = 0;
+        ToolB.Text = txtB;
+        sc.UseTool(ToolB);
+    }
+
     if (!barClosed || volume <= 0.0f)
         return;
 
@@ -468,10 +809,45 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         BigLevelsSG[i] = (float)fp.bigLevels;
         StackBuySG[i] = (float)fp.stackedBuy;
         StackSellSG[i] = (float)fp.stackedSell;
+
+        // Big print: one price level where aggressive flow was one-sided and large.
+        const float bigLevel = (float)BigLevelDelta.GetInt();
+        if (fp.maxLevelDelta >= bigLevel && fp.maxLevelDelta >= -fp.minLevelDelta)
+        {
+            EventLevelDeltaSG[i] = fp.maxLevelDelta;
+            EventLevelPriceSG[i] = fp.priceMaxDelta;
+        }
+        else if (-fp.minLevelDelta >= bigLevel)
+        {
+            EventLevelDeltaSG[i] = fp.minLevelDelta;
+            EventLevelPriceSG[i] = fp.priceMinDelta;
+        }
     }
 
     if (i < n + 1 || avgVolume <= 0.0f)
         return;
+
+    // Trapped traders: evaluated for both sides, the stronger state is kept.
+    TrapResult trapSell = TrapResult(), trapBuy = TrapResult();
+    if (haveFootprint)
+    {
+        trapSell = EvaluateTrap(sc, DeltaSG, i, true, TrapLookback.GetInt(), TrapMinPushTicks.GetInt(),
+                                (float)TrapMinPushDelta.GetInt(), TrapStallBars.GetInt(), TrapMarginTicks.GetInt(),
+                                TrapMinFraction.GetFloat(), TrapMinContracts.GetFloat());
+        trapBuy = EvaluateTrap(sc, DeltaSG, i, false, TrapLookback.GetInt(), TrapMinPushTicks.GetInt(),
+                               (float)TrapMinPushDelta.GetInt(), TrapStallBars.GetInt(), TrapMarginTicks.GetInt(),
+                               TrapMinFraction.GetFloat(), TrapMinContracts.GetFloat());
+    }
+    const bool pickSellers = trapSell.state > trapBuy.state
+        || (trapSell.state == trapBuy.state && fabsf(trapSell.pushDelta) >= fabsf(trapBuy.pushDelta));
+    const TrapResult& trap = pickSellers ? trapSell : trapBuy;
+    if (trap.state > 0)
+    {
+        TrapStateSG[i] = (pickSellers ? 1.0f : -1.0f) * (float)trap.state;
+        TrapLevelSG[i] = trap.level;
+        TrapVolSG[i] = trap.trappedVol;
+        TrapPushSG[i] = trap.pushDelta;
+    }
 
     const float deltaFraction = delta / volume;
     const bool elevated = volume >= avgVolume * MinVolumeRatio.GetFloat();
@@ -562,20 +938,50 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     const float minRoom = MinRoomTicks.GetInt() * sc.TickSize;
     const bool roomLong = MinRoomTicks.GetInt() == 0 || recentHigh - sc.Close[i] >= minRoom;
     const bool roomShort = MinRoomTicks.GetInt() == 0 || sc.Close[i] - recentLow >= minRoom;
+    // Anti-chase: do not buy after price already ran far up from the recent low (or sell far below the recent high).
+    const float chase = ChaseTicks.GetInt() * sc.TickSize;
+    const bool notChasedLong = ChaseTicks.GetInt() == 0 || sc.Close[i] - recentLow <= chase;
+    const bool notChasedShort = ChaseTicks.GetInt() == 0 || recentHigh - sc.Close[i] <= chase;
+
+    // Arrow sources: confirmation of an absorption watch (mode 0 or 2) and/or trapped traders (mode 1 or 2).
+    const int arrowMode = ArrowMode.GetInt();
+    const bool longFromAbsorption = arrowMode != 1 && LongWatch[p] != 0.0f && sc.Close[i] > sc.High[p] && delta > 0.0f && stackedOkLong;
+    const bool shortFromAbsorption = arrowMode != 1 && ShortWatch[p] != 0.0f && sc.Close[i] < sc.Low[p] && delta < 0.0f && stackedOkShort;
+
+    // Trapped traders fire once per push: the bar must reverse with the flow (up brick with buying, or down brick with selling).
+    bool longFromTrap = arrowMode != 0 && TrapStateSG[i] == 2.0f && sc.Close[i] > sc.Open[i] && delta > 0.0f;
+    bool shortFromTrap = arrowMode != 0 && TrapStateSG[i] == -2.0f && sc.Close[i] < sc.Open[i] && delta < 0.0f;
+    if (longFromTrap || shortFromTrap)
+    {
+        const float key = (longFromTrap ? 1.0f : -1.0f) * (float)(trap.swing + 1);
+        for (int j = i - 1; j >= MaxI(0, i - TrapLookback.GetInt()); --j)
+        {
+            if (State.Arrays[3][j] == key)
+            {
+                longFromTrap = false;
+                shortFromTrap = false;
+                break;
+            }
+        }
+    }
 
     bool newTrigger = false;
-    if (LongWatch[p] != 0.0f && sc.Close[i] > sc.High[p] && delta > 0.0f && stackedOkLong && !blockedLong && roomLong)
+    if ((longFromAbsorption || longFromTrap) && !blockedLong && roomLong && notChasedLong)
     {
         LongTrigger[i] = sc.Low[i] - 2.0f * sc.TickSize;
         State.Arrays[0][i] = 1.0f;
         State.Arrays[1][i] = sc.Close[i];
+        if (longFromTrap)
+            State.Arrays[3][i] = (float)(trap.swing + 1);
         newTrigger = true;
     }
-    else if (ShortWatch[p] != 0.0f && sc.Close[i] < sc.Low[p] && delta < 0.0f && stackedOkShort && !blockedShort && roomShort)
+    else if ((shortFromAbsorption || shortFromTrap) && !blockedShort && roomShort && notChasedShort)
     {
         ShortTrigger[i] = sc.High[i] + 2.0f * sc.TickSize;
         State.Arrays[0][i] = -1.0f;
         State.Arrays[1][i] = sc.Close[i];
+        if (shortFromTrap)
+            State.Arrays[3][i] = -(float)(trap.swing + 1);
         newTrigger = true;
     }
 
