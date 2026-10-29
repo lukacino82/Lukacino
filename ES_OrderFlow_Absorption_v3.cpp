@@ -349,10 +349,15 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef TrapPushDeltaMult = sc.Input[49];
     SCInputRef TrapReactionMult = sc.Input[50];
     SCInputRef TrapMaxStallRange = sc.Input[51];
+    SCInputRef DominancePct = sc.Input[52];
+    SCInputRef BandPoints = sc.Input[53];
+    SCInputRef ShowBands = sc.Input[54];
+    SCInputRef MonitorX = sc.Input[55];
+    SCInputRef MonitorY = sc.Input[56];
 
     if (sc.SetDefaults)
     {
-        sc.GraphName = "ES Order Flow Absorption v3 (footprint + delta, unverified)";
+        sc.GraphName = "ES Order Flow Absorption v3 + Market Activity Monitor (footprint + delta, unverified)";
         sc.StudyDescription = "Reads delta metrics and Volume at Price per closed bar, flags absorption (yellow dots) and confirmed reversals "
                               "(arrows), and keeps forward win/loss statistics. Not compiled or backtested by the author.";
         sc.AutoLoop = 1;
@@ -488,7 +493,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         MinWickTicks.SetIntLimits(1, 100);
         ShowPanel.Name = "Show info panel in the chart (metrics of the last closed bar)";
         ShowPanel.SetYesNo(1);
-        ShowIntervals.Name = "Show interval panel (1h / 2h / 3h / session pressure, price band, big prints)";
+        ShowIntervals.Name = "Show Market Activity Monitor (30 min - 5 h, session), big prints and trapped traders";
         ShowIntervals.SetYesNo(1);
         SessionStartHour.Name = "Session start (hour of the chart time, e.g. 15.5 = 15:30)";
         SessionStartHour.SetFloat(0.0f);
@@ -501,7 +506,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         BigBarDelta.SetIntLimits(10, 1000000);
         SpikeMult.Name = "Volume spike: bar volume / average minimum";
         SpikeMult.SetFloat(3.0f);
-        SqueezeMinDelta.Name = "Interval absorption flag: minimum |net delta| (contracts)";
+        SqueezeMinDelta.Name = "Monitor: flag delta without price move, minimum |net delta| (contracts)";
         SqueezeMinDelta.SetInt(2000);
         SqueezeMinDelta.SetIntLimits(10, 10000000);
         EventWindowMin.Name = "Big print list: look back (minutes)";
@@ -552,6 +557,29 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         TrapMaxStallRange.Name = "Sideways phase: max range x average bar range (0 = off)";
         TrapMaxStallRange.SetFloat(0.0f);
         TrapMaxStallRange.SetFloatLimits(0.0f, 50.0f);
+        DominancePct.Name = "Monitor: share of aggressive buying (%) from which BUYERS dominate (SELLERS below 100 - this)";
+        DominancePct.SetFloat(52.0f);
+        DominancePct.SetFloatLimits(50.0f, 90.0f);
+        BandPoints.Name = "Monitor: price band size (points)";
+        BandPoints.SetFloat(5.0f);
+        BandPoints.SetFloatLimits(0.25f, 500.0f);
+        ShowBands.Name = "Monitor: show price bands with most volume";
+        ShowBands.SetYesNo(1);
+        MonitorX.Name = "Monitor panel position: horizontal (% of chart width)";
+        MonitorX.SetInt(40);
+        MonitorX.SetIntLimits(0, 95);
+        MonitorY.Name = "Monitor panel position: vertical (% of chart height, 100 = top)";
+        MonitorY.SetInt(98);
+        MonitorY.SetIntLimits(5, 100);
+        return;
+    }
+
+    if (sc.LastCallToFunction)
+    {
+        // Remove the text panels when the study is removed from the chart.
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91827);
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91828);
+        sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91830);
         return;
     }
 
@@ -699,19 +727,91 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         sc.UseTool(Tool);
     }
 
-    // Interval panel: who dominated the last 1 / 2 / 3 hours and the session, in which price band, plus recent big prints.
+    // Panels: Market Activity Monitor (30 min ... 5 h and the session) plus big prints and trapped traders.
     if (ShowIntervals.GetYesNo() && i == sc.ArraySize - 1 && i > 0)
     {
         const double lastT = sc.BaseDateTimeIn[i].GetAsDouble();
         double sessionStart = floor(lastT) + SessionStartHour.GetFloat() / 24.0;
         if (sessionStart > lastT)
             sessionStart -= 1.0;
-        const double starts[4] = { lastT - 1.0 / 24.0, lastT - 2.0 / 24.0, lastT - 3.0 / 24.0, sessionStart };
-        const char* labels[4] = { "1h", "2h", "3h", "Seance" };
+        const int W = 7;
+        const char* labels[7] = { "30 min", "1 h", "2 h", "3 h", "4 h", "5 h", "Seance" };
+        const double starts[7] = { lastT - 0.5 / 24.0, lastT - 1.0 / 24.0, lastT - 2.0 / 24.0, lastT - 3.0 / 24.0,
+                                   lastT - 4.0 / 24.0, lastT - 5.0 / 24.0, sessionStart };
 
-        SCString txtB;
-        txtB.Format("TLAK A CENOVE PASMO (aktualni bar vcetne)\n");
-        for (int w = 0; w < 4; ++w)
+        // Price bands are rebuilt once per new bar because they read Volume at Price of every bar in the windows.
+        int& lastBandBar = sc.GetPersistentInt(3);
+        if (ShowBands.GetYesNo() && lastBandBar != i)
+        {
+            lastBandBar = i;
+            double earliest = starts[0];
+            for (int w = 1; w < W; ++w)
+                earliest = starts[w] < earliest ? starts[w] : earliest;
+
+            std::map<int, float> bands[7];
+            const float bandSize = BandPoints.GetFloat();
+            for (int j = i; j >= 0; --j)
+            {
+                const double t = sc.BaseDateTimeIn[j].GetAsDouble();
+                if (t < earliest)
+                    break;
+                const int size = (int)sc.VolumeAtPriceForBars->GetSizeAtBarIndex((unsigned int)j);
+                for (int e = 0; e < size; ++e)
+                {
+                    const s_VolumeAtPriceV2* p = NULL;
+                    sc.VolumeAtPriceForBars->GetVAPElementAtIndex(j, e, &p);
+                    if (p == NULL)
+                        continue;
+                    const float levelVol = (float)p->BidVolume + (float)p->AskVolume;
+                    const int band = (int)floor((p->PriceInTicks * sc.TickSize) / bandSize);
+                    for (int w = 0; w < W; ++w)
+                    {
+                        if (t >= starts[w])
+                            bands[w][band] += levelVol;
+                    }
+                }
+            }
+
+            typedef std::map<int, float>::const_iterator BandIter;
+            for (int w = 0; w < W; ++w)
+            {
+                SCString& cache = sc.GetPersistentSCString(w + 1);
+                cache.Format("%s", "");
+                float total = 0.0f;
+                for (BandIter it = bands[w].begin(); it != bands[w].end(); ++it)
+                    total += it->second;
+                int picked[3] = { 0, 0, 0 };
+                for (int rank = 0; rank < 3; ++rank)
+                {
+                    float best = 0.0f;
+                    int bestBand = 0;
+                    bool found = false;
+                    for (BandIter it = bands[w].begin(); it != bands[w].end(); ++it)
+                    {
+                        bool used = false;
+                        for (int q = 0; q < rank; ++q)
+                            used = used || picked[q] == it->first;
+                        if (!used && it->second > best)
+                        {
+                            best = it->second;
+                            bestBand = it->first;
+                            found = true;
+                        }
+                    }
+                    if (!found || total <= 0.0f)
+                        break;
+                    picked[rank] = bestBand;
+                    SCString part;
+                    part.Format("%s%.0f-%.0f %.0f%%", rank == 0 ? "" : "   ", bestBand * bandSize, (bestBand + 1) * bandSize,
+                                100.0f * best / total);
+                    cache.Append(part.GetChars());
+                }
+            }
+        }
+
+        SCString txtM;
+        txtM.Format("MARKET ACTIVITY MONITOR   cena %.2f\n", sc.Close[i]);
+        for (int w = 0; w < W; ++w)
         {
             float sumAsk = 0.0f, sumBid = 0.0f;
             float hi = sc.High[i], lo = sc.Low[i];
@@ -730,24 +830,54 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
             const float change = sc.Close[i] - sc.Open[first];
             const float range = hi - lo;
             const float efficiency = range > 0.0f ? fabsf(change) / range : 0.0f;
-            const char* who = buyPct >= 52.0f ? "KUPUJICI" : (buyPct <= 48.0f ? "PRODAVAJICI" : "VYROVNANO");
+            const float domLimit = DominancePct.GetFloat();
+            const char* who = buyPct >= domLimit ? "KUPUJICI" : (buyPct <= 100.0f - domLimit ? "PRODAVAJICI" : "VYROVNANO");
 
-            // Absorption of a large net delta: price moved against it or hardly moved at all.
+            // A large delta without the matching price move: price went against it or hardly moved.
             const char* flag = "";
             if (fabsf(d) >= (float)SqueezeMinDelta.GetInt())
             {
-                if (d < 0.0f && change > 0.0f) flag = "ABSORPCE prodeju, cena roste (mozny short squeeze)";
-                else if (d > 0.0f && change < 0.0f) flag = "ABSORPCE nakupu, cena klesa (mozny long squeeze)";
-                else if (d < 0.0f && efficiency < 0.25f) flag = "ABSORPCE prodeju, cena stoji";
-                else if (d > 0.0f && efficiency < 0.25f) flag = "ABSORPCE nakupu, cena stoji";
+                if (d > 0.0f && change < 0.0f) flag = "NESOULAD: kupuje se, cena klesa";
+                else if (d < 0.0f && change > 0.0f) flag = "NESOULAD: prodava se, cena roste";
+                else if (d > 0.0f && efficiency < 0.25f) flag = "NESOULAD: kupuje se, cena stoji";
+                else if (d < 0.0f && efficiency < 0.25f) flag = "NESOULAD: prodava se, cena stoji";
             }
 
             SCString line;
-            line.Format("%-6s %-11s delta %+d  (%.0f%% BUY)  objem %d | cena %+.2f  pasmo %.2f-%.2f  %s\n",
-                        labels[w], who, (int)d, buyPct, (int)vol, change, lo, hi, flag);
-            txtB.Append(line.GetChars());
+            line.Format("%-6s %.2f-%.2f | obj %d | ASK %d / BID %d | delta %+d | %s %.0f%% | zmena %+.2f  %s\n",
+                        labels[w], lo, hi, (int)vol, (int)sumAsk, (int)sumBid, (int)d, who, buyPct, change, flag);
+            txtM.Append(line.GetChars());
+
+            if (ShowBands.GetYesNo())
+            {
+                SCString& cache = sc.GetPersistentSCString(w + 1);
+                if (cache.GetLength() > 0)
+                {
+                    SCString bandLine;
+                    bandLine.Format("       pasma: %s\n", cache.GetChars());
+                    txtM.Append(bandLine.GetChars());
+                }
+            }
         }
 
+        s_UseTool ToolM;
+        ToolM.Clear();
+        ToolM.ChartNumber = sc.ChartNumber;
+        ToolM.DrawingType = DRAWING_TEXT;
+        ToolM.LineNumber = 91830;
+        ToolM.AddMethod = UTAM_ADD_OR_ADJUST;
+        ToolM.Region = sc.GraphRegion;
+        ToolM.UseRelativeVerticalValues = 1;
+        ToolM.BeginDateTime = MonitorX.GetInt();
+        ToolM.BeginValue = (float)MonitorY.GetInt();
+        ToolM.FontSize = 9;
+        ToolM.Color = RGB(255, 255, 255);
+        ToolM.FontBackColor = RGB(30, 30, 30);
+        ToolM.TransparentLabelBackground = 0;
+        ToolM.Text = txtM;
+        sc.UseTool(ToolM);
+
+        SCString txtB;
         SCString head;
         head.Format("\nVELKE OBJEMY (poslednich %d min, uzavrene bary)\n", EventWindowMin.GetInt());
         txtB.Append(head.GetChars());
