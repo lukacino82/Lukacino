@@ -383,6 +383,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef MaxEvents = sc.Input[83];
     SCInputRef ShowComments = sc.Input[84];
     SCInputRef ShowLegend = sc.Input[85];
+    SCInputRef TrapLocationHours = sc.Input[86];
+    SCInputRef TrapLocationPct = sc.Input[87];
 
     if (sc.SetDefaults)
     {
@@ -587,7 +589,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         TrapMaxStallRange.SetFloat(0.0f);
         TrapMaxStallRange.SetFloatLimits(0.0f, 50.0f);
         DominancePct.Name = "Monitor: share of aggressive buying (%) from which BUYERS dominate (SELLERS below 100 - this)";
-        DominancePct.SetFloat(52.0f);
+        DominancePct.SetFloat(50.5f);
         DominancePct.SetFloatLimits(50.0f, 90.0f);
         BandPoints.Name = "Monitor: price band size (points)";
         BandPoints.SetFloat(5.0f);
@@ -670,6 +672,12 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ShowComments.SetYesNo(1);
         ShowLegend.Name = "Monitor: show a short legend of the labels";
         ShowLegend.SetYesNo(0);
+        TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
+        TrapLocationHours.SetFloat(2.0f);
+        TrapLocationHours.SetFloatLimits(0.0f, 24.0f);
+        TrapLocationPct.Name = "Trapped traders: edge of the range in percent (e.g. 35 = outer 35% of the range)";
+        TrapLocationPct.SetFloat(35.0f);
+        TrapLocationPct.SetFloatLimits(5.0f, 100.0f);
         return;
     }
 
@@ -964,13 +972,14 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             {
                 if (d > 0.0f && change < 0.0f) flag = "NESOULAD: kupuje se, cena klesa";
                 else if (d < 0.0f && change > 0.0f) flag = "NESOULAD: prodava se, cena roste";
-                else if (d > 0.0f && efficiency < 0.25f) flag = "NESOULAD: kupuje se, cena stoji";
-                else if (d < 0.0f && efficiency < 0.25f) flag = "NESOULAD: prodava se, cena stoji";
+                else if (d > 0.0f && efficiency < 0.15f) flag = "NESOULAD: kupuje se, cena stoji";
+                else if (d < 0.0f && efficiency < 0.15f) flag = "NESOULAD: prodava se, cena stoji";
             }
 
             SCString line;
-            line.Format("%-6s %.2f-%.2f | obj %d | ASK %d / BID %d | delta %+d | %s %.0f%% | zmena %+.2f  %s\n",
-                        labels[w], lo, hi, (int)vol, (int)sumAsk, (int)sumBid, (int)d, who, buyPct, change, flag);
+            line.Format("%-6s %.2f-%.2f | obj %d | ASK %d / BID %d | delta %+d (%+.2f%%) | %s %.1f%% | zmena %+.2f  %s\n",
+                        labels[w], lo, hi, (int)vol, (int)sumAsk, (int)sumBid, (int)d, vol > 0.0f ? 100.0f * d / vol : 0.0f,
+                        who, buyPct, change, flag);
             txtM.Append(line.GetChars());
 
             if (ShowComments.GetYesNo())
@@ -1018,7 +1027,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         if (ShowLegend.GetYesNo())
         {
             SCString legend;
-            legend.Format("Legenda: KUPUJICI/PRODAVAJICI = aspon %.0f%% agresivniho objemu na jedne strane, VYROVNANO = %.0f-%.0f%% (zadna strana nedominuje)\n"
+            legend.Format("Legenda: KUPUJICI/PRODAVAJICI = aspon %.1f%% agresivniho objemu na jedne strane, VYROVNANO = %.1f-%.1f%% (zadna strana nedominuje)\n"
                           "NESOULAD = velka delta, ale cena sla proti ni nebo stoji (mozna absorpce)\n",
                           DominancePct.GetFloat(), 100.0f - DominancePct.GetFloat(), DominancePct.GetFloat());
             txtM.Append(legend.GetChars());
@@ -1110,7 +1119,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                                 sellers ? "LONG" : "SHORT", sellers ? "prodavajici" : "kupujici", (int)TrapPushSG[k],
                                 sellers ? "low" : "high", TrapLevelSG[k]);
             else
-                trapLine.Format("PAST AKTIVNI: %s v pasti %d kontraktu, nejvetsi objem @ %.2f, cena uz je za nim\n",
+                trapLine.Format("PAST AKTIVNI: %s v pasti, agresivni objem %d kontraktu je ted v ztrate (hruby odhad), uroven obratu %.2f\n",
                                 sellers ? "prodavajici" : "kupujici", (int)TrapVolSG[k], TrapLevelSG[k]);
         }
         txtB.Append(trapLine.GetChars());
@@ -1119,7 +1128,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             if (State.Arrays[3][j] == 0.0f)
                 continue;
             SCString sig;
-            sig.Format("posledni signal %02d:%02d  %s  (%s v pasti %d kontraktu, objem @ %.2f)\n",
+            sig.Format("posledni signal %02d:%02d  %s  (%s v pasti, hruby odhad %d kontraktu, uroven obratu %.2f)\n",
                        sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute(),
                        State.Arrays[3][j] > 0.0f ? "LONG" : "SHORT", State.Arrays[3][j] > 0.0f ? "prodavajici" : "kupujici",
                        (int)TrapVolSG[j], TrapLevelSG[j]);
@@ -1336,6 +1345,22 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         && delta >= TrapReactionMult.GetFloat() * avgAbsDelta;
     bool shortFromTrap = arrowMode != 0 && TrapStateSG[i] == -2.0f && sc.Close[i] < sc.Open[i] && delta < 0.0f
         && -delta >= TrapReactionMult.GetFloat() * avgAbsDelta;
+    if ((longFromTrap || shortFromTrap) && TrapLocationHours.GetFloat() > 0.0f)
+    {
+        // A reversal means more at the edge of a larger range than in the middle of it.
+        const double rangeStart = sc.BaseDateTimeIn[i].GetAsDouble() - TrapLocationHours.GetFloat() / 24.0;
+        float rangeHigh = sc.High[i], rangeLow = sc.Low[i];
+        for (int j = i; j >= 0 && sc.BaseDateTimeIn[j].GetAsDouble() >= rangeStart; --j)
+        {
+            rangeHigh = MaxF(rangeHigh, sc.High[j]);
+            rangeLow = MinF(rangeLow, sc.Low[j]);
+        }
+        const float edge = (rangeHigh - rangeLow) * TrapLocationPct.GetFloat() / 100.0f;
+        if (longFromTrap && sc.Low[trap.swing] > rangeLow + edge)
+            longFromTrap = false;
+        if (shortFromTrap && sc.High[trap.swing] < rangeHigh - edge)
+            shortFromTrap = false;
+    }
     if (longFromTrap || shortFromTrap)
     {
         const float key = (longFromTrap ? 1.0f : -1.0f) * (float)(trap.swing + 1);
