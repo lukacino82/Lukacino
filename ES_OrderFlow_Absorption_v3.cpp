@@ -160,6 +160,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     SCInputRef MinRoomTicks = sc.Input[26];
     SCInputRef RoomLookback = sc.Input[27];
     SCInputRef MinWickTicks = sc.Input[28];
+    SCInputRef ShowPanel = sc.Input[29];
 
     if (sc.SetDefaults)
     {
@@ -291,6 +292,8 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         MinWickTicks.Name = "Failed auction: minimum wick beyond the bar body (ticks)";
         MinWickTicks.SetInt(2);
         MinWickTicks.SetIntLimits(1, 100);
+        ShowPanel.Name = "Show info panel in the chart (metrics of the last closed bar)";
+        ShowPanel.SetYesNo(1);
         return;
     }
 
@@ -399,6 +402,36 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
         msg.Format("Absorption v3: wins %d, losses %d, timeouts %d, win rate %.1f%%",
                    (int)Wins[i], (int)Losses[i], (int)Timeouts[i], WinRate[i]);
         sc.AddMessageToLog(msg, 0);
+    }
+
+    // Info panel: metrics of the last closed bar, drawn in the chart so they do not depend on hover or on the data line width.
+    if (ShowPanel.GetYesNo() && i == sc.ArraySize - 1 && i > 0)
+    {
+        const int k = i - 1;
+        SCString txt;
+        txt.Format("ABSORPTION v3  (last closed bar)\nDelta %d  (%.1f%%)   Delta chg %d\nShock %.1fx   Flip %d   Pressure %.1f%%\n"
+                   "Volume/avg %.1fx   Max level %d   Delta at max level %d\nBig levels %d   Stacked buy/sell %d / %d\n"
+                   "Watch reason %d   (1 div, 2 thin, 4 big, 8 shock)\nWins %d   Losses %d   Timeouts %d   Win rate %.0f%%",
+                   (int)DeltaSG[k], DeltaPctSG[k], (int)DeltaChgSG[k], ShockSG[k], (int)FlipSG[k], PressureSG[k],
+                   VolRatioSG[k], (int)MaxLevelSG[k], (int)PocDeltaSG[k], (int)BigLevelsSG[k], (int)StackBuySG[k],
+                   (int)StackSellSG[k], (int)ReasonSG[k], (int)Wins[k], (int)Losses[k], (int)Timeouts[k], WinRate[k]);
+
+        s_UseTool Tool;
+        Tool.Clear();
+        Tool.ChartNumber = sc.ChartNumber;
+        Tool.DrawingType = DRAWING_TEXT;
+        Tool.LineNumber = 91827;
+        Tool.AddMethod = UTAM_ADD_OR_ADJUST;
+        Tool.Region = sc.GraphRegion;
+        Tool.UseRelativeVerticalValues = 1;
+        Tool.BeginDateTime = 3;
+        Tool.BeginValue = 96;
+        Tool.FontSize = 9;
+        Tool.Color = RGB(255, 255, 255);
+        Tool.FontBackColor = RGB(30, 30, 30);
+        Tool.TransparentLabelBackground = 0;
+        Tool.Text = txt;
+        sc.UseTool(Tool);
     }
 
     if (!barClosed || volume <= 0.0f)
