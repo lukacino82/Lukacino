@@ -2,7 +2,7 @@
 #include <cmath>
 #include <map>
 
-SCDLLName("ES Order Flow Absorption Detector v3")
+SCDLLName("ES Order Flow Absorption 2.0")
 
 static inline float MaxF(float a, float b) { return a > b ? a : b; }
 static inline float MinF(float a, float b) { return a < b ? a : b; }
@@ -262,7 +262,7 @@ static TrapResult EvaluateTrap(SCStudyInterfaceRef sc, SCSubgraphRef DeltaSG, in
     return r;
 }
 
-SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
+SCSFExport scsf_ESOrderFlowAbsorption20(SCStudyInterfaceRef sc)
 {
     SCSubgraphRef LongWatch = sc.Subgraph[0];
     SCSubgraphRef ShortWatch = sc.Subgraph[1];
@@ -357,7 +357,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
 
     if (sc.SetDefaults)
     {
-        sc.GraphName = "ES Order Flow Absorption v3 + Market Activity Monitor (footprint + delta, unverified)";
+        sc.GraphName = "ES Order Flow Absorption 2.0 (footprint + delta + market monitor, unverified)";
         sc.StudyDescription = "Reads delta metrics and Volume at Price per closed bar, flags absorption (yellow dots) and confirmed reversals "
                               "(arrows), and keeps forward win/loss statistics. Not compiled or backtested by the author.";
         sc.AutoLoop = 1;
@@ -692,7 +692,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     {
         LastLogged = i;
         SCString msg;
-        msg.Format("Absorption v3: wins %d, losses %d, timeouts %d, win rate %.1f%%",
+        msg.Format("Absorption 2.0: wins %d, losses %d, timeouts %d, win rate %.1f%%",
                    (int)Wins[i], (int)Losses[i], (int)Timeouts[i], WinRate[i]);
         sc.AddMessageToLog(msg, 0);
     }
@@ -702,7 +702,7 @@ SCSFExport scsf_ESAbsorptionDetectorV3(SCStudyInterfaceRef sc)
     {
         const int k = i - 1;
         SCString txt;
-        txt.Format("ABSORPTION v3  (last closed bar)\nDelta %d  (%.1f%%)   Delta chg %d\nShock %.1fx   Flip %d   Pressure %.1f%%\n"
+        txt.Format("ABSORPTION 2.0  (last closed bar)\nDelta %d  (%.1f%%)   Delta chg %d\nShock %.1fx   Flip %d   Pressure %.1f%%\n"
                    "Volume/avg %.1fx   Max level %d   Delta at max level %d\nBig levels %d   Stacked buy/sell %d / %d\n"
                    "Watch reason %d   (1 div, 2 thin, 4 big, 8 shock)\nWins %d   Losses %d   Timeouts %d   Win rate %.0f%%",
                    (int)DeltaSG[k], DeltaPctSG[k], (int)DeltaChgSG[k], ShockSG[k], (int)FlipSG[k], PressureSG[k],
