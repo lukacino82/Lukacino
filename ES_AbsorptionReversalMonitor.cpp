@@ -2,12 +2,67 @@
 #include <cmath>
 #include <map>
 #include <string>
+#include <vector>
 
 SCDLLName("ES Absorption Reversal Monitor")
 
 static inline float MaxF(float a, float b) { return a > b ? a : b; }
 static inline float MinF(float a, float b) { return a < b ? a : b; }
 static inline int MaxI(int a, int b) { return a > b ? a : b; }
+
+// Lays text out in a box: lines longer than the width are wrapped at spaces (continuation lines are indented),
+// every line is padded to the same width. Width 0 means "as wide as the longest line".
+static std::string BoxText(const std::string& raw, size_t width)
+{
+    if (width > 0 && width < 20)
+        width = 20;
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= raw.size())
+    {
+        size_t end = raw.find('\n', start);
+        if (end == std::string::npos)
+            end = raw.size();
+        std::string line = raw.substr(start, end - start);
+        size_t indent = 0;
+        while (indent < line.size() && line[indent] == ' ')
+            ++indent;
+        if (width > 0)
+        {
+            while (line.size() > width)
+            {
+                size_t cut = line.rfind(' ', width);
+                if (cut == std::string::npos || cut <= indent + 2)
+                    cut = width;
+                lines.push_back(line.substr(0, cut));
+                size_t next = cut;
+                while (next < line.size() && line[next] == ' ')
+                    ++next;
+                line = std::string(indent + 2, ' ') + line.substr(next);
+            }
+        }
+        lines.push_back(line);
+        if (end >= raw.size())
+            break;
+        start = end + 1;
+    }
+
+    if (width == 0)
+    {
+        for (size_t n = 0; n < lines.size(); ++n)
+            width = lines[n].size() > width ? lines[n].size() : width;
+    }
+    std::string boxed;
+    for (size_t n = 0; n < lines.size(); ++n)
+    {
+        boxed += lines[n];
+        if (lines[n].size() < width)
+            boxed.append(width - lines[n].size(), ' ');
+        if (n + 1 < lines.size())
+            boxed += '\n';
+    }
+    return boxed;
+}
 
 // Everything read from the Volume at Price data of one closed bar.
 struct BarFootprint
@@ -641,8 +696,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ShowHeader.SetYesNo(1);
         ShowStats.Name = "Section: statistics of the signals (wins, losses)";
         ShowStats.SetYesNo(1);
-        BoxWidth.Name = "Text box width in characters (0 = as wide as the longest line; longer lines are cut)";
-        BoxWidth.SetInt(0);
+        BoxWidth.Name = "Text box width in characters (0 = as wide as the longest line; longer lines are wrapped)";
+        BoxWidth.SetInt(70);
         BoxWidth.SetIntLimits(0, 400);
         TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
         TrapLocationHours.SetFloat(2.0f);
@@ -781,7 +836,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     if (i == sc.ArraySize - 1 && i > 0)
     {
         const int k = i - 1;
-        secHeader.Format("ABSORPTION REVERSAL MONITOR   cena %.2f   cas %02d:%02d\n", sc.Close[i],
+        secHeader.Format("ABSORPTION REVERSAL MONITOR\ncena %.2f   cas %02d:%02d\n", sc.Close[i],
                          sc.BaseDateTimeIn[i].GetHour(), sc.BaseDateTimeIn[i].GetMinute());
         secLastBar.Format("POSLEDNI UZAVRENY BAR\nDelta %d  (%.1f%%)   Delta chg %d\nShock %.1fx   Flip %d   Pressure %.1f%%\n"
                           "Volume/avg %.1fx   Max level %d   Delta at max level %d\nBig levels %d   Stacked buy/sell %d / %d\n"
@@ -789,8 +844,11 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                           (int)DeltaSG[k], DeltaPctSG[k], (int)DeltaChgSG[k], ShockSG[k], (int)FlipSG[k], PressureSG[k],
                           VolRatioSG[k], (int)MaxLevelSG[k], (int)PocDeltaSG[k], (int)BigLevelsSG[k], (int)StackBuySG[k],
                           (int)StackSellSG[k], (int)ReasonSG[k]);
-        secStats.Format("STATISTIKA SIGNALU   Wins %d   Losses %d   Timeouts %d   Win rate %.0f%%\n",
+        secStats.Format("STATISTIKA  W %d / L %d / T %d   uspesnost %.0f%%",
                         (int)Wins[k], (int)Losses[k], (int)Timeouts[k], WinRate[k]);
+        if ((int)(Wins[k] + Losses[k]) < 30)
+            secStats.Append("\n(mene nez 30 signalu: zatim neprukazne)");
+        secStats.Append("\n");
     }
 
     // Panels: Market Activity Monitor (30 min ... 5 h and the session) plus big prints and trapped traders.
@@ -847,6 +905,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             {
                 SCString& cache = sc.GetPersistentSCString(w + 1);
                 cache.Format("%s", "");
+                sc.GetPersistentInt(10 + w) = 0;
                 float total = 0.0f;
                 for (BandIter it = bands[w].begin(); it != bands[w].end(); ++it)
                     total += it->second;
@@ -871,6 +930,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     if (!found || total <= 0.0f)
                         break;
                     picked[rank] = bestBand;
+                    if (rank == 0)
+                        sc.GetPersistentInt(10 + w) = bestBand + 1;
                     SCString part;
                     part.Format("%s%.0f-%.0f %.0f%%", rank == 0 ? "" : "   ", bestBand * bandSize, (bestBand + 1) * bandSize,
                                 100.0f * best / total);
@@ -880,7 +941,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         }
 
         SCString txtM;
-        txtM.Format("MARKET ACTIVITY MONITOR\n");
+        txtM.Format("MARKET ACTIVITY MONITOR\n%s\n", "INT    CENOVE PASMO     DELTA  DELTA%  DOMINANCE    ZMENA");
         for (int w = 0; w < W; ++w)
         {
             if (!showW[w])
@@ -929,11 +990,21 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 else if (d < 0.0f && efficiency < 0.15f) flag = "NESOULAD: prodava se, cena stoji";
             }
 
+            SCString rangeText;
+            rangeText.Format("%.2f-%.2f", lo, hi);
             SCString line;
-            line.Format("%-6s %.2f-%.2f | obj %d | ASK %d / BID %d | delta %+d (%+.2f%%) | %s %.1f%% | zmena %+.2f  %s\n",
-                        labels[w], lo, hi, (int)vol, (int)sumAsk, (int)sumBid, (int)d, vol > 0.0f ? 100.0f * d / vol : 0.0f,
-                        who, buyPct, change, flag);
+            line.Format("%-6s %-15s %+6d %+6.2f%%  %-11s %+6.2f\n", labels[w], rangeText.GetChars(), (int)d,
+                        vol > 0.0f ? 100.0f * d / vol : 0.0f, who, change);
             txtM.Append(line.GetChars());
+            SCString detail;
+            detail.Format("       obj %d   ASK %d / BID %d   kupujici %.1f%%\n", (int)vol, (int)sumAsk, (int)sumBid, buyPct);
+            txtM.Append(detail.GetChars());
+            if (flag[0] != '\0')
+            {
+                SCString flagLine;
+                flagLine.Format("       ! %s\n", flag);
+                txtM.Append(flagLine.GetChars());
+            }
 
             if (ShowComments.GetYesNo())
             {
@@ -941,6 +1012,17 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 const float pricePos = range > 0.0f ? (sc.Close[i] - lo) / range : 0.5f;
                 if (efficiency >= 0.6f) comment.Append(change > 0.0f ? "TREND NAHORU  " : "TREND DOLU  ");
                 else if (efficiency < 0.25f) comment.Append("BOCNI POHYB  ");
+                const int topBandId = sc.GetPersistentInt(10 + w);
+                if (ShowBands.GetYesNo() && topBandId > 0)
+                {
+                    const float bandLow = (topBandId - 1) * BandPoints.GetFloat();
+                    const float bandHigh = bandLow + BandPoints.GetFloat();
+                    SCString bandPart;
+                    if (sc.Close[i] < bandLow) bandPart.Format("cena POD hlavnim pasmem %.0f-%.0f  ", bandLow, bandHigh);
+                    else if (sc.Close[i] > bandHigh) bandPart.Format("cena NAD hlavnim pasmem %.0f-%.0f  ", bandLow, bandHigh);
+                    else bandPart.Format("cena V hlavnim pasmu %.0f-%.0f  ", bandLow, bandHigh);
+                    comment.Append(bandPart.GetChars());
+                }
                 if (pricePos >= 0.8f) comment.Append("cena u HIGH intervalu  ");
                 else if (pricePos <= 0.2f) comment.Append("cena u LOW intervalu  ");
                 if (prevVol > 0.0f)
@@ -960,7 +1042,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 if (comment.GetLength() > 0)
                 {
                     SCString commentLine;
-                    commentLine.Format("       komentar: %s\n", comment.GetChars());
+                    commentLine.Format("       > %s\n", comment.GetChars());
                     txtM.Append(commentLine.GetChars());
                 }
             }
@@ -1024,7 +1106,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             if (spike)
             {
                 SCString part;
-                part.Format("objem %.1fx prumer   ", VolRatioSG[j]);
+                part.Format("objem %.1fx prumer (delta %+d, cena %s)   ", VolRatioSG[j], (int)DeltaSG[j],
+                            sc.Close[j] > sc.Open[j] ? "nahoru" : (sc.Close[j] < sc.Open[j] ? "dolu" : "stoji"));
                 line.Append(part.GetChars());
             }
             line.Append("\n");
@@ -1060,8 +1143,9 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             if (State.Arrays[3][j] == 0.0f)
                 continue;
             SCString sig;
-            sig.Format("posledni signal %02d:%02d  %s  (%s v pasti, hruby odhad %d kontraktu, uroven obratu %.2f)\n",
-                       sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute(),
+            const int ageMin = (int)((lastT - sc.BaseDateTimeIn[j].GetAsDouble()) * 1440.0 + 0.5);
+            sig.Format("posledni signal %02d:%02d (pred %d h %02d min)  %s  (%s v pasti, hruby odhad %d kontraktu, uroven obratu %.2f)\n",
+                       sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute(), ageMin / 60, ageMin % 60,
                        State.Arrays[3][j] > 0.0f ? "LONG" : "SHORT", State.Arrays[3][j] > 0.0f ? "prodavajici" : "kupujici",
                        (int)TrapVolSG[j], TrapLevelSG[j]);
             secTraps.Append(sig.GetChars());
@@ -1106,43 +1190,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         }
         else
         {
-            // Lines longer than the width are cut, shorter ones are padded so the box has the same width everywhere.
-            size_t width = BoxWidth.GetInt() > 0 ? (size_t)BoxWidth.GetInt() : 0;
-            if (width == 0)
-            {
-                size_t lineLength = 0;
-                for (size_t c = 0; c <= raw.size(); ++c)
-                {
-                    if (c == raw.size() || raw[c] == '\n')
-                    {
-                        if (lineLength > width)
-                            width = lineLength;
-                        lineLength = 0;
-                    }
-                    else
-                    {
-                        ++lineLength;
-                    }
-                }
-            }
-            std::string boxed;
-            size_t lineLength = 0;
-            for (size_t c = 0; c <= raw.size(); ++c)
-            {
-                if (c == raw.size() || raw[c] == '\n')
-                {
-                    if (lineLength < width)
-                        boxed.append(width - lineLength, ' ');
-                    if (c < raw.size())
-                        boxed += '\n';
-                    lineLength = 0;
-                }
-                else if (lineLength < width)
-                {
-                    boxed += raw[c];
-                    ++lineLength;
-                }
-            }
+            const std::string boxed = BoxText(raw, BoxWidth.GetInt() > 0 ? (size_t)BoxWidth.GetInt() : 0);
 
             s_UseTool Tool;
             Tool.Clear();
