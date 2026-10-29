@@ -433,6 +433,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef ShowHeader = sc.Input[77];
     SCInputRef ShowStats = sc.Input[78];
     SCInputRef BoxWidth = sc.Input[79];
+    SCInputRef ShowSlices = sc.Input[80];
 
     if (sc.SetDefaults)
     {
@@ -699,6 +700,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         BoxWidth.Name = "Text box width in characters (0 = as wide as the longest line; longer lines are wrapped)";
         BoxWidth.SetInt(70);
         BoxWidth.SetIntLimits(0, 400);
+        ShowSlices.Name = "Monitor: development by time slices (0-30 min, 30-60 min, 1-2 h ... 4-5 h, delta and price change)";
+        ShowSlices.SetYesNo(1);
         TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
         TrapLocationHours.SetFloat(2.0f);
         TrapLocationHours.SetFloatLimits(0.0f, 24.0f);
@@ -941,7 +944,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         }
 
         SCString txtM;
-        txtM.Format("MARKET ACTIVITY MONITOR\n%s\n", "INT    CENOVE PASMO     DELTA  DELTA%  DOMINANCE    ZMENA");
+        txtM.Format("MARKET ACTIVITY MONITOR\n%s\n", "INT    CENOVE PASMO     DELTA  DELTA%  DOMIN.  TREND      ZMENA");
         for (int w = 0; w < W; ++w)
         {
             if (!showW[w])
@@ -978,7 +981,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             const float range = hi - lo;
             const float efficiency = range > 0.0f ? fabsf(change) / range : 0.0f;
             const float domLimit = DominancePct.GetFloat();
-            const char* who = buyPct >= domLimit ? "KUPUJICI" : (buyPct <= 100.0f - domLimit ? "PRODAVAJICI" : "VYROVNANO");
+            const char* who = buyPct >= domLimit ? "KUPUJI" : (buyPct <= 100.0f - domLimit ? "PRODAVA" : "VYROVN");
 
             // A large delta without the matching price move: price went against it or hardly moved.
             const char* flag = "";
@@ -992,9 +995,13 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
 
             SCString rangeText;
             rangeText.Format("%.2f-%.2f", lo, hi);
+            // Trend: direction of the price change in the interval and the share of its range the price covered.
+            SCString trendText;
+            if (efficiency < 0.30f) trendText.Format("BOCNI %.0f%%", 100.0f * efficiency);
+            else trendText.Format("%s %.0f%%", change > 0.0f ? "NAHORU" : "DOLU", 100.0f * efficiency);
             SCString line;
-            line.Format("%-6s %-15s %+6d %+6.2f%%  %-11s %+6.2f\n", labels[w], rangeText.GetChars(), (int)d,
-                        vol > 0.0f ? 100.0f * d / vol : 0.0f, who, change);
+            line.Format("%-6s %-15s %+6d %+6.2f%%  %-7s %-9s %+6.2f\n", labels[w], rangeText.GetChars(), (int)d,
+                        vol > 0.0f ? 100.0f * d / vol : 0.0f, who, trendText.GetChars(), change);
             txtM.Append(line.GetChars());
             SCString detail;
             detail.Format("       obj %d   ASK %d / BID %d   kupujici %.1f%%\n", (int)vol, (int)sumAsk, (int)sumBid, buyPct);
@@ -1010,8 +1017,6 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             {
                 SCString comment;
                 const float pricePos = range > 0.0f ? (sc.Close[i] - lo) / range : 0.5f;
-                if (efficiency >= 0.6f) comment.Append(change > 0.0f ? "TREND NAHORU  " : "TREND DOLU  ");
-                else if (efficiency < 0.25f) comment.Append("BOCNI POHYB  ");
                 const int topBandId = sc.GetPersistentInt(10 + w);
                 if (ShowBands.GetYesNo() && topBandId > 0)
                 {
@@ -1059,10 +1064,48 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             }
         }
 
+        if (ShowSlices.GetYesNo())
+        {
+            // Non-overlapping time slices make the development visible: where the buying or selling happened.
+            const double bounds[6] = { 0.5, 1.0, 2.0, 3.0, 4.0, 5.0 };   // upper limits of the slices in hours back
+            const char* sliceLabels[6] = { "0-30m", "30-60m", "1-2h", "2-3h", "3-4h", "4-5h" };
+            float sliceDelta[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+            float sliceOpen[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+            float sliceClose[6] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+            bool sliceUsed[6] = { false, false, false, false, false, false };
+            for (int j = i; j >= 0; --j)
+            {
+                const double hoursBack = (lastT - sc.BaseDateTimeIn[j].GetAsDouble()) * 24.0;
+                if (hoursBack >= 5.0)
+                    break;
+                int sl = 0;
+                while (sl < 5 && hoursBack >= bounds[sl])
+                    ++sl;
+                if (!sliceUsed[sl])
+                {
+                    sliceUsed[sl] = true;
+                    sliceClose[sl] = sc.Close[j];
+                }
+                sliceOpen[sl] = sc.Open[j];
+                sliceDelta[sl] += sc.AskVolume[j] - sc.BidVolume[j];
+            }
+            txtM.Append("\nVYVOJ PO VRSTVACH (nejstarsi -> nejnovejsi, delta / zmena ceny)\n");
+            for (int sl = 5; sl >= 0; --sl)
+            {
+                if (!sliceUsed[sl])
+                    continue;
+                SCString part;
+                part.Format("%s: %+d / %+.2f%s", sliceLabels[sl], (int)sliceDelta[sl], sliceClose[sl] - sliceOpen[sl], sl > 0 ? "  |  " : "");
+                txtM.Append(part.GetChars());
+            }
+            txtM.Append("\n");
+        }
+
         if (ShowLegend.GetYesNo())
         {
             SCString legend;
-            legend.Format("Legenda: KUPUJICI/PRODAVAJICI = aspon %.1f%% agresivniho objemu na jedne strane, VYROVNANO = %.1f-%.1f%% (zadna strana nedominuje)\n"
+            legend.Format("Legenda: DOMIN. KUPUJI/PRODAVA = aspon %.1f%% agresivniho objemu na jedne strane, VYROVN = %.1f-%.1f%% (zadna strana nedominuje)\n"
+                          "TREND = smer zmeny ceny v intervalu + podil jeho rozsahu, ktery cena urazila (pod 30%% = BOCNI)\n"
                           "NESOULAD = velka delta, ale cena sla proti ni nebo stoji (mozna absorpce)\n",
                           DominancePct.GetFloat(), 100.0f - DominancePct.GetFloat(), DominancePct.GetFloat());
             txtM.Append(legend.GetChars());
