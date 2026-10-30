@@ -68,7 +68,18 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
     sc.GetStudyArrayFromChartUsingID(SourceChart.GetInt(), SourceStudyID.GetInt(), 2, srcLongTrigger);
     sc.GetStudyArrayFromChartUsingID(SourceChart.GetInt(), SourceStudyID.GetInt(), 3, srcShortTrigger);
     if (srcLongWatch.GetArraySize() <= 0)
+    {
+        int& warned = sc.GetPersistentInt(1);
+        if (!warned)
+        {
+            warned = 1;
+            SCString msg;
+            msg.Format("ES Absorption Mirror: no data from chart %d study ID %d - check the chart number and the ID in the study settings",
+                       SourceChart.GetInt(), SourceStudyID.GetInt());
+            sc.AddMessageToLog(msg, 1);
+        }
         return;   // wrong chart number or study ID
+    }
 
     const int first = sc.ArraySize - History.GetInt() > 0 ? sc.ArraySize - History.GetInt() : 0;
     int s = 0;   // source bars and bars of this chart are both sorted by time
