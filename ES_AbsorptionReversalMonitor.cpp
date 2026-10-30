@@ -669,7 +669,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         UseBigVolume.Name = "Pattern 3: big volume with opposite delta at extreme";
         UseBigVolume.SetYesNo(1);
         RequireStacked.Name = "Require stacked imbalances on the confirmation bar";
-        RequireStacked.SetYesNo(1);
+        RequireStacked.SetYesNo(0);
         AlertsOn.Name = "Alert on confirmed LONG/SHORT trigger";
         AlertsOn.SetYesNo(1);
         ZoneDeltaFraction.Name = "Big volume pattern: minimum |zone delta| / zone volume";
@@ -692,7 +692,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         OppositeLockBars.SetInt(12);
         OppositeLockBars.SetIntLimits(0, 500);
         MinRoomTicks.Name = "Room to run: minimum distance to the recent extreme (ticks, 0 = off)";
-        MinRoomTicks.SetInt(36);
+        MinRoomTicks.SetInt(12);
         MinRoomTicks.SetIntLimits(0, 5000);
         RoomLookback.Name = "Room to run: lookback for the recent extreme (bars)";
         RoomLookback.SetInt(50);
@@ -725,7 +725,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ChaseTicks.SetInt(0);
         ChaseTicks.SetIntLimits(0, 5000);
         ArrowMode.Name = "Arrow source (0 absorption confirmation, 1 trapped traders, 2 both)";
-        ArrowMode.SetInt(1);
+        ArrowMode.SetInt(2);
         ArrowMode.SetIntLimits(0, 2);
         TrapLookback.Name = "Trapped traders: lookback for the push (bars)";
         TrapLookback.SetInt(40);
@@ -746,19 +746,19 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         TrapMinFraction.SetFloat(0.6f);
         TrapMinFraction.SetFloatLimits(0.05f, 1.0f);
         TrapMinContracts.Name = "Trapped traders: minimum underwater volume (contracts)";
-        TrapMinContracts.SetFloat(1500.0f);
+        TrapMinContracts.SetFloat(800.0f);
         TrapMinContracts.SetFloatLimits(10.0f, 10000000.0f);
         TrapLevelMode.Name = "Reversal level (0 = price with most aggressive volume, 1 = where the push started)";
         TrapLevelMode.SetInt(1);
         TrapLevelMode.SetIntLimits(0, 1);
         TrapOriginFraction.Name = "Reversal level mode 1: share of the push price must retrace (1.0 = full origin, 0.5 = half)";
-        TrapOriginFraction.SetFloat(1.0f);
+        TrapOriginFraction.SetFloat(0.5f);
         TrapOriginFraction.SetFloatLimits(0.1f, 1.0f);
         TrapPushRangeMult.Name = "Push size relative to volatility: x average bar range (0 = use ticks)";
-        TrapPushRangeMult.SetFloat(3.0f);
+        TrapPushRangeMult.SetFloat(2.0f);
         TrapPushRangeMult.SetFloatLimits(0.0f, 50.0f);
         TrapPushDeltaMult.Name = "Push delta relative: x average |bar delta| x sqrt(bars) (0 = use contracts)";
-        TrapPushDeltaMult.SetFloat(2.0f);
+        TrapPushDeltaMult.SetFloat(1.5f);
         TrapPushDeltaMult.SetFloatLimits(0.0f, 50.0f);
         TrapReactionMult.Name = "Reaction bar: minimum |delta| as multiple of the average |bar delta|";
         TrapReactionMult.SetFloat(1.0f);
@@ -857,10 +857,10 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ClusterLevels.SetInt(3);
         ClusterLevels.SetIntLimits(2, 8);
         ClusterMinContracts.Name = "Cluster: minimum aggressive contracts in the cluster";
-        ClusterMinContracts.SetInt(250);
+        ClusterMinContracts.SetInt(200);
         ClusterMinContracts.SetIntLimits(10, 1000000);
         ClusterMinShare.Name = "Cluster: minimum share of the bar volume in the cluster (%)";
-        ClusterMinShare.SetFloat(35.0f);
+        ClusterMinShare.SetFloat(30.0f);
         ClusterMinShare.SetFloatLimits(5.0f, 100.0f);
         ClusterDominance.Name = "Cluster: aggressive side must trade at least this many times more than the other side on those levels";
         ClusterDominance.SetFloat(1.5f);
@@ -900,7 +900,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         TrapLocationHours.SetFloat(2.0f);
         TrapLocationHours.SetFloatLimits(0.0f, 24.0f);
         TrapLocationPct.Name = "Trapped traders: edge of the range in percent (e.g. 35 = outer 35% of the range)";
-        TrapLocationPct.SetFloat(35.0f);
+        TrapLocationPct.SetFloat(50.0f);
         TrapLocationPct.SetFloatLimits(5.0f, 100.0f);
         return;
     }
@@ -2050,6 +2050,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         if (nowTime - lastResync > 20.0 / 86400.0)
         {
             lastResync = nowTime;
+            int sent = 0, failed = 0;
             const bool wantedAll[4] = { MirrorDots.GetYesNo() != 0, MirrorDots.GetYesNo() != 0,
                                         MirrorArrows.GetYesNo() != 0, MirrorArrows.GetYesNo() != 0 };
             const int markerTypesAll[4] = { MARKER_POINT, MARKER_POINT, MARKER_ARROWUP, MARKER_ARROWDOWN };
@@ -2074,8 +2075,19 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     Marker.MarkerType = markerTypesAll[t];
                     Marker.MarkerSize = t < 2 ? DotSize.GetInt() : ArrowSize.GetInt();
                     Marker.Color = colorsAll[t];
-                    sc.UseTool(Marker);
+                    if (sc.UseTool(Marker))
+                        ++sent;
+                    else
+                        ++failed;
                 }
+            }
+            int& lastLoggedSent = sc.GetPersistentInt(6);
+            if (sent + failed != lastLoggedSent)
+            {
+                lastLoggedSent = sent + failed;
+                SCString mirrorMsg;
+                mirrorMsg.Format("Mirror to chart %d: %d markers sent, %d refused by UseTool", TargetChart.GetInt(), sent, failed);
+                sc.AddMessageToLog(mirrorMsg, 0);
             }
         }
     }
