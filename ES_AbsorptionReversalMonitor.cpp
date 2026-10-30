@@ -561,6 +561,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef MarkDotColor = sc.Input[106];
     SCInputRef MarkLongColor = sc.Input[107];
     SCInputRef MarkShortColor = sc.Input[108];
+    SCInputRef MarkDotShortColor = sc.Input[109];
 
     if (sc.SetDefaults)
     {
@@ -880,8 +881,10 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         MarkArrowStyle.Name = "Markers: LONG/SHORT symbol (0 arrow, 1 triangle, 2 diamond, 3 square); sizes are the dot size and arrow size inputs";
         MarkArrowStyle.SetInt(1);
         MarkArrowStyle.SetIntLimits(0, 3);
-        MarkDotColor.Name = "Markers: color of the absorption dots";
-        MarkDotColor.SetColor(RGB(255, 190, 0));
+        MarkDotColor.Name = "Markers: color of the dot below the bar = sellers absorbed, potential growth (light green)";
+        MarkDotColor.SetColor(RGB(120, 220, 120));
+        MarkDotShortColor.Name = "Markers: color of the dot above the bar = buyers absorbed, potential fall (light red)";
+        MarkDotShortColor.SetColor(RGB(255, 130, 130));
         MarkLongColor.Name = "Markers: color of the LONG symbol";
         MarkLongColor.SetColor(RGB(0, 170, 0));
         MarkShortColor.Name = "Markers: color of the SHORT symbol";
@@ -946,7 +949,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ShortTrigger.DrawStyle = styleDown[MarkArrowStyle.GetInt()];
         LongWatch.LineWidth = ShortWatch.LineWidth = DotSize.GetInt();
         LongTrigger.LineWidth = ShortTrigger.LineWidth = ArrowSize.GetInt();
-        LongWatch.PrimaryColor = ShortWatch.PrimaryColor = MarkDotColor.GetColor();
+        LongWatch.PrimaryColor = MarkDotColor.GetColor();
+        ShortWatch.PrimaryColor = MarkDotShortColor.GetColor();
         LongTrigger.PrimaryColor = MarkLongColor.GetColor();
         ShortTrigger.PrimaryColor = MarkShortColor.GetColor();
     }

@@ -23,6 +23,7 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
     SCInputRef DotColor = sc.Input[6];
     SCInputRef LongColor = sc.Input[7];
     SCInputRef ShortColor = sc.Input[8];
+    SCInputRef DotShortColor = sc.Input[9];
 
     if (sc.SetDefaults)
     {
@@ -68,8 +69,10 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
         ArrowStyle.Name = "LONG / SHORT symbol (0 arrow, 1 triangle, 2 diamond, 3 square)";
         ArrowStyle.SetInt(1);
         ArrowStyle.SetIntLimits(0, 3);
-        DotColor.Name = "Dot color";
-        DotColor.SetColor(RGB(255, 190, 0));
+        DotColor.Name = "Dot color below the bar = sellers absorbed, potential growth (light green)";
+        DotColor.SetColor(RGB(120, 220, 120));
+        DotShortColor.Name = "Dot color above the bar = buyers absorbed, potential fall (light red)";
+        DotShortColor.SetColor(RGB(255, 130, 130));
         LongColor.Name = "LONG color";
         LongColor.SetColor(RGB(0, 170, 0));
         ShortColor.Name = "SHORT color";
@@ -84,7 +87,8 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
         ShortTrigger.DrawStyle = styleDown[ArrowStyle.GetInt()];
         LongWatch.LineWidth = ShortWatch.LineWidth = DotSize.GetInt();
         LongTrigger.LineWidth = ShortTrigger.LineWidth = ArrowSize.GetInt();
-        LongWatch.PrimaryColor = ShortWatch.PrimaryColor = DotColor.GetColor();
+        LongWatch.PrimaryColor = DotColor.GetColor();
+        ShortWatch.PrimaryColor = DotShortColor.GetColor();
         LongTrigger.PrimaryColor = LongColor.GetColor();
         ShortTrigger.PrimaryColor = ShortColor.GetColor();
     }
