@@ -447,6 +447,9 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef MirrorArrows = sc.Input[91];
     SCInputRef DotSize = sc.Input[92];
     SCInputRef ArrowSize = sc.Input[93];
+    SCInputRef DomStripFont = sc.Input[94];
+    SCInputRef DomStripDetail = sc.Input[95];
+    SCInputRef DomStripPad = sc.Input[96];
 
     if (sc.SetDefaults)
     {
@@ -726,6 +729,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         DomStripSpacing.Name = "Dominance strip: horizontal distance between items (% of chart width)";
         DomStripSpacing.SetInt(6);
         DomStripSpacing.SetIntLimits(2, 40);
+        DomStripFont.Name = "Dominance strip: font size (0 = same as the box)";
+        DomStripFont.SetInt(0);
+        DomStripFont.SetIntLimits(0, 40);
+        DomStripDetail.Name = "Dominance strip: 0 = short (1h -1.2% DN), 1 = wide (adds who dominates: KUPUJICI / PRODAVAJICI / VYROVNANO)";
+        DomStripDetail.SetInt(0);
+        DomStripDetail.SetIntLimits(0, 1);
+        DomStripPad.Name = "Dominance strip: extra spaces around each item (widens the colored field)";
+        DomStripPad.SetInt(0);
+        DomStripPad.SetIntLimits(0, 10);
         BuyColor.Name = "Dominance strip: color when buyers dominate";
         BuyColor.SetColor(RGB(0, 150, 0));
         SellColor.Name = "Dominance strip: color when sellers dominate";
@@ -1142,7 +1154,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     continue;
                 }
                 SCString stripText;
-                stripText.Format(" %s %+.1f%% %s%s ", shortLabels[w], domDeltaPct[w], domTrend[w], domFlag[w] ? " !" : "");
+                stripText.Format(" %s %+.1f%% %s%s", shortLabels[w], domDeltaPct[w], domTrend[w], domFlag[w] ? " !" : "");
+                if (DomStripDetail.GetInt() == 1)
+                {
+                    stripText.Append(domKind[w] == 1 ? " KUPUJICI" : (domKind[w] == -1 ? " PRODAVAJICI" : " VYROVNANO"));
+                }
+                stripText.Append(" ");
+                std::string padding((size_t)DomStripPad.GetInt(), ' ');
+                std::string stripFull = padding + stripText.GetChars() + padding;
+                stripText = stripFull.c_str();
 
                 s_UseTool ToolD;
                 ToolD.Clear();
@@ -1156,7 +1176,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 ToolD.BeginValue = (float)DomStripY.GetInt();
                 ToolD.FontFace = FontName.GetString();
                 ToolD.FontBold = 1;
-                ToolD.FontSize = BoxFont.GetInt();
+                ToolD.FontSize = DomStripFont.GetInt() > 0 ? DomStripFont.GetInt() : BoxFont.GetInt();
                 ToolD.Color = domKind[w] == 1 ? BuyColor.GetColor() : (domKind[w] == -1 ? SellColor.GetColor() : BoxColor.GetColor());
                 ToolD.FontBackColor = BoxBack.GetColor();
                 ToolD.TransparentLabelBackground = BoxTransparent.GetYesNo();
