@@ -714,7 +714,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         BoxWidth.SetInt(62);
         BoxWidth.SetIntLimits(0, 400);
         ShowSlices.Name = "Monitor: development by time slices (0-30 min, 30-60 min, 1-2 h ... 4-5 h, delta and price change)";
-        ShowSlices.SetYesNo(0);
+        ShowSlices.SetYesNo(1);
         ShowDomStrip.Name = "Dominance strip: show dominance of every interval in its own colored text (buyers green, sellers red)";
         ShowDomStrip.SetYesNo(1);
         DomStripX.Name = "Dominance strip: position horizontal of the first item (% of chart width)";
@@ -1388,6 +1388,47 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     secCompact.Append("\n");
                 }
             }
+            if (ShowSlices.GetYesNo())
+            {
+                // What happened in separate periods, newest first: delta in thousands of contracts / price change in points.
+                const double sliceBounds[3] = { 0.5, 1.0, 2.0 };
+                const char* sliceNames[4] = { "0-30m", "30-60m", "1-2h", "2-3h" };
+                float sDelta[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                float sOpen[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                float sClose[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                bool sUsed[4] = { false, false, false, false };
+                for (int j = i; j >= 0; --j)
+                {
+                    const double hoursBack = (nowT - sc.BaseDateTimeIn[j].GetAsDouble()) * 24.0;
+                    if (hoursBack >= 3.0)
+                        break;
+                    int sl = 0;
+                    while (sl < 3 && hoursBack >= sliceBounds[sl])
+                        ++sl;
+                    if (!sUsed[sl])
+                    {
+                        sUsed[sl] = true;
+                        sClose[sl] = sc.Close[j];
+                    }
+                    sOpen[sl] = sc.Open[j];
+                    sDelta[sl] += sc.AskVolume[j] - sc.BidVolume[j];
+                }
+                SCString slicesLine;
+                for (int sl = 0; sl < 4; ++sl)
+                {
+                    if (!sUsed[sl])
+                        continue;
+                    part.Format("%s%s %+.1fk/%+.1f", slicesLine.GetLength() > 0 ? "  |  " : "", sliceNames[sl],
+                                sDelta[sl] / 1000.0f, sClose[sl] - sOpen[sl]);
+                    slicesLine.Append(part.GetChars());
+                }
+                if (slicesLine.GetLength() > 0)
+                {
+                    secCompact.Append("VYVOJ  ");
+                    secCompact.Append(slicesLine.GetChars());
+                    secCompact.Append("\n");
+                }
+            }
             if (ShowPanelB.GetYesNo())
             {
                 SCString prints;
@@ -1416,7 +1457,8 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     }
                     if (spike)
                     {
-                        part.Format(" %.1fx objem", VolRatioSG[j]);
+                        part.Format(" %.1fx objem (delta %+d, cena %s)", VolRatioSG[j], (int)DeltaSG[j],
+                                    sc.Close[j] > sc.Open[j] ? "nahoru" : (sc.Close[j] < sc.Open[j] ? "dolu" : "stoji"));
                         prints.Append(part.GetChars());
                     }
                     ++shownPrints;
