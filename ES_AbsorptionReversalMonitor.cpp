@@ -168,6 +168,99 @@ static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float 
     return true;
 }
 
+// Order clusters: several neighbouring price levels of one bar where one side traded aggressively in bulk
+// (sellers hit the bid, or buyers lifted the ask). If price then closes through the cluster against that side,
+// the participants are trapped.
+struct ClusterResult
+{
+    float low;
+    float high;
+    float vol;
+};
+
+static ClusterResult FindCluster(SCStudyInterfaceRef sc, int idx, bool sellSide, int levelCount, float minContracts,
+                                 float minShare, float dominance)
+{
+    ClusterResult r = ClusterResult();
+    const int size = (int)sc.VolumeAtPriceForBars->GetSizeAtBarIndex((unsigned int)idx);
+    if (size <= 0)
+        return r;
+    std::map<int, std::pair<float, float> > lv;   // price in ticks -> (aggressive volume of the side, volume of the other side)
+    float total = 0.0f;
+    for (int k = 0; k < size; ++k)
+    {
+        const s_VolumeAtPriceV2* p = NULL;
+        sc.VolumeAtPriceForBars->GetVAPElementAtIndex(idx, k, &p);
+        if (p == NULL)
+            continue;
+        const float bid = (float)p->BidVolume;
+        const float ask = (float)p->AskVolume;
+        lv[(int)p->PriceInTicks] = sellSide ? std::make_pair(bid, ask) : std::make_pair(ask, bid);
+        total += bid + ask;
+    }
+    if (lv.empty() || total <= 0.0f)
+        return r;
+    const int lowest = lv.begin()->first;
+    const int highest = lv.rbegin()->first;
+    float bestSum = 0.0f;
+    int bestStart = 0;
+    for (int t = lowest; t <= highest; ++t)
+    {
+        float sum = 0.0f, other = 0.0f;
+        for (int q = 0; q < levelCount; ++q)
+        {
+            std::map<int, std::pair<float, float> >::const_iterator it = lv.find(t + q);
+            if (it == lv.end())
+                continue;
+            sum += it->second.first;
+            other += it->second.second;
+        }
+        if (sum > bestSum && sum >= minContracts && sum >= minShare * total && sum >= dominance * MaxF(other, 1.0f))
+        {
+            bestSum = sum;
+            bestStart = t;
+        }
+    }
+    if (bestSum > 0.0f)
+    {
+        r.low = bestStart * sc.TickSize;
+        r.high = (bestStart + levelCount - 1) * sc.TickSize;
+        r.vol = bestSum;
+    }
+    return r;
+}
+
+// Strongest cluster found in the bars [last - age, last] that no later bar up to 'last' has closed through yet.
+static bool ActiveCluster(SCStudyInterfaceRef sc, SCSubgraphRef lo, SCSubgraphRef hi, SCSubgraphRef vol, int last, int age,
+                          float margin, bool sellSide, float& outLo, float& outHi, float& outVol)
+{
+    bool found = false;
+    for (int j = last; j >= 0 && j >= last - age; --j)
+    {
+        if (vol[j] <= 0.0f)
+            continue;
+        bool consumed = false;
+        for (int k = j + 1; k <= last; ++k)
+        {
+            if (sellSide ? sc.Close[k] > hi[j] + margin : sc.Close[k] < lo[j] - margin)
+            {
+                consumed = true;
+                break;
+            }
+        }
+        if (consumed)
+            continue;
+        if (!found || vol[j] > outVol)
+        {
+            found = true;
+            outLo = lo[j];
+            outHi = hi[j];
+            outVol = vol[j];
+        }
+    }
+    return found;
+}
+
 // Trapped traders: aggressive sellers pushed price down (or buyers pushed it up), no new extreme is made any more,
 // and price has come back beyond the levels where most of that aggressive volume was traded. Those traders are
 // underwater and may have to exit, which feeds the move against them.
@@ -352,6 +445,12 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCSubgraphRef TrapLevelSG = sc.Subgraph[29];  // price with the most aggressive volume of the push
     SCSubgraphRef TrapVolSG = sc.Subgraph[30];    // aggressive volume of the push that is now underwater
     SCSubgraphRef TrapPushSG = sc.Subgraph[31];   // net delta of the push
+    SCSubgraphRef ClSellLo = sc.Subgraph[32];     // cluster of aggressive sells in the bar: lowest price
+    SCSubgraphRef ClSellHi = sc.Subgraph[33];     // highest price
+    SCSubgraphRef ClSellVol = sc.Subgraph[34];    // contracts in the cluster
+    SCSubgraphRef ClBuyLo = sc.Subgraph[35];      // cluster of aggressive buys in the bar
+    SCSubgraphRef ClBuyHi = sc.Subgraph[36];
+    SCSubgraphRef ClBuyVol = sc.Subgraph[37];
 
     SCInputRef Lookback = sc.Input[0];
     SCInputRef DeltaThreshold = sc.Input[1];
@@ -450,6 +549,14 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef DomStripFont = sc.Input[94];
     SCInputRef DomStripDetail = sc.Input[95];
     SCInputRef DomStripPad = sc.Input[96];
+    SCInputRef ClusterArrows = sc.Input[97];
+    SCInputRef ClusterLevels = sc.Input[98];
+    SCInputRef ClusterMinContracts = sc.Input[99];
+    SCInputRef ClusterMinShare = sc.Input[100];
+    SCInputRef ClusterDominance = sc.Input[101];
+    SCInputRef ClusterMaxAge = sc.Input[102];
+    SCInputRef ClusterMarginTicks = sc.Input[103];
+    SCInputRef ClusterNeedDelta = sc.Input[104];
 
     if (sc.SetDefaults)
     {
@@ -507,8 +614,14 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         TrapLevelSG.Name = "Trap level (price with most aggressive volume)";
         TrapVolSG.Name = "Trapped volume (contracts underwater)";
         TrapPushSG.Name = "Trap push delta";
+        ClSellLo.Name = "Sell cluster low";
+        ClSellHi.Name = "Sell cluster high";
+        ClSellVol.Name = "Sell cluster contracts";
+        ClBuyLo.Name = "Buy cluster low";
+        ClBuyHi.Name = "Buy cluster high";
+        ClBuyVol.Name = "Buy cluster contracts";
         // Metrics are not drawn but stay visible in the Chart Values Window and the region data line.
-        for (int s = 4; s <= 31; ++s)
+        for (int s = 4; s <= 37; ++s)
             sc.Subgraph[s].DrawStyle = DRAWSTYLE_HIDDEN;
         State.DrawStyle = DRAWSTYLE_IGNORE;
         Resolve.DrawStyle = DRAWSTYLE_IGNORE;
@@ -738,6 +851,28 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         DomStripPad.Name = "Dominance strip: extra spaces around each item (widens the colored field)";
         DomStripPad.SetInt(0);
         DomStripPad.SetIntLimits(0, 10);
+        ClusterArrows.Name = "Cluster arrows: sells (buys) piled up on a few levels and price closes through them = LONG (SHORT) arrow";
+        ClusterArrows.SetYesNo(1);
+        ClusterLevels.Name = "Cluster: number of neighbouring price levels (ticks) that form a cluster";
+        ClusterLevels.SetInt(3);
+        ClusterLevels.SetIntLimits(2, 8);
+        ClusterMinContracts.Name = "Cluster: minimum aggressive contracts in the cluster";
+        ClusterMinContracts.SetInt(250);
+        ClusterMinContracts.SetIntLimits(10, 1000000);
+        ClusterMinShare.Name = "Cluster: minimum share of the bar volume in the cluster (%)";
+        ClusterMinShare.SetFloat(35.0f);
+        ClusterMinShare.SetFloatLimits(5.0f, 100.0f);
+        ClusterDominance.Name = "Cluster: aggressive side must trade at least this many times more than the other side on those levels";
+        ClusterDominance.SetFloat(1.5f);
+        ClusterDominance.SetFloatLimits(1.0f, 20.0f);
+        ClusterMaxAge.Name = "Cluster: how many bars back a cluster stays valid (waiting for price to close through it)";
+        ClusterMaxAge.SetInt(6);
+        ClusterMaxAge.SetIntLimits(0, 100);
+        ClusterMarginTicks.Name = "Cluster: the close must be this many ticks beyond the cluster";
+        ClusterMarginTicks.SetInt(1);
+        ClusterMarginTicks.SetIntLimits(0, 50);
+        ClusterNeedDelta.Name = "Cluster: the closing bar must also have delta in the trade direction (when the cluster is from an earlier bar)";
+        ClusterNeedDelta.SetYesNo(1);
         BuyColor.Name = "Dominance strip: color when buyers dominate";
         BuyColor.SetColor(RGB(0, 150, 0));
         SellColor.Name = "Dominance strip: color when sellers dominate";
@@ -799,6 +934,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     TrapLevelSG[i] = 0.0f;
     TrapVolSG[i] = 0.0f;
     TrapPushSG[i] = 0.0f;
+    ClSellLo[i] = ClSellHi[i] = ClSellVol[i] = ClBuyLo[i] = ClBuyHi[i] = ClBuyVol[i] = 0.0f;
     State.Arrays[3][i] = 0.0f;
     State.Arrays[0][i] = 0.0f;
     State.Arrays[1][i] = 0.0f;
@@ -1373,6 +1509,21 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 }
                 secCompact.Append("\n");
             }
+            if (ShowTraps.GetYesNo() && ClusterArrows.GetYesNo())
+            {
+                const float cMargin = ClusterMarginTicks.GetInt() * sc.TickSize;
+                float cLo = 0.0f, cHi = 0.0f, cVol = 0.0f;
+                if (ActiveCluster(sc, ClSellLo, ClSellHi, ClSellVol, k, ClusterMaxAge.GetInt(), cMargin, true, cLo, cHi, cVol))
+                {
+                    part.Format("KLASTR  PRODEJ %.2f-%.2f (%d)\n        LONG po close nad %.2f\n", cLo, cHi, (int)cVol, cHi + cMargin);
+                    secCompact.Append(part.GetChars());
+                }
+                if (ActiveCluster(sc, ClBuyLo, ClBuyHi, ClBuyVol, k, ClusterMaxAge.GetInt(), cMargin, false, cLo, cHi, cVol))
+                {
+                    part.Format("KLASTR  NAKUP %.2f-%.2f (%d)\n        SHORT po close pod %.2f\n", cLo, cHi, (int)cVol, cLo - cMargin);
+                    secCompact.Append(part.GetChars());
+                }
+            }
             if (ShowPanel.GetYesNo())
             {
                 SCString why;
@@ -1604,6 +1755,20 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         }
     }
 
+    if (haveFootprint && ClusterArrows.GetYesNo())
+    {
+        const ClusterResult cs = FindCluster(sc, i, true, ClusterLevels.GetInt(), (float)ClusterMinContracts.GetInt(),
+                                             ClusterMinShare.GetFloat() / 100.0f, ClusterDominance.GetFloat());
+        const ClusterResult cb = FindCluster(sc, i, false, ClusterLevels.GetInt(), (float)ClusterMinContracts.GetInt(),
+                                             ClusterMinShare.GetFloat() / 100.0f, ClusterDominance.GetFloat());
+        ClSellLo[i] = cs.low;
+        ClSellHi[i] = cs.high;
+        ClSellVol[i] = cs.vol;
+        ClBuyLo[i] = cb.low;
+        ClBuyHi[i] = cb.high;
+        ClBuyVol[i] = cb.vol;
+    }
+
     if (i < n + 1 || avgVolume <= 0.0f)
         return;
 
@@ -1767,8 +1932,45 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         }
     }
 
+    // Cluster arrows: aggressive sells (buys) piled up on a few levels, price closes through them against that side.
+    // The cluster may come from this bar (then the bar itself must close beyond it in its own direction) or from
+    // one of the last ClusterMaxAge bars that price has not closed through yet. Room to run is not required here,
+    // because price is by definition already beyond the cluster.
+    bool longFromCluster = false, shortFromCluster = false;
+    if (ClusterArrows.GetYesNo() && haveFootprint)
+    {
+        const float cMargin = ClusterMarginTicks.GetInt() * sc.TickSize;
+        float cLo = 0.0f, cHi = 0.0f, cVol = 0.0f;
+        if (ActiveCluster(sc, ClSellLo, ClSellHi, ClSellVol, i - 1, ClusterMaxAge.GetInt(), cMargin, true, cLo, cHi, cVol)
+            && sc.Close[i] > cHi + cMargin && (!ClusterNeedDelta.GetYesNo() || delta > 0.0f))
+            longFromCluster = true;
+        else if (ClSellVol[i] > 0.0f && sc.Close[i] > ClSellHi[i] + cMargin && sc.Close[i] > sc.Open[i])
+            longFromCluster = true;
+        if (ActiveCluster(sc, ClBuyLo, ClBuyHi, ClBuyVol, i - 1, ClusterMaxAge.GetInt(), cMargin, false, cLo, cHi, cVol)
+            && sc.Close[i] < cLo - cMargin && (!ClusterNeedDelta.GetYesNo() || delta < 0.0f))
+            shortFromCluster = true;
+        else if (ClBuyVol[i] > 0.0f && sc.Close[i] < ClBuyLo[i] - cMargin && sc.Close[i] < sc.Open[i])
+            shortFromCluster = true;
+        if (longFromCluster && shortFromCluster)
+            longFromCluster = shortFromCluster = false;   // conflicting clusters: no arrow
+    }
+
     bool newTrigger = false;
-    if ((longFromAbsorption || longFromTrap) && !blockedLong && roomLong && notChasedLong)
+    if (longFromCluster && !blockedLong && notChasedLong)
+    {
+        LongTrigger[i] = sc.Low[i] - 2.0f * sc.TickSize;
+        State.Arrays[0][i] = 1.0f;
+        State.Arrays[1][i] = sc.Close[i];
+        newTrigger = true;
+    }
+    else if (shortFromCluster && !blockedShort && notChasedShort)
+    {
+        ShortTrigger[i] = sc.High[i] + 2.0f * sc.TickSize;
+        State.Arrays[0][i] = -1.0f;
+        State.Arrays[1][i] = sc.Close[i];
+        newTrigger = true;
+    }
+    else if ((longFromAbsorption || longFromTrap) && !blockedLong && roomLong && notChasedLong)
     {
         LongTrigger[i] = sc.Low[i] - 2.0f * sc.TickSize;
         State.Arrays[0][i] = 1.0f;
