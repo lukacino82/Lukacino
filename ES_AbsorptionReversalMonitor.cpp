@@ -1838,4 +1838,43 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             }
         }
     }
+
+    // Re-send the history of markers every ~20 s from the last bar: if the other chart was not ready during the
+    // full recalculation (or was reloaded), the markers drawn then are lost and would never come back otherwise.
+    if (TargetChart.GetInt() > 0 && i == sc.ArraySize - 1)
+    {
+        const double nowTime = sc.CurrentSystemDateTime.GetAsDouble();
+        double& lastResync = sc.GetPersistentDouble(1);
+        if (nowTime - lastResync > 20.0 / 86400.0)
+        {
+            lastResync = nowTime;
+            const bool wantedAll[4] = { MirrorDots.GetYesNo() != 0, MirrorDots.GetYesNo() != 0,
+                                        MirrorArrows.GetYesNo() != 0, MirrorArrows.GetYesNo() != 0 };
+            const int markerTypesAll[4] = { MARKER_POINT, MARKER_POINT, MARKER_ARROWUP, MARKER_ARROWDOWN };
+            const unsigned int colorsAll[4] = { (unsigned int)LongWatch.PrimaryColor, (unsigned int)ShortWatch.PrimaryColor,
+                                                (unsigned int)LongTrigger.PrimaryColor, (unsigned int)ShortTrigger.PrimaryColor };
+            for (int idx = MaxI(0, sc.ArraySize - MarkerHistoryBars.GetInt()); idx < sc.ArraySize - 1; ++idx)
+            {
+                const float pricesAll[4] = { LongWatch[idx], ShortWatch[idx], LongTrigger[idx], ShortTrigger[idx] };
+                for (int t = 0; t < 4; ++t)
+                {
+                    if (!wantedAll[t] || pricesAll[t] == 0.0f)
+                        continue;
+                    s_UseTool Marker;
+                    Marker.Clear();
+                    Marker.ChartNumber = TargetChart.GetInt();
+                    Marker.DrawingType = DRAWING_MARKER;
+                    Marker.LineNumber = 700000 + (idx % 200000) * 4 + t;
+                    Marker.AddMethod = UTAM_ADD_OR_ADJUST;
+                    Marker.Region = 0;
+                    Marker.BeginDateTime = sc.BaseDateTimeIn[idx];
+                    Marker.BeginValue = pricesAll[t];
+                    Marker.MarkerType = markerTypesAll[t];
+                    Marker.MarkerSize = t < 2 ? DotSize.GetInt() : ArrowSize.GetInt();
+                    Marker.Color = colorsAll[t];
+                    sc.UseTool(Marker);
+                }
+            }
+        }
+    }
 }
