@@ -441,6 +441,12 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef BuyColor = sc.Input[85];
     SCInputRef SellColor = sc.Input[86];
     SCInputRef DisplayMode = sc.Input[87];
+    SCInputRef TargetChart = sc.Input[88];
+    SCInputRef MarkerHistoryBars = sc.Input[89];
+    SCInputRef MirrorDots = sc.Input[90];
+    SCInputRef MirrorArrows = sc.Input[91];
+    SCInputRef DotSize = sc.Input[92];
+    SCInputRef ArrowSize = sc.Input[93];
 
     if (sc.SetDefaults)
     {
@@ -727,6 +733,22 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         DisplayMode.Name = "Display: 0 = compact (few lines: signal, bar, position, big prints), 1 = detailed (all sections)";
         DisplayMode.SetInt(0);
         DisplayMode.SetIntLimits(0, 1);
+        TargetChart.Name = "Mirror to chart number (the # in the chart title, e.g. the VWAP / composite chart; 0 = off)";
+        TargetChart.SetInt(11);
+        TargetChart.SetIntLimits(0, 200);
+        MarkerHistoryBars.Name = "Mirror: how many of the latest bars of this chart get markers on the other chart";
+        MarkerHistoryBars.SetInt(1000);
+        MarkerHistoryBars.SetIntLimits(10, 20000);
+        MirrorDots.Name = "Mirror: yellow dots (absorption watch)";
+        MirrorDots.SetYesNo(1);
+        MirrorArrows.Name = "Mirror: LONG / SHORT arrows";
+        MirrorArrows.SetYesNo(1);
+        DotSize.Name = "Mirror: dot size";
+        DotSize.SetInt(6);
+        DotSize.SetIntLimits(1, 40);
+        ArrowSize.Name = "Mirror: arrow size";
+        ArrowSize.SetInt(9);
+        ArrowSize.SetIntLimits(1, 40);
         TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
         TrapLocationHours.SetFloat(2.0f);
         TrapLocationHours.SetFloatLimits(0.0f, 24.0f);
@@ -744,6 +766,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91830);
         for (int w = 0; w < 7; ++w)
             sc.DeleteACSChartDrawing(sc.ChartNumber, TOOL_DELETE_CHARTDRAWING, 91840 + w);
+        if (TargetChart.GetInt() > 0)
+        {
+            // Remove the mirrored markers from the other chart.
+            for (int idx = MaxI(0, sc.ArraySize - MarkerHistoryBars.GetInt()); idx < sc.ArraySize; ++idx)
+            {
+                for (int t = 0; t < 4; ++t)
+                    sc.DeleteACSChartDrawing(TargetChart.GetInt(), TOOL_DELETE_CHARTDRAWING, 700000 + (idx % 200000) * 4 + t);
+            }
+        }
         return;
     }
 
@@ -1708,5 +1739,41 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             msg.Format("%s absorption watch (reason %d, delta %d, volume %d)",
                        LongWatch[i] != 0.0f ? "Seller" : "Buyer", (int)reason, (int)delta, (int)volume);
         sc.SetAlert(newTrigger ? 2 : 1, msg);
+    }
+
+    // Mirror the dots and arrows to another chart (e.g. the VWAP / composite chart) as drawings at the same time and price.
+    // The signals are still computed from the footprint and delta of this chart.
+    if (TargetChart.GetInt() > 0 && i >= sc.ArraySize - MarkerHistoryBars.GetInt())
+    {
+        const float prices[4] = { LongWatch[i], ShortWatch[i], LongTrigger[i], ShortTrigger[i] };
+        const bool wanted[4] = { MirrorDots.GetYesNo() != 0, MirrorDots.GetYesNo() != 0,
+                                 MirrorArrows.GetYesNo() != 0, MirrorArrows.GetYesNo() != 0 };
+        const int markerTypes[4] = { MARKER_POINT, MARKER_POINT, MARKER_ARROWUP, MARKER_ARROWDOWN };
+        const unsigned int colors[4] = { (unsigned int)LongWatch.PrimaryColor, (unsigned int)ShortWatch.PrimaryColor,
+                                         (unsigned int)LongTrigger.PrimaryColor, (unsigned int)ShortTrigger.PrimaryColor };
+        for (int t = 0; t < 4; ++t)
+        {
+            const int lineNumber = 700000 + (i % 200000) * 4 + t;
+            if (wanted[t] && prices[t] != 0.0f)
+            {
+                s_UseTool Marker;
+                Marker.Clear();
+                Marker.ChartNumber = TargetChart.GetInt();
+                Marker.DrawingType = DRAWING_MARKER;
+                Marker.LineNumber = lineNumber;
+                Marker.AddMethod = UTAM_ADD_OR_ADJUST;
+                Marker.Region = 0;
+                Marker.BeginDateTime = sc.BaseDateTimeIn[i];
+                Marker.BeginValue = prices[t];
+                Marker.MarkerType = markerTypes[t];
+                Marker.MarkerSize = t < 2 ? DotSize.GetInt() : ArrowSize.GetInt();
+                Marker.Color = colors[t];
+                sc.UseTool(Marker);
+            }
+            else
+            {
+                sc.DeleteACSChartDrawing(TargetChart.GetInt(), TOOL_DELETE_CHARTDRAWING, lineNumber);
+            }
+        }
     }
 }
