@@ -168,6 +168,36 @@ static bool ReadFootprint(SCStudyInterfaceRef sc, int idx, int zoneTicks, float 
     return true;
 }
 
+// Latest value of a subgraph of a study on another chart (e.g. weekly / monthly VWAP). With id 0 the studies of that
+// chart are searched for the first one whose subgraph is close to the reference price; the found id is stored in 'id'.
+static float ReadHtfValue(SCStudyInterfaceRef sc, int chart, int& id, int sub, float ref, bool mayScan)
+{
+    if (id > 0)
+    {
+        SCFloatArray arr;
+        sc.GetStudyArrayFromChartUsingID(chart, id, sub, arr);
+        const int n = arr.GetArraySize();
+        return n > 0 ? arr[n - 1] : 0.0f;
+    }
+    if (!mayScan)
+        return 0.0f;
+    for (int candidate = 1; candidate <= 60; ++candidate)
+    {
+        SCFloatArray arr;
+        sc.GetStudyArrayFromChartUsingID(chart, candidate, sub, arr);
+        const int n = arr.GetArraySize();
+        if (n <= 0)
+            continue;
+        const float v = arr[n - 1];
+        if (v > 0.0f && fabsf(v - ref) <= 0.05f * ref)
+        {
+            id = candidate;
+            return v;
+        }
+    }
+    return 0.0f;
+}
+
 // Order clusters: several neighbouring price levels of one bar where one side traded aggressively in bulk
 // (sellers hit the bid, or buyers lifted the ask). If price then closes through the cluster against that side,
 // the participants are trapped.
@@ -562,6 +592,16 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef MarkLongColor = sc.Input[107];
     SCInputRef MarkShortColor = sc.Input[108];
     SCInputRef MarkDotShortColor = sc.Input[109];
+    SCInputRef HtfOn = sc.Input[110];
+    SCInputRef DailyChart = sc.Input[111];
+    SCInputRef DailyID = sc.Input[112];
+    SCInputRef DailySub = sc.Input[113];
+    SCInputRef WeeklyChart = sc.Input[114];
+    SCInputRef WeeklyID = sc.Input[115];
+    SCInputRef WeeklySub = sc.Input[116];
+    SCInputRef MonthlyChart = sc.Input[117];
+    SCInputRef MonthlyID = sc.Input[118];
+    SCInputRef MonthlySub = sc.Input[119];
 
     if (sc.SetDefaults)
     {
@@ -883,6 +923,35 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         MarkArrowStyle.SetIntLimits(0, 3);
         MarkDotColor.Name = "Markers: color of the dot below the bar = sellers absorbed, potential growth (light green)";
         MarkDotColor.SetColor(RGB(120, 220, 120));
+        HtfOn.Name = "Regime: show daily / weekly / monthly VWAP position (VWAP studies on other charts)";
+        HtfOn.SetYesNo(1);
+        DailyChart.Name = "Regime: chart number with the daily VWAP";
+        DailyChart.SetInt(3);
+        DailyChart.SetIntLimits(0, 200);
+        DailyID.Name = "Regime: ID of the daily VWAP study on that chart (0 = search automatically)";
+        DailyID.SetInt(0);
+        DailyID.SetIntLimits(0, 10000);
+        DailySub.Name = "Regime: subgraph index of the daily VWAP line (0 = first)";
+        DailySub.SetInt(0);
+        DailySub.SetIntLimits(0, 59);
+        WeeklyChart.Name = "Regime: chart number with the weekly VWAP";
+        WeeklyChart.SetInt(1);
+        WeeklyChart.SetIntLimits(0, 200);
+        WeeklyID.Name = "Regime: ID of the weekly VWAP study on that chart (0 = search automatically)";
+        WeeklyID.SetInt(0);
+        WeeklyID.SetIntLimits(0, 10000);
+        WeeklySub.Name = "Regime: subgraph index of the weekly VWAP line (0 = first)";
+        WeeklySub.SetInt(0);
+        WeeklySub.SetIntLimits(0, 59);
+        MonthlyChart.Name = "Regime: chart number with the monthly VWAP";
+        MonthlyChart.SetInt(4);
+        MonthlyChart.SetIntLimits(0, 200);
+        MonthlyID.Name = "Regime: ID of the monthly VWAP study on that chart (0 = search automatically)";
+        MonthlyID.SetInt(0);
+        MonthlyID.SetIntLimits(0, 10000);
+        MonthlySub.Name = "Regime: subgraph index of the monthly VWAP line (0 = first)";
+        MonthlySub.SetInt(0);
+        MonthlySub.SetIntLimits(0, 59);
         MarkDotShortColor.Name = "Markers: color of the dot above the bar = buyers absorbed, potential fall (light red)";
         MarkDotShortColor.SetColor(RGB(255, 130, 130));
         MarkLongColor.Name = "Markers: color of the LONG symbol";
@@ -1552,6 +1621,66 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 {
                     part.Format("KLASTR  NAKUP %.2f-%.2f (%d)\n        SHORT po close pod %.2f\n", cLo, cHi, (int)cVol, cLo - cMargin);
                     secCompact.Append(part.GetChars());
+                }
+            }
+            if (HtfOn.GetYesNo())
+            {
+                // Position of the price against the daily, weekly and monthly VWAP of the other charts.
+                const double nowSys = sc.CurrentSystemDateTime.GetAsDouble();
+                double& lastScan = sc.GetPersistentDouble(2);
+                const bool mayScan = nowSys - lastScan > 30.0 / 86400.0;
+                bool scanned = false;
+                const int htfChart[3] = { DailyChart.GetInt(), WeeklyChart.GetInt(), MonthlyChart.GetInt() };
+                const int htfInput[3] = { DailyID.GetInt(), WeeklyID.GetInt(), MonthlyID.GetInt() };
+                const int htfSub[3] = { DailySub.GetInt(), WeeklySub.GetInt(), MonthlySub.GetInt() };
+                const char* htfName[3] = { "den", "tyd", "mes" };
+                SCString vwapLine;
+                int below = 0, above = 0, known = 0;
+                for (int h = 0; h < 3; ++h)
+                {
+                    if (htfChart[h] <= 0)
+                        continue;
+                    int& found = sc.GetPersistentInt(21 + h);
+                    int use = htfInput[h] > 0 ? htfInput[h] : found;
+                    const bool wasUnknown = use == 0;
+                    if (wasUnknown && mayScan)
+                        scanned = true;
+                    const float v = ReadHtfValue(sc, htfChart[h], use, htfSub[h], sc.Close[i], mayScan);
+                    if (htfInput[h] == 0 && use > 0 && found != use)
+                    {
+                        found = use;
+                        SCString logMsg;
+                        logMsg.Format("Regime: %s VWAP found on chart %d, study ID %d (set it in the inputs if this is not the VWAP)", htfName[h], htfChart[h], use);
+                        sc.AddMessageToLog(logMsg, 0);
+                    }
+                    if (v > 0.0f)
+                    {
+                        ++known;
+                        if (sc.Close[i] < v)
+                            ++below;
+                        else
+                            ++above;
+                        part.Format("%s%s %+d", vwapLine.GetLength() > 0 ? " | " : "", htfName[h], (int)(sc.Close[i] - v));
+                    }
+                    else
+                    {
+                        part.Format("%s%s n/a", vwapLine.GetLength() > 0 ? " | " : "", htfName[h]);
+                    }
+                    vwapLine.Append(part.GetChars());
+                }
+                if (scanned)
+                    lastScan = nowSys;
+                if (vwapLine.GetLength() > 0)
+                {
+                    secCompact.Append("VWAP  cena vs ");
+                    secCompact.Append(vwapLine.GetChars());
+                    secCompact.Append("\n");
+                    if (known > 0 && below == known)
+                        secCompact.Append("REZIM pod vsemi = klesajici\n      LONG proti trendu, SHORT po trendu\n");
+                    else if (known > 0 && above == known)
+                        secCompact.Append("REZIM nad vsemi = rostouci\n      SHORT proti trendu, LONG po trendu\n");
+                    else if (known > 0)
+                        secCompact.Append("REZIM smisene = rotace, okraje oblasti\n");
                 }
             }
             if (ShowPanel.GetYesNo())
