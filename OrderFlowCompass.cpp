@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-SCDLLName("ES Absorption Reversal Monitor")
+SCDLLName("Order Flow Compass")
 
 static inline float MaxF(float a, float b) { return a > b ? a : b; }
 static inline float MinF(float a, float b) { return a < b ? a : b; }
@@ -441,7 +441,7 @@ static TrapResult EvaluateTrap(SCStudyInterfaceRef sc, SCSubgraphRef DeltaSG, in
     return r;
 }
 
-SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
+SCSFExport scsf_OrderFlowCompass(SCStudyInterfaceRef sc)
 {
     SCSubgraphRef LongWatch = sc.Subgraph[0];
     SCSubgraphRef ShortWatch = sc.Subgraph[1];
@@ -605,7 +605,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
 
     if (sc.SetDefaults)
     {
-        sc.GraphName = "ES Absorption Reversal Monitor (footprint + delta + market monitor, unverified)";
+        sc.GraphName = "Order Flow Compass (footprint + delta + market monitor, unverified)";
         sc.StudyDescription = "Reads delta metrics and Volume at Price per closed bar, flags absorption (yellow dots) and confirmed reversals "
                               "(arrows), and keeps forward win/loss statistics. Not compiled or backtested by the author.";
         sc.AutoLoop = 1;

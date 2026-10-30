@@ -3,7 +3,7 @@
 SCDLLName("ES Absorption Mirror")
 
 // Companion study for the chart with the VWAP / composites. It reads the dots and arrows that
-// "ES Absorption Reversal Monitor" computes on another chart (the Renko footprint chart) and draws them here
+// "Order Flow Compass" computes on another chart (the Renko footprint chart) and draws them here
 // as ordinary study subgraphs, matched by time. Add it to the VWAP chart, set the source chart number and the
 // ID of the monitor study on that chart (shown in its settings window as "ID:").
 
@@ -28,7 +28,7 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
     if (sc.SetDefaults)
     {
         sc.GraphName = "ES Absorption Mirror (dots and arrows from the Renko chart)";
-        sc.StudyDescription = "Shows the yellow dots and LONG/SHORT arrows of ES Absorption Reversal Monitor from another chart.";
+        sc.StudyDescription = "Shows the yellow dots and LONG/SHORT arrows of Order Flow Compass from another chart.";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
         sc.FreeDLL = 0;
@@ -54,7 +54,7 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
         SourceChart.Name = "Source chart number (the # of the Renko chart)";
         SourceChart.SetInt(7);
         SourceChart.SetIntLimits(1, 200);
-        SourceStudyID.Name = "ID of the ES Absorption Reversal Monitor study on the source chart";
+        SourceStudyID.Name = "ID of the Order Flow Compass study on the source chart";
         SourceStudyID.SetInt(4);
         SourceStudyID.SetIntLimits(1, 10000);
         History.Name = "Number of latest bars of this chart to fill";
