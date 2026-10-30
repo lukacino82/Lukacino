@@ -17,6 +17,12 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
     SCInputRef SourceChart = sc.Input[0];
     SCInputRef SourceStudyID = sc.Input[1];
     SCInputRef History = sc.Input[2];
+    SCInputRef DotSize = sc.Input[3];
+    SCInputRef ArrowSize = sc.Input[4];
+    SCInputRef ArrowStyle = sc.Input[5];
+    SCInputRef DotColor = sc.Input[6];
+    SCInputRef LongColor = sc.Input[7];
+    SCInputRef ShortColor = sc.Input[8];
 
     if (sc.SetDefaults)
     {
@@ -53,7 +59,34 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
         History.Name = "Number of latest bars of this chart to fill";
         History.SetInt(3000);
         History.SetIntLimits(10, 100000);
+        DotSize.Name = "Dot size";
+        DotSize.SetInt(5);
+        DotSize.SetIntLimits(1, 30);
+        ArrowSize.Name = "LONG / SHORT symbol size";
+        ArrowSize.SetInt(7);
+        ArrowSize.SetIntLimits(1, 30);
+        ArrowStyle.Name = "LONG / SHORT symbol (0 arrow, 1 triangle, 2 diamond, 3 square)";
+        ArrowStyle.SetInt(1);
+        ArrowStyle.SetIntLimits(0, 3);
+        DotColor.Name = "Dot color";
+        DotColor.SetColor(RGB(255, 190, 0));
+        LongColor.Name = "LONG color";
+        LongColor.SetColor(RGB(0, 170, 0));
+        ShortColor.Name = "SHORT color";
+        ShortColor.SetColor(RGB(210, 0, 0));
         return;
+    }
+
+    {
+        const int styleUp[4] = { DRAWSTYLE_ARROW_UP, DRAWSTYLE_TRIANGLE_UP, DRAWSTYLE_DIAMOND, DRAWSTYLE_SQUARE };
+        const int styleDown[4] = { DRAWSTYLE_ARROW_DOWN, DRAWSTYLE_TRIANGLE_DOWN, DRAWSTYLE_DIAMOND, DRAWSTYLE_SQUARE };
+        LongTrigger.DrawStyle = styleUp[ArrowStyle.GetInt()];
+        ShortTrigger.DrawStyle = styleDown[ArrowStyle.GetInt()];
+        LongWatch.LineWidth = ShortWatch.LineWidth = DotSize.GetInt();
+        LongTrigger.LineWidth = ShortTrigger.LineWidth = ArrowSize.GetInt();
+        LongWatch.PrimaryColor = ShortWatch.PrimaryColor = DotColor.GetColor();
+        LongTrigger.PrimaryColor = LongColor.GetColor();
+        ShortTrigger.PrimaryColor = ShortColor.GetColor();
     }
 
     SCDateTimeArray sourceTime;

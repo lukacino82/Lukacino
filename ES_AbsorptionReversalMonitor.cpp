@@ -557,6 +557,10 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
     SCInputRef ClusterMaxAge = sc.Input[102];
     SCInputRef ClusterMarginTicks = sc.Input[103];
     SCInputRef ClusterNeedDelta = sc.Input[104];
+    SCInputRef MarkArrowStyle = sc.Input[105];
+    SCInputRef MarkDotColor = sc.Input[106];
+    SCInputRef MarkLongColor = sc.Input[107];
+    SCInputRef MarkShortColor = sc.Input[108];
 
     if (sc.SetDefaults)
     {
@@ -873,6 +877,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         ClusterMarginTicks.SetIntLimits(0, 50);
         ClusterNeedDelta.Name = "Cluster: the closing bar must also have delta in the trade direction (when the cluster is from an earlier bar)";
         ClusterNeedDelta.SetYesNo(1);
+        MarkArrowStyle.Name = "Markers: LONG/SHORT symbol (0 arrow, 1 triangle, 2 diamond, 3 square); sizes are the dot size and arrow size inputs";
+        MarkArrowStyle.SetInt(1);
+        MarkArrowStyle.SetIntLimits(0, 3);
+        MarkDotColor.Name = "Markers: color of the absorption dots";
+        MarkDotColor.SetColor(RGB(255, 190, 0));
+        MarkLongColor.Name = "Markers: color of the LONG symbol";
+        MarkLongColor.SetColor(RGB(0, 170, 0));
+        MarkShortColor.Name = "Markers: color of the SHORT symbol";
+        MarkShortColor.SetColor(RGB(210, 0, 0));
         BuyColor.Name = "Dominance strip: color when buyers dominate";
         BuyColor.SetColor(RGB(0, 150, 0));
         SellColor.Name = "Dominance strip: color when sellers dominate";
@@ -891,10 +904,10 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
         MirrorArrows.Name = "Mirror: LONG / SHORT arrows";
         MirrorArrows.SetYesNo(1);
         DotSize.Name = "Mirror: dot size";
-        DotSize.SetInt(6);
+        DotSize.SetInt(5);
         DotSize.SetIntLimits(1, 40);
         ArrowSize.Name = "Mirror: arrow size";
-        ArrowSize.SetInt(9);
+        ArrowSize.SetInt(7);
         ArrowSize.SetIntLimits(1, 40);
         TrapLocationHours.Name = "Trapped traders: the extreme of the push must lie at the edge of the range of the last N hours (0 = off)";
         TrapLocationHours.SetFloat(2.0f);
@@ -923,6 +936,19 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
             }
         }
         return;
+    }
+
+    // Look of the dots and arrows follows the inputs (the Subgraphs tab is overridden for these four).
+    {
+        const int styleUp[4] = { DRAWSTYLE_ARROW_UP, DRAWSTYLE_TRIANGLE_UP, DRAWSTYLE_DIAMOND, DRAWSTYLE_SQUARE };
+        const int styleDown[4] = { DRAWSTYLE_ARROW_DOWN, DRAWSTYLE_TRIANGLE_DOWN, DRAWSTYLE_DIAMOND, DRAWSTYLE_SQUARE };
+        LongTrigger.DrawStyle = styleUp[MarkArrowStyle.GetInt()];
+        ShortTrigger.DrawStyle = styleDown[MarkArrowStyle.GetInt()];
+        LongWatch.LineWidth = ShortWatch.LineWidth = DotSize.GetInt();
+        LongTrigger.LineWidth = ShortTrigger.LineWidth = ArrowSize.GetInt();
+        LongWatch.PrimaryColor = ShortWatch.PrimaryColor = MarkDotColor.GetColor();
+        LongTrigger.PrimaryColor = MarkLongColor.GetColor();
+        ShortTrigger.PrimaryColor = MarkShortColor.GetColor();
     }
 
     const int i = sc.Index;
