@@ -1335,10 +1335,10 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 if (st == 0.0f)
                     part.Format("SIGNAL  bez setupu");
                 else if (fabsf(st) == 1.0f)
-                    part.Format("SETUP %s  %s tlaci, signal po prekonani %.2f", sellersSide ? "LONG" : "SHORT",
+                    part.Format("SETUP %s  %s tlaci\n       signal po prekonani %.2f", sellersSide ? "LONG" : "SHORT",
                                 sellersSide ? "prodavajici" : "kupujici", TrapLevelSG[k]);
                 else
-                    part.Format("PAST %s  %s v pasti, uroven %.2f", sellersSide ? "LONG" : "SHORT",
+                    part.Format("PAST %s  %s v pasti\n       uroven %.2f", sellersSide ? "LONG" : "SHORT",
                                 sellersSide ? "prodavajici" : "kupujici", TrapLevelSG[k]);
                 secCompact.Append(part.GetChars());
                 for (int j = k; j >= 0 && j >= i - 400; --j)
@@ -1346,7 +1346,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     if (State.Arrays[3][j] == 0.0f)
                         continue;
                     const int ageMin = (int)((nowT - sc.BaseDateTimeIn[j].GetAsDouble()) * 1440.0 + 0.5);
-                    part.Format("   |   posledni %02d:%02d %s (pred %dh%02dm)", sc.BaseDateTimeIn[j].GetHour(),
+                    part.Format("\nPOSLEDNI  %02d:%02d %s (pred %dh%02dm)", sc.BaseDateTimeIn[j].GetHour(),
                                 sc.BaseDateTimeIn[j].GetMinute(), State.Arrays[3][j] > 0.0f ? "LONG" : "SHORT", ageMin / 60, ageMin % 60);
                     secCompact.Append(part.GetChars());
                     break;
@@ -1362,15 +1362,15 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 if (reason & 4) why.Append("velky-objem ");
                 if (reason & 8) why.Append("shock ");
                 if (why.GetLength() == 0) why.Append("-");
-                part.Format("BAR  delta %+d (%+.1f%%)  vol %.1fx  watch: %s%s%s\n", (int)DeltaSG[k], DeltaPctSG[k], VolRatioSG[k],
-                            why.GetChars(), StackBuySG[k] >= (float)StackCount.GetInt() ? "  STACK+" : "",
-                            StackSellSG[k] >= (float)StackCount.GetInt() ? "  STACK-" : "");
+                part.Format("BAR  delta %+d (%+.1f%%)  vol %.1fx\n     watch: %s%s%s\n", (int)DeltaSG[k], DeltaPctSG[k], VolRatioSG[k],
+                            why.GetChars(), StackBuySG[k] >= (float)StackCount.GetInt() ? " STACK+" : "",
+                            StackSellSG[k] >= (float)StackCount.GetInt() ? " STACK-" : "");
                 secCompact.Append(part.GetChars());
             }
             if (ShowIntervals.GetYesNo() && ShowBands.GetYesNo())
             {
                 const int bandIds[2] = { sc.GetPersistentInt(11), sc.GetPersistentInt(16) };
-                const char* bandLabels[2] = { "1h", "seance" };
+                const char* bandLabels[2] = { "1h", "ses" };
                 SCString positions;
                 for (int q = 0; q < 2; ++q)
                 {
@@ -1378,7 +1378,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                         continue;
                     const float bandLow = (bandIds[q] - 1) * BandPoints.GetFloat();
                     const float bandHigh = bandLow + BandPoints.GetFloat();
-                    part.Format("%spasmo %s %.0f-%.0f (cena %s)", positions.GetLength() > 0 ? "   |   " : "", bandLabels[q], bandLow, bandHigh,
+                    part.Format("%s%s %.0f-%.0f %s", positions.GetLength() > 0 ? "  |  " : "PASMO  ", bandLabels[q], bandLow, bandHigh,
                                 sc.Close[i] < bandLow ? "POD" : (sc.Close[i] > bandHigh ? "NAD" : "V"));
                     positions.Append(part.GetChars());
                 }
@@ -1418,7 +1418,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                 {
                     if (!sUsed[sl])
                         continue;
-                    part.Format("%s%s %+.1fk/%+.1f", slicesLine.GetLength() > 0 ? "  |  " : "", sliceNames[sl],
+                    part.Format("%s%-6s %+.1fk/%+.1f", slicesLine.GetLength() > 0 ? (sl % 2 == 0 ? "\n       " : "  |  ") : "", sliceNames[sl],
                                 sDelta[sl] / 1000.0f, sClose[sl] - sOpen[sl]);
                     slicesLine.Append(part.GetChars());
                 }
@@ -1443,7 +1443,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     const bool spike = VolRatioSG[j] >= SpikeMult.GetFloat();
                     if (!lvl && !bigBar && !spike)
                         continue;
-                    part.Format("%s%02d:%02d", shownPrints > 0 ? "   |   " : "", sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute());
+                    part.Format("%s%02d:%02d", shownPrints > 0 ? "\n       " : "", sc.BaseDateTimeIn[j].GetHour(), sc.BaseDateTimeIn[j].GetMinute());
                     prints.Append(part.GetChars());
                     if (lvl)
                     {
@@ -1457,7 +1457,7 @@ SCSFExport scsf_ESAbsorptionReversalMonitor(SCStudyInterfaceRef sc)
                     }
                     if (spike)
                     {
-                        part.Format(" %.1fx objem (delta %+d, cena %s)", VolRatioSG[j], (int)DeltaSG[j],
+                        part.Format(" %.1fx obj. (d %+d, cena %s)", VolRatioSG[j], (int)DeltaSG[j],
                                     sc.Close[j] > sc.Open[j] ? "nahoru" : (sc.Close[j] < sc.Open[j] ? "dolu" : "stoji"));
                         prints.Append(part.GetChars());
                     }
