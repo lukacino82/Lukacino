@@ -1,13 +1,13 @@
 #include "sierrachart.h"
 
-SCDLLName("ES Absorption Mirror")
+SCDLLName("Signal Relay")
 
 // Companion study for the chart with the VWAP / composites. It reads the dots and arrows that
 // "Order Flow Compass" computes on another chart (the Renko footprint chart) and draws them here
 // as ordinary study subgraphs, matched by time. Add it to the VWAP chart, set the source chart number and the
 // ID of the monitor study on that chart (shown in its settings window as "ID:").
 
-SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
+SCSFExport scsf_SignalRelay(SCStudyInterfaceRef sc)
 {
     SCSubgraphRef LongWatch = sc.Subgraph[0];
     SCSubgraphRef ShortWatch = sc.Subgraph[1];
@@ -27,7 +27,7 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
 
     if (sc.SetDefaults)
     {
-        sc.GraphName = "ES Absorption Mirror (dots and arrows from the Renko chart)";
+        sc.GraphName = "Signal Relay (dots and arrows from another chart)";
         sc.StudyDescription = "Shows the yellow dots and LONG/SHORT arrows of Order Flow Compass from another chart.";
         sc.AutoLoop = 0;
         sc.GraphRegion = 0;
@@ -111,7 +111,7 @@ SCSFExport scsf_ESAbsorptionMirror(SCStudyInterfaceRef sc)
         {
             warned = 1;
             SCString msg;
-            msg.Format("ES Absorption Mirror: no data from chart %d study ID %d - check the chart number and the ID in the study settings",
+            msg.Format("Signal Relay: no data from chart %d study ID %d - check the chart number and the ID in the study settings",
                        SourceChart.GetInt(), SourceStudyID.GetInt());
             sc.AddMessageToLog(msg, 1);
         }
