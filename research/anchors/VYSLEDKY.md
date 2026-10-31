@@ -29,9 +29,9 @@ Dosažení v závislosti na vzdálenosti, průměr přes všechny kotvy (kotva v
 | 2–4 ATR | 0 vs 0,1 | 2,5 vs 4,2 | 19,6 vs 15,5 |
 
 - **Po vyvážení driftu** je efekt kotvy: 2h −0,15 p. b. (t −3,0), 3h −0,18 p. b., 12h −0,05, 1 den +0,46 p. b. (t 1,1), 2 dny +1,0 p. b. (t 1,5), 5 dní +1,4 p. b. (t 1,5). Žádná významná výhoda kotvy, v krátkých horizontech dokonce nepatrně záporná.
-- Rozdíly v tabulce pro 1–4 ATR a 5 dní jsou z velké části drift: kotva nad cenou má dosažení 73,3 % a kotva pod cenou 61,5 %, zrcadlo 63,0 % a 67,7 %. Efekt kotvy je průměr obou (+1,0 p. b.).
+- Rozdíly v tabulce pro 1–4 ATR a 5 dní jsou z velké části drift: kotva nad cenou má dosažení 73,3 % a kotva pod cenou 61,5 %, zrcadlo 63,0 % a 67,7 %. Efekt kotvy je průměr obou rozdílů (v tomto příkladu VAH předchozího dne, 0,5–1 ATR, +2,0 p. b.).
 - **Plošné testy:** u dosažení je |t| > 2 u 11,2 % konfigurací (náhoda 5 %), |t| > 3 u 4 z 490. U očekávané hodnoty je |t| > 2 u 5,6 % ze 1 960 (náhoda 5 %). Mezi obdobími 2011–18 a 2019–26 efekty nesouhlasí: korelace 0,09, stejné znaménko 55 %.
-- **Nejsilnější náznak:** VAL předchozího dne. Dosažení je o 2,6 až 4,8 p. b. častější při 12h–2d (t 2,4–3,0), stejné znaménko v obou obdobích. Z 490 testů je to málo na důkaz a v očekávané hodnotě to významné není (t < 2,7).
+- **Nejsilnější náznak:** VAL předchozího dne. Dosažení je o 2,6 až 6,9 p. b. častější při 12h–2d (t 2,4–3,0), stejné znaménko v obou obdobích. Z 490 testů je to málo na důkaz a v očekávané hodnotě to významné není (t < 2,7).
 - Podle skupiny kotev (1 den, 0,25–2 ATR) je efekt: VWAP D/W/M −0,1 p. b. (t −0,2), profil POC/VAH/VAL +0,7 p. b. (t 1,5), High/Low dne +0,3 p. b. (t 0,6).
 
 ### Protipohyb před cílem (MAE) a stopy
@@ -75,7 +75,7 @@ Dosažení v závislosti na vzdálenosti, průměr přes všechny kotvy (kotva v
 2. „Cíl byl nakonec dosažen“ platí stejně dobře u zrcadlové úrovně. Rozhoduje to, zda přežije protipohyb. Při stopu 1 ATR obchod předčasně skončí ve 14 % případů a očekávaná hodnota je záporná.
 3. Držení přes noc nebo několik dní zmenšuje ztrátu jen proto, že trh roste. Kotva nic nepřidává.
 4. Impuls, pauza a pokračování, ani seance nedávají využitelný vzorec.
-5. Jediný náznak je VAL předchozího dne (+2 až +5 p. b. dosažení), nevýznamný na úrovni očekávané hodnoty.
+5. Jediný náznak je VAL předchozího dne (+2,6 až +6,9 p. b. dosažení), nevýznamný na úrovni očekávané hodnoty.
 6. Pro hypotézy o footprintu (H2) je potřeba tick export. Připravený modul `research/acsil/ResearchExport.cpp` (nezkompilovaný, bez testu).
 
 **Omezení:**

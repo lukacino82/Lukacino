@@ -205,5 +205,5 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - **Přenos přes noc (H5)** nepřidává nic: čistý výsledek −0,76 b. (do konce RTH), −0,61 (1 den), +0,15 (5 dní, jen drift), na jednotku rizika zhruba nula.
 - **Seance:** žádná není výrazně lepší (do ±1,8 p. b.); cíle z Asie se většinou dosáhnou později, stejně jako u zrcadla.
 - **Impuls → pauza → pokračování (H3):** závod o návrat k počátku vs pokračování 50,1 % (48,7–53,7 %), |t| > 2 jen u 3,2 % testů.
-- Jediný náznak: VAL předchozího dne (+2 až +5 p. b. dosažení, t 2,4–3,0, bez významné očekávané hodnoty).
+- Jediný náznak: VAL předchozího dne (+2,6 až +6,9 p. b. dosažení, t 2,4–3,0, bez významné očekávané hodnoty).
 - **Footprint (H2)** zůstává netestován: modul `acsil/ResearchExport.cpp` (nezkompilovaný) exportuje bid/ask objem po cenách.
