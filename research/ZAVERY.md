@@ -197,3 +197,13 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
   - HA vzory na objemových barech: stejné znaménko v testu jen 51 %.
   - Obraty předpovídá hlavně volatilita (AUC 0,64), po nákladech je výsledek záporný.
   - Delta divergence obrat neprodlužuje, je dokonce slabší.
+
+## 19. Kotvy, doba do dosažení, protipohyb, impuls–pauza, seance (`anchors/VYSLEDKY.md`, Drive 35)
+- **Zadání z 31. 10.:** cíl může být správný a načasování špatné. Testováno na 1,07 mil. hodinových událostí, 14 kotev (VWAP D/W/M, POC/VAH/VAL předchozího dne, týdne a měsíce, High/Low dne), horizonty 2h–5d, zrcadlová kontrola, klastry po dvou týdnech.
+- **Kotvy cenu nepřitahují víc než zrcadlová úroveň.** Efekt kotvy je po vyvážení driftu 2h −0,15 p. b., 1 den +0,5 p. b. (t 1,1), 5 dní +1,4 p. b. (t 1,5). Plošné testy: |t| > 2 u 11 % (náhoda 5 %), stabilita mezi obdobími 0,09.
+- **Protipohyb před cílem:** medián 0,15 ATR za den (0,5–1 ATR od kotvy), 90. percentil 0,5 ATR za den a 1,2 ATR za 5 dní. Stop 1 ATR ukončí obchod předčasně ve 14 % případů, 0,5 ATR v 29,5 %. Očekávaná hodnota je po nákladech záporná.
+- **Přenos přes noc (H5)** nepřidává nic: čistý výsledek −0,76 b. (do konce RTH), −0,61 (1 den), +0,15 (5 dní, jen drift), na jednotku rizika zhruba nula.
+- **Seance:** žádná není výrazně lepší (do ±1,8 p. b.); cíle z Asie se většinou dosáhnou později, stejně jako u zrcadla.
+- **Impuls → pauza → pokračování (H3):** závod o návrat k počátku vs pokračování 50,1 % (48,7–53,7 %), |t| > 2 jen u 3,2 % testů.
+- Jediný náznak: VAL předchozího dne (+2 až +5 p. b. dosažení, t 2,4–3,0, bez významné očekávané hodnoty).
+- **Footprint (H2)** zůstává netestován: modul `acsil/ResearchExport.cpp` (nezkompilovaný) exportuje bid/ask objem po cenách.
