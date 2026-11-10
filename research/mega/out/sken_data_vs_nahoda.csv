@@ -1,0 +1,8 @@
+vrstva,typ,kandidatu_data,kandidatu_nahoda,potvrzeno_V2_H2_data,potvrzeno_V2_H2_nahoda,potvrzeno_V3_H3_data,potvrzeno_V3_H3_nahoda,pomer_kandidatu,pomer_potvrzenych
+denni,drzeni 2-20 dni,298414.0,186880.0,5601.0,6197.0,1579.0,2559.67,1.6,0.9
+denni,horizont do 1 dne,3972.0,932.0,10.0,1.33,1.0,0.0,4.26,7.5
+denni,long TP/SL,754667.0,700681.0,16157.0,24757.33,3655.0,7067.33,1.08,0.65
+denni,short TP/SL,1244409.0,1087846.33,33412.0,34716.67,8705.0,10055.67,1.14,0.96
+hodinova,horizont,2921.0,328.0,5.0,0.0,0.0,0.0,8.91,
+hodinova,long TP/SL,7902.0,4192.5,46.0,2.0,0.0,0.0,1.88,23.0
+hodinova,short TP/SL,8967.0,4287.5,68.0,4.5,3.0,0.0,2.09,15.11

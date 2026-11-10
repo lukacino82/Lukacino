@@ -207,3 +207,13 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - **Impuls → pauza → pokračování (H3):** závod o návrat k počátku vs pokračování 50,1 % (48,7–53,7 %), |t| > 2 jen u 3,2 % testů.
 - Jediný náznak: VAL předchozího dne (+2,6 až +6,9 p. b. dosažení, t 2,4–3,0, bez významné očekávané hodnoty).
 - **Footprint (H2)** zůstává netestován: modul `acsil/ResearchExport.cpp` (nezkompilovaný) exportuje bid/ask objem po cenách.
+
+## 20. Mega sken: 166 mil. testů a strategie proti buy & hold (`mega/VYSLEDKY.md`, Drive 37)
+- **Sken:** dvojice z 1 501 denních signálů × 5 režimů × 68 výstupů (noc, 1–20 dní, SL × RRR long/short) = 146,7 mil. testů; hodinová vrstva 19,6 mil. testů. Tři období (objev, potvrzení, holdout) a náhodná kontrola s posunutými výstupy (dalších 626 mil. testů).
+- **Vícedenní držení a všechny SL × RRR:** potvrzených objevů stejně nebo méně než náhodou (např. 5 601 vs 6 197).
+- **Horizont do 1 dne:** 4,3× víc kandidátů a 7,5× víc potvrzených než náhodou. Z 3 972 kandidátů míří 3 800 jedním směrem: slabost → růst přes noc a další den.
+- **Intradenně:** 119 potvrzených vs ~7 náhodou, ale efekty 0,05–0,13 ATR. Nejčastěji pokračování poklesu po propadu v první hodině RTH.
+- **Skóre slabosti** (20 signálů vybraných jen z dat do 2020): silná slabost (≈ 15 dní ročně) → další den +0,44 % / +0,51 % / **+0,46 % v holdoutu 2021–26** (t 3,0) proti +0,05 % v běžný den.
+- **Strategie S2** (slabost 2×, silná slabost 3×): CAGR 25,4 % vs 12,5 % B&H, Sharpe 0,94 vs 0,78, propad −38 % vs −34 %, alfa +6,8 % ročně (t 2,2), lepší než B&H v 17 z 18 let, holdout 24,4 % vs 10,8 %.
+- **Strategie S6** (v trhu jen při slabosti, silná 2×): CAGR 13,0 % při propadu −23 %, v trhu asi pětinu dnů.
+- **ML** (ridge, LightGBM na 147 ukazatelích): IC −0,01 a +0,02, bez zlepšení proti jednoduchému pravidlu.
