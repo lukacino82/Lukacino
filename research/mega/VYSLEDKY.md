@@ -51,10 +51,10 @@ Silná slabost nastává asi 15 dní v roce a další den vydělá v průměru 8
 | Strategie | CAGR | Sharpe | Max propad | Alfa/rok (t) | Let lepších než B&H | CAGR 2021–26 |
 |---|---|---|---|---|---|---|
 | Buy & hold 1× | 12,5 % | 0,78 | −34 % | – | – | 10,8 % |
-| S1: slabost → 2× | 19,3 % | 0,85 | −33 % | +2,7 % (1,4) | 17 z 18 | 17,7 % |
+| S1: slabost → 2× | 19,3 % | 0,85 | −33 % | +2,8 % (1,4) | 17 z 18 | 17,7 % |
 | **S2: slabost 2×, silná slabost 3×** | **25,4 %** | **0,94** | −38 % | **+6,8 % (2,2)** | **17 z 18** | **24,4 %** |
 | S3: slabost → +1× jen přes noc | 15,5 % | 0,83 | −33 % | +1,5 % (1,1) | 15 z 18 | 14,4 % |
-| S5: v trhu jen při slabosti (22 % dnů) | 7,0 % | 0,73 | −16 % | +2,7 % (1,4) | 5 z 18 | 7,1 % |
+| S5: v trhu jen při slabosti (22 % dnů) | 7,0 % | 0,73 | −16 % | +2,8 % (1,4) | 5 z 18 | 7,1 % |
 | **S6: jen při slabosti, silná 2×** | **13,0 %** | **0,88** | **−23 %** | +6,8 % (2,2) | 7 z 18 | 13,6 % |
 
 - **S2 zhodnotila 1 → 55,4, buy & hold 1 → 8,1.** V holdoutu 2021–26 má CAGR 24,4 % proti 10,8 % a Sharpe 0,95 proti 0,71.
