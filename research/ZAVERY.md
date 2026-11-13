@@ -217,3 +217,10 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - **Strategie S2** (slabost 2×, silná slabost 3×): CAGR 25,4 % vs 12,5 % B&H, Sharpe 0,94 vs 0,78, propad −38 % vs −34 %, alfa +6,8 % ročně (t 2,2), lepší než B&H v 17 z 18 let, holdout 24,4 % vs 10,8 %.
 - **Strategie S6** (v trhu jen při slabosti, silná 2×): CAGR 13,0 % při propadu −23 %, v trhu asi pětinu dnů.
 - **ML** (ridge, LightGBM na 147 ukazatelích): IC −0,01 a +0,02, bez zlepšení proti jednoduchému pravidlu.
+
+
+## 21. Inducement / sweep likvidity (video, ES 2008–2026)
+- 24 037 průrazů 8 typů úrovní; závod návratu vs pokračování 49,4–51,1 % (náhoda 50 %, placebo úrovně 50,9–51,9 %).
+- Reverzní obchod po návratu (stop za extrém, 1–3R): 0 ze 72 konfigurací kladných, průměr −0,19R, před náklady +0,00R; ze 153 kombinací žádná t > 2.
+- Obchod po akceptaci −0,08 až −0,13R; kvalifikátory (konfluence, objem, trend) nepomáhají.
+- **Závěr: metodika nemá edge**, rozhoduje náklad. Detail: `research/inducement/VYSLEDKY.md`.
