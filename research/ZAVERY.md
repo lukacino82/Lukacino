@@ -224,3 +224,9 @@ s oddělenými obdobími (objev / ověření / out-of-sample) a srovnáním s n�
 - Reverzní obchod po návratu (stop za extrém, 1–3R): 0 ze 72 konfigurací kladných, průměr −0,19R, před náklady +0,00R; ze 153 kombinací žádná t > 2.
 - Obchod po akceptaci −0,08 až −0,13R; kvalifikátory (konfluence, objem, trend) nepomáhají.
 - **Závěr: metodika nemá edge**, rozhoduje náklad. Detail: `research/inducement/VYSLEDKY.md`.
+
+## 22. Pyramiding (přikupování k vítězi, video)
+- Test na ES RTH 2008–2026: 3 vstupy (náhodný, ORB po/proti směru, EMA9×VWAP „fashionably late"), 6 schémat řízení, R = 0,1–0,3 ATR, 336 řádků.
+- Hrubá střední hodnota všech schémat +0,00 až +0,06R; metoda z videa (0,5R/0,25R/0,125R, stop na předchozí úroveň) je horší než jedna pozice a po nákladech −0,12 až −0,24R. Úspěšnost klesne (31–36 % → 28–30 %), ocas roste (99. perc. 6,7–9,3R).
+- Po +1R pokračuje cena s pravděpodobností 47–49 % (náhoda 50 %), po směru i proti stejně.
+- **Závěr: pyramiding není zdroj edge, je to pravidlo řízení rizika a tvaru výplaty.** Průměrování ztráty je nejhorší. Použít jen jako disciplínu (součet rizika, přidání ≤ 0,5×, stop posunout), edge musí dát vstup. Detail: `research/pyramiding/VYSLEDKY.md`.
